@@ -1,0 +1,70 @@
+# https://hub.docker.com/r/pytorch/pytorch/tags
+# https://catalog.ngc.nvidia.com/orgs/nvidia/containers/pytorch/tags
+
+BootStrap: docker
+From: nvcr.io/nvidia/pytorch:24.09-py3
+
+# Setup the container creation
+# Create the project folder inside the container
+# Below, %files just copies files but cannot create the folder
+%setup
+    mkdir -p ${SINGULARITY_ROOTFS}/opt/app
+    mkdir -p ${SINGULARITY_ROOTFS}/opt/app/data
+    mkdir -p ${SINGULARITY_ROOTFS}/opt/app/experiments
+    mkdir -p ${SINGULARITY_ROOTFS}/opt/app/src
+    mkdir -p ${SINGULARITY_ROOTFS}/opt/app/test
+    
+# Copy only the necessary files into the container
+# files are copied from the ROOT of the host system into the container at the specified location
+%files
+    ${PROJECT_PATH}/.env /opt/app/.env
+    ${PROJECT_PATH}/requirements.txt /opt/app/requirements.txt
+
+# Set environment variables, if any
+#%environment
+
+
+%post
+    # Move to the working directory
+    cd /opt/app
+
+    # Enable Jupyter by creating a writable /.local directory
+    mkdir /.local
+    chmod -R 777 /.local
+    
+    # Install requirements
+    python -m pip install --upgrade pip
+    pip install --no-cache-dir -r /opt/app/requirements.txt
+
+    # Save build timestamp, printed when container is launched
+    NOW=`date`
+    echo "export NOW=\"${NOW}\"" >> $SINGULARITY_ENVIRONMENT
+
+
+%runscript
+    echo "Container was created $NOW"
+    echo "Arguments received: $*"
+    echo "Running Python script ..."
+    exec python3 "$@"
+
+# %startscript
+    # exec "$@"
+
+# Executed at the end of the container creation process
+# Used to check correct creation
+%test
+    echo "Container has been built successfully!"
+    echo "Python version"
+    python3 --version
+    echo "Installed Packages"
+    pip list
+
+
+%labels
+    Author simone.sarti@leonardo.com
+    Version v0.0.1
+
+
+# Info about the container
+%help
+    This is a Singularity definition file used to create the container
