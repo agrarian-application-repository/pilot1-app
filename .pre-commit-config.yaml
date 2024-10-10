@@ -5,7 +5,7 @@
 # By default, this will bring the hooks to the latest tag on the default branch.
 
 default_language_version:
-    python: python3.10.12
+    python: python3.10
 
 
 repos:
@@ -97,7 +97,7 @@ repos:
 
   # Black
   - repo: https://github.com/psf/black
-    rev: 24.8.0
+    rev: 24.10.0
     hooks:
       - id: black
       - id: black-jupyter
@@ -149,7 +149,7 @@ repos:
       - id: doctoc
 
   - repo: https://github.com/markdownlint/markdownlint
-    rev: v0.13.0
+    rev: v0.12.0
     hooks:
       - id: markdownlint
 
