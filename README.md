@@ -9,11 +9,11 @@
     ```
     cd AGRARIAN
     ```
-3. Rename file `.env_placeholder` to `.env` with
+3. Create a copy of file `.env_placeholder` called `.env` with
     ```
-    mv .env_placeholder .env
+    cp .env_placeholder .env
     ```   
-4. Fill the  ` env ` file with your personal tokens and paths
+4. Fill the  `.env ` file with your personal tokens and paths
 
    
 5. Build the Singularity Image with
