@@ -1,0 +1,16 @@
+black
+isort
+matplotlib
+numpy
+opencv-python
+pyYAML
+pytest
+pytest-cov
+python-dotenv
+numpy
+requests
+scipy
+setuptools
+tqdm
+ultralytics
+wandb
