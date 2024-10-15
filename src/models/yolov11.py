@@ -1,12 +1,12 @@
 from ultralytics import YOLO
 
 
-def get_YOLOv11():
+def get_YOLO11():
     model = YOLO()
     return model
 
 
-def get_pretrained_YOLOv11(checkpoint: str):
-    assert checkpoint in ["yolov11n.pt", "yolov11s.pt", "yolov11m.pt", "yolov11l.pt", "yolov11v11x.pt"]
+def get_pretrained_YOLO11(checkpoint: str):
+    assert checkpoint in ["yolo11n.pt", "yolo11s.pt", "yolo11m.pt", "yolo11l.pt", "yolo11x.pt"]
     model = YOLO(checkpoint)
     return model

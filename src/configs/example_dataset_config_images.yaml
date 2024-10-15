@@ -1,8 +1,13 @@
-    # single_class.yaml
-    path: / path / to / dataset  # dataset root directory
-    train: images / train  # train images (relative to 'path')
-    val: images / val  # val images (relative to 'path')
+# Path to the dataset
+path: /davinci-1/home/msarti/projects/AGRARIAN/data/Aerial_Sheep_v1
 
-    # Classes
-    nc: 1  # number of classes (since it's a single class)
-    names: ['object']  # name of your class
+# Train, validation, and test image directories
+train: train/images
+val: valid/images
+test: test/images
+
+# Number of classes
+nc: 1
+
+# Class names
+names: ['sheep']

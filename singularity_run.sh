@@ -1,5 +1,7 @@
 #!/bin/bash
 
+module load proxy/proxy_20
+
 # Define Singularity run command
 # everything in $@ is given to %runscript in singularity.def
 singularity_run_command="
@@ -19,4 +21,4 @@ echo "$singularity_run_command"
 eval "$singularity_run_command"
 
 
-# bash singularity_run.sh script.py --arg1 arg1 --arg2 arg2
+# bash singularity_run.sh finetune.py --data 'src/configs/example_dataset_config_images.yaml' --run_name 'test_run' --epochs 1
