@@ -1,0 +1,8 @@
+    # single_class.yaml
+    path: / path / to / dataset  # dataset root directory
+    train: images / train  # train images (relative to 'path')
+    val: images / val  # val images (relative to 'path')
+
+    # Classes
+    nc: 1  # number of classes (since it's a single class)
+    names: ['object']  # name of your class
