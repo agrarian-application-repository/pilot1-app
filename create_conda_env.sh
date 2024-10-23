@@ -14,5 +14,3 @@ pip install --no-cache-dir torch==2.3.1+cu121 torchvision==0.18.1+cu121 -f https
 pip install --no-cache-dir -r requirements.txt
 
 conda deactivate
-
-

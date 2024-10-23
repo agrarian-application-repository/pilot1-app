@@ -11,6 +11,7 @@ singularity_run_command="
     --bind ./experiments:/opt/app/experiments \
     --bind ./src:/opt/app/src \
     --bind ./test:/opt/app/test \
+    --bind ./configs:/opt/app/configs \
     agrarian.sif \
     $@
     "
@@ -21,4 +22,4 @@ echo "$singularity_run_command"
 eval "$singularity_run_command"
 
 
-# bash singularity_run.sh finetune.py --data 'src/configs/example_dataset_config_images.yaml' --run_name 'test_run' --epochs 1
+# bash singularity_run.sh train.py --data 'src/configs/example_dataset_config_images.yaml' --run_name 'test_run' --epochs 1

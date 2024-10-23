@@ -10,9 +10,15 @@ def parse_arguments():
     Parses command-line arguments for workspace, project, and version.
     """
     parser = argparse.ArgumentParser(description="Download a dataset from Roboflow.")
-    parser.add_argument('--workspace', type=str, required=True, help='The name of the workspace.')
-    parser.add_argument('--project', type=str, required=True, help='The name of the project.')
-    parser.add_argument('--version', type=int, required=True, help='The version number of the project.')
+    parser.add_argument(
+        "--workspace", type=str, required=True, help="The name of the workspace."
+    )
+    parser.add_argument(
+        "--project", type=str, required=True, help="The name of the project."
+    )
+    parser.add_argument(
+        "--version", type=int, required=True, help="The version number of the project."
+    )
 
     return parser.parse_args()
 

@@ -8,12 +8,14 @@ From: nvcr.io/nvidia/pytorch:24.09-py3
 # Create the project folder inside the container
 # Below, %files just copies files but cannot create the folder
 %setup
-    mkdir -p ${SINGULARITY_ROOTFS}/opt/app
-    mkdir -p ${SINGULARITY_ROOTFS}/opt/app/data
-    mkdir -p ${SINGULARITY_ROOTFS}/opt/app/experiments
-    mkdir -p ${SINGULARITY_ROOTFS}/opt/app/src
-    mkdir -p ${SINGULARITY_ROOTFS}/opt/app/test
-    
+    PROJECT_IMAGE_PATH=${SINGULARITY_ROOTFS}/opt/app
+    mkdir -p PROJECT_IMAGE_PATH
+    mkdir -p PROJECT_IMAGE_PATH/data
+    mkdir -p PROJECT_IMAGE_PATH/experiments
+    mkdir -p PROJECT_IMAGE_PATH/src
+    mkdir -p PROJECT_IMAGE_PATH/test
+    mkdir -p PROJECT_IMAGE_PATH/configs
+
 # Copy only the necessary files into the container
 # files are copied from the ROOT of the host system into the container at the specified location
 %files

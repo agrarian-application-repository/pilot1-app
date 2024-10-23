@@ -1,5 +1,6 @@
 black
 isort
+lapx
 matplotlib
 numpy
 opencv-python
@@ -7,6 +8,7 @@ pyYAML
 pytest
 pytest-cov
 python-dotenv
+ray[tune]
 numpy
 requests
 scipy

@@ -1,9 +1,9 @@
-from src.config_v2.inference import check_inference_args, preprocess_inference_args
+from src.config_v2.track import check_tracking_args, preprocess_tracking_args
 from src.config_v2.utils import parse_config_file, read_yaml_config
 from ultralytics import YOLO
 
 import wandb
-from src.logging.inference import log_inference_results
+from src.logging.track import log_tracking_results
 from src.logging.wandb import get_wandb_api_key, get_wandb_entity
 
 
@@ -11,26 +11,26 @@ def main():
     # Parse the config file from command line
     config_file_path = parse_config_file()
     # Read YAML config file and transform it into a dict
-    inference_args = read_yaml_config(config_file_path)
+    tracking_args = read_yaml_config(config_file_path)
 
     # Check arguments validity
-    inference_args = check_inference_args(
-        inference_args
+    tracking_args = check_tracking_args(
+        tracking_args
     )  # TODO argument checks - for correct or YOLO checks
     # Preprocess arguments based on input data format
-    inference_args = preprocess_inference_args(inference_args)  # TODO preprocessing
-
-    print("PERFORMING INFERENCE WITH THE FOLLOWING ARGUMENTS:")
-    print(inference_args, "\n")
+    tracking_args = preprocess_tracking_args(tracking_args)  # TODO preprocessing
 
     # Load the model
-    model_checkpoint = inference_args.pop("model")
+    model_checkpoint = tracking_args.pop("model")
     model = YOLO(model_checkpoint)
 
-    # Perform inference with the model
-    results = model.predict(**inference_args)
+    print("PERFORMING TRACKING WITH THE FOLLOWING ARGUMENTS:")
+    print(tracking_args, "\n")
 
-    if inference_args["stream"]:
+    # Perform tracking with the model
+    results = model.track(**tracking_args)
+
+    if tracking_args["stream"]:
         print("saving with stream")
         # iterate through generator to trigger saving of results
         for r in results:
@@ -43,10 +43,10 @@ def main():
     # wandb_entity = get_wandb_entity()
     # wandb.init(entity=wandb_entity)
 
-    # inference_args["model"] = model_checkpoint # re-insert before logging
+    # tracking_args["model"] = model_checkpoint # re-insert before logging
     # wandb.config.update(**inference_args)
 
-    # log_inference_results(results)
+    # log_tracking_results(results)
 
     # Finish the W&B run
     # wandb.finish()

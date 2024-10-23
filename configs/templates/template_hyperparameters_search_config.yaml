@@ -1,0 +1,211 @@
+# Example hyperparameters Search Configuration
+
+use_ray: true # leverage Ray algorithms for hyperparameters search, bool
+grace_period: 10 # Min number of epochs for which configuratyion is evaluated, int > 0
+gpu_per_trial: null # number of gpus to allocate to each trial, if non use all gpus, int >0 or None
+iterations: iterations # number of trials to run, int > 0
+
+# fixed hyperparameters
+model: /path/to/model.pt  # Path to Model checkpoint (.pt), str, path exists
+data: /path/to/data.yaml  # Path to dataset config file (.yaml), str, path exists
+time: null  # Max training time in hours (optional), if set overrides 'epochs', null or float, > 0 if float
+patience: 20  # Early stopping patience, int (0,epochs]
+save: true  # Enable saving of checkpoints, bool
+save_period: 10  # Save model checkpoints every 'save_period' epochs, int, (0, epochs]
+cache: false  # Cache dataset images in memory, faster training but more memory required, bool
+device: 3  # Device: 'cpu', gpu_id, or list of gpu_ids for distributed training, str or int >=0 or list of ints >=0
+workers: 8  # Number of worker threads for data loading, int, >=0
+project: experiments  # Project directory name for outputs, str
+name: example_train_run # name of the run, str
+exist_ok: true  # Allow overwriting existing project/name directory, bool
+pretrained: true  # Start from a pretrained model, bool
+verbose: false  # Enable verbose output, bool
+seed: 0  # Random seed, int, >=0
+deterministic: true  # Use deterministic algorithms for reproducibility, bool
+single_cls: true  # Treat all classes as a single class, bool
+rect: false  # Enable rectangular training, bool
+cos_lr: true  # Use cosine learning rate scheduler, bool
+close_mosaic: 10  # Disable mosaic augmentation in last N epochs, int, [0, epochs]
+resume: false  # Resume from checkpoint, bool
+amp: true  # Enable Automatic Mixed Precision (AMP) training, bool
+fraction: 1.0  # Fraction of dataset to use, float (0.0, 1.0]
+profile: false  # Enable profiling (ONNX/TensorRT speeds), bool
+freeze: null  # Freezes the first N layers of the model or specified layers by index, ?, ?
+
+pose: 12.0  # Pose loss weight (for pose estimation), float, >=0
+kobj: 2.0  # Keypoint objectness loss (pose estimation), float, >=0
+
+nbs: 64  # Nominal batch size, int, >=0
+overlap_mask: true  # Allow overlapping masks in segmentation, bool
+mask_ratio: 4  # Downsample ratio for masks, int, >=0
+
+val: true  # Enable validation, bool
+plots: true  # Generate training/validation metric plots, bool
+
+# hyperparameters search space, if you want to exclude something, insert it into the arguments below as a single value
+space:
+
+  epochs:
+    values: [100, 200, 400]
+    type: choice
+
+  batch_size:
+    values: [8, 16, 32]
+    type: choice
+
+  imgsz: [640]
+    type: choice
+
+  optmizer:
+    values: [SGD, AdamW]
+    type: choice
+
+  lr0:  # Initial learning rate
+    min: 1e-5
+    max: 1e-1
+    type: uniform
+
+  lrf:  # Final learning rate factor as a fraction of lr0
+    min: 0.01
+    max: 1.0
+    type: uniform
+
+  momentum: # Momentum
+    min: 0.6
+    max: 0.98
+    type: uniform
+
+  weight_decay: # Weight decay
+    min: 0.0
+    max: 0.001
+    type: uniform
+
+  warmup_epochs:  # Warmup epochs
+    min: 0.0
+    max: 5.0
+    type: uniform
+
+  warmup_momentum:  # Warmup momentum
+    min: 0.0
+    max: 0.95
+    type: uniform
+
+  warmup_bias_lr: #
+    min: 0.0
+    max: 1.0
+    type: uniform
+
+  box:  # Box loss weight
+    min: 0.2
+    max: 15.0
+    type: uniform
+
+  cls:  # Class loss weight
+    min: 0.2
+    max: 5.0
+    type: uniform
+
+  dfl: # Class loss weight
+    min: 0.2
+    max: 5.0
+    type: uniform
+
+  label_smoothing:
+  min: 0.0
+  max: 0.3
+  type: uniform
+
+  dropout:
+    min: 0.0
+    max: 0.5
+    type: uniform
+
+  hsv_h:  # Hue augmentation range
+    min: 0.0
+    max: 0.1
+    type: uniform
+
+  hsv_s:  # Saturation augmentation range
+    min: 0.0
+    max: 0.9
+    type: uniform
+
+  hsv_v:  # Value (brightness) augmentation range
+    min: 0.0
+    max: 0.9
+    type: uniform
+
+  degrees:  # Rotation augmentation range (degrees)
+    min: 0.0
+    max: 45.0
+    type: uniform
+
+  translate:  # Translation augmentation range
+    min: 0.0
+    max: 0.9
+    type: uniform
+
+  scale:  # Scaling augmentation range
+    min: 0.0
+    max: 0.9
+    type: uniform
+
+  shear:  # Shear augmentation range (degrees) [-180.0, +180.0]
+    min: 0.0
+    max: 15.0
+    type: uniform
+
+  perspective:  # Perspective augmentation range
+    min: 0.0
+    max: 0.001
+    type: uniform
+
+  flipud: # Vertical flip augmentation probability
+    min: 0.0
+    max: 1.0
+    type: uniform
+
+  fliplr: # Horizontal flip augmentation probability
+    min: 0.0
+    max: 1.0
+    type: uniform
+
+  bgr: # Mosaic augmentation probability
+    min: 0.0
+    max: 1.0
+    type: uniform
+
+  mosaic: # Mosaic augmentation probability
+    min: 0.0
+    max: 1.0
+    type: uniform
+
+  mixup:  # Mixup augmentation probability
+    min: 0.0
+    max: 1.0
+    type: uniform
+
+  copy_paste: # Copy-paste augmentation probability
+    min: 0.0
+    max: 1.0
+    type: uniform
+
+  copy_paste_mode:
+    values: [flip, mixup]
+    type: choice
+
+  auto_augment:
+    values: [randaugment, autoaugment, augmix]
+    type: choice
+
+  erasing:
+    min: 0.0
+    max: 0.9
+    type: uniform
+
+  crop_fraction:
+    min: 0.1
+    max: 1.0
+    type: uniform
+
+
