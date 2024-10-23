@@ -1,10 +1,11 @@
-from src.config_v2.track import check_tracking_args, preprocess_tracking_args
-from src.config_v2.utils import parse_config_file, read_yaml_config
 from ultralytics import YOLO
 
 import wandb
-from src.logging.track import log_tracking_results
 from src.logging.wandb import get_wandb_api_key, get_wandb_entity
+from src.logging.track import log_tracking_results
+
+from src.configs.utils import parse_config_file, read_yaml_config
+from src.configs.track import check_tracking_args, preprocess_tracking_args
 
 
 def main():
@@ -14,9 +15,7 @@ def main():
     tracking_args = read_yaml_config(config_file_path)
 
     # Check arguments validity
-    tracking_args = check_tracking_args(
-        tracking_args
-    )  # TODO argument checks - for correct or YOLO checks
+    tracking_args = check_tracking_args(tracking_args)  # TODO argument checks - for correct or YOLO checks
     # Preprocess arguments based on input data format
     tracking_args = preprocess_tracking_args(tracking_args)  # TODO preprocessing
 
