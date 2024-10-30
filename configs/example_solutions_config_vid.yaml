@@ -1,13 +1,21 @@
-# Inference Configuration
+# Tracking Configuration
 
 # str: Path to the model checkpoint file (required).
 # Specifies the .pt file for the model to be used during inference.
-model: /path/to/model.pt
+model: yolo11m.pt
 
 # str: Data source for inference.
 # Can be an image path, video file, directory, URL, or device ID (for live feeds).
 # Supports various input formats such as images, videos, and streams.
-source: 'ultralytics/assets'
+source: data/sheep_videos/23.11.23-15.MP4
+
+# str: Path to the tracker configuration file.
+# Specifies the YAML file that configures the tracking algorithm.
+tracker: botsort.yaml
+
+# bool: Persist object IDs across frames in video tracking.
+# Keeps track of object identities across frames to maintain consistent IDs.
+persist: true
 
 # float: Confidence threshold for detection filtering.
 # Detections with a confidence score below this value will be discarded.
@@ -31,9 +39,9 @@ width: null
 # Can increase inference speed on supported GPUs with minimal accuracy loss.
 half: false
 
-# str: Device for inference (e.g., cpu, cuda:3).
+# str: Device for inference (e.g., cpu, cuda:0).
 # Specifies whether to use CPU or a particular GPU for inference.
-device: cuda:3
+device: 3
 
 # int: Maximum number of detections per image.
 # Limits the total number of objects that can be detected in a single image.
@@ -63,7 +71,7 @@ agnostic_nms: false
 
 # list[int]: Filter detections by specific class IDs.
 # Only predictions belonging to the specified class IDs will be returned.
-classes: None
+classes: [18]
 
 # bool: Use high-resolution segmentation masks if available.
 # Provides higher quality segmentation outputs when supported by the model.
@@ -74,7 +82,7 @@ retina_masks: false
 embed: null
 
 # bool: Display annotated images or videos in a window.
-# Provides immediate visual feedback during inference.
+# Provides immediate visual feedback during tracking.
 show: false
 
 # bool: Save annotated images or videos to a file.
@@ -115,9 +123,9 @@ show_boxes: true
 line_width: null
 
 # str: Path to save the project.
-# Specifies the directory where inference results will be saved.
+# Specifies the directory where tracking results will be saved.
 project: experiments
 
-# str: Subfolder name for this inference run.
+# str: Subfolder name for this tracking run.
 # Defines the subdirectory under the project folder to save the results.
-name: example_inference_run
+name: example_tracking_run_vid

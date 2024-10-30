@@ -42,6 +42,8 @@ mask_ratio: 4  # Downsample ratio for masks, int, >=0
 val: true  # Enable validation, bool
 plots: true  # Generate training/validation metric plots, bool
 
+augment: true
+
 # hyperparameters search space, if you want to exclude something, insert it into the arguments below as a single value
 space:
 
@@ -49,7 +51,7 @@ space:
     values: [100, 200, 400]
     type: choice
 
-  batch_size:
+  batch:
     values: [8, 16, 32]
     type: choice
 

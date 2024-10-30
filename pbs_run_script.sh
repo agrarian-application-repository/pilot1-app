@@ -15,6 +15,6 @@ cd $PBS_O_WORKDIR
 
 args="$ARGS"
 
-bash singularity_run.sh $args
+bash run_script.sh $args
 
-# qsub -v 'ARGS="<script.py> [--arg1 arg1 --arg2 arg2]"' singularity_run.sh
+# qsub -v 'ARGS="<script.py> [--arg1 arg1 --arg2 arg2]"' run_script.sh

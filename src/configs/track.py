@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Any
 
 import cv2
-from src.config_v2.utils import is_valid_list_videos, is_valid_video, is_youtube_link
+from src.configs.utils import is_valid_list_videos, is_valid_video, is_youtube_link
 
 
 def check_tracking_args(args: dict[str, Any]) -> dict[str, Any]:
@@ -34,17 +34,18 @@ def check_tracking_args(args: dict[str, Any]) -> dict[str, Any]:
                 print(f"ERROR: ({data_path}) is not a valid video")
                 exit()
 
-        # If none of the checks pass, raise an error and exit
-        print(
-            f"ERROR: ({data_path}) is not a valid video, a folder of videos, nor a youtube link"
-        )
-        exit()
+        else:
+            # If none of the checks pass, raise an error and exit
+            print(
+                f"ERROR: ({data_path}) is not a valid video, a folder of videos, nor a youtube link"
+            )
+            exit()
 
     return args
 
 
 def preprocess_tracking_args(args: dict[str, Any]) -> dict[str, Any]:
-    media_type = args.pop("media")
+    media_type = args.pop("_media")
 
     # Transform source paths, if necessary
     if media_type != "youtube":
@@ -66,17 +67,22 @@ def preprocess_tracking_args(args: dict[str, Any]) -> dict[str, Any]:
             height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
             width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
         elif media_type == "videos":
-            first_videos = [
+            first_video = [
                 subpath for subpath in args["source"].iterdir() if subpath.is_file()
             ][0]
-            height = int(first_videos.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            width = int(first_videos.get(cv2.CAP_PROP_FRAME_WIDTH))
+            first_video = cv2.VideoCapture(first_video)
+            height = int(first_video.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            width = int(first_video.get(cv2.CAP_PROP_FRAME_WIDTH))
         else:  # youtube
             yt_video = cv2.VideoCapture(args["source"])
             height = int(yt_video.get(cv2.CAP_PROP_FRAME_HEIGHT))
             width = int(yt_video.get(cv2.CAP_PROP_FRAME_WIDTH))
 
-    args["width"] = args["width"] if args["width"] is not None else width
-    args["height"] = args["height"] if args["height"] is not None else height
+    imgsz_w = args["width"] if args["width"] is not None else width
+    imgsz_h = args["height"] if args["height"] is not None else height
+
+    args["imgsz"] = (imgsz_h, imgsz_w)
+    args.pop("width")
+    args.pop("height")
 
     return args

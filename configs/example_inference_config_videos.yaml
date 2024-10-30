@@ -2,12 +2,12 @@
 
 # str: Path to the model checkpoint file (required).
 # Specifies the .pt file for the model to be used during inference.
-model: /path/to/model.pt
+model: experiments/example_train_run/weights/best.pt
 
 # str: Data source for inference.
 # Can be an image path, video file, directory, URL, or device ID (for live feeds).
 # Supports various input formats such as images, videos, and streams.
-source: 'ultralytics/assets'
+source: data/sheep_videos_test
 
 # float: Confidence threshold for detection filtering.
 # Detections with a confidence score below this value will be discarded.
@@ -33,7 +33,7 @@ half: false
 
 # str: Device for inference (e.g., cpu, cuda:3).
 # Specifies whether to use CPU or a particular GPU for inference.
-device: cuda:3
+device: 3
 
 # int: Maximum number of detections per image.
 # Limits the total number of objects that can be detected in a single image.
@@ -63,7 +63,7 @@ agnostic_nms: false
 
 # list[int]: Filter detections by specific class IDs.
 # Only predictions belonging to the specified class IDs will be returned.
-classes: None
+classes: null
 
 # bool: Use high-resolution segmentation masks if available.
 # Provides higher quality segmentation outputs when supported by the model.
@@ -120,4 +120,4 @@ project: experiments
 
 # str: Subfolder name for this inference run.
 # Defines the subdirectory under the project folder to save the results.
-name: example_inference_run
+name: example_inference_run_videos

@@ -47,7 +47,7 @@ def parse_config_file() -> str:
     """
     Parses the command line arguments to retrieve the path to the YAML configuration file.
 
-    :return: Path to the YAML configuration file if provided, or None.
+    :return: Path to the YAML configuration file.
     """
     parser = argparse.ArgumentParser(
         description="Parse YAML configuration file for running the experiment."
@@ -60,6 +60,29 @@ def parse_config_file() -> str:
     args = parser.parse_args()
 
     return args.config
+
+
+def parse_detect_segment_config_files() -> tuple[str, str]:
+    """
+    Parses the command line arguments to retrieve the path to the YAML configuration file.
+
+    :return: Path to the detector YAML configuration file.
+    :return: Path to the segmenter YAML configuration file.
+    """
+    parser = argparse.ArgumentParser(
+        description="Parse detector and segmenter YAML configuration files for running the experiment."
+    )
+
+    parser.add_argument(
+        "--det_config", type=str, required=True, help="Path to the detector YAML configuration file."
+    )
+    parser.add_argument(
+        "--seg_config", type=str, required=True, help="Path to the segmenter YAML configuration file."
+    )
+
+    args = parser.parse_args()
+
+    return args.det_config, args.seg_config
 
 
 def read_yaml_config(yaml_file: str) -> dict[str, Any]:

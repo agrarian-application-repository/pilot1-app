@@ -1,5 +1,5 @@
-from src.config_v2.train import check_train_args
-from src.config_v2.utils import parse_config_file, read_yaml_config
+from src.configs.train import check_train_args
+from src.configs.utils import parse_config_file, read_yaml_config
 from ultralytics import YOLO
 
 import wandb

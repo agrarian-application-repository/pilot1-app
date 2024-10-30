@@ -41,7 +41,7 @@ half: false
 
 # str: Device for inference (e.g., cpu, cuda:0).
 # Specifies whether to use CPU or a particular GPU for inference.
-device: cuda:0
+device: 3
 
 # int: Maximum number of detections per image.
 # Limits the total number of objects that can be detected in a single image.
@@ -79,7 +79,7 @@ retina_masks: false
 
 # list[int]: Extract feature vectors from specified layers.
 # Useful for applications such as clustering or similarity search.
-embed: None
+embed: null
 
 # bool: Display annotated images or videos in a window.
 # Provides immediate visual feedback during tracking.
@@ -120,7 +120,7 @@ show_boxes: true
 # None or int: Line width for bounding boxes.
 # If None, the line width is automatically adjusted based on image size.
 # Range: None or any positive integer.
-line_width: None
+line_width: null
 
 # str: Path to save the project.
 # Specifies the directory where tracking results will be saved.

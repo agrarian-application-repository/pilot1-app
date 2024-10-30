@@ -1,0 +1,74 @@
+# Evaluation Configuration
+
+# str: Path to the model checkpoint file (required).
+# Specifies the .pt file for the model to be evaluated.
+model: experiments/example_train_run/weights/best.pt
+
+# str: Path to the dataset YAML configuration file (required).
+# Specifies dataset paths, class names, and number of classes.
+data: data/Aerial_Sheep_v1/data.yaml
+
+# int: Image size for evaluation.
+# All images will be resized to this dimension before inference.
+# Range: Any positive integer.
+imgsz: 640
+
+# int or float: Batch size for evaluation.
+# -1 for AutoBatch (adjusts based on GPU memory).
+# Range: -1 (for AutoBatch), or any positive integer, or range 0.0 to 1.0 if float
+batch: 16
+
+# bool: Whether to save results in JSON format.
+# Saves results for further analysis or integration with external tools.
+save_json: false
+
+# bool: Whether to save a hybrid version of labels.
+# Saves original annotations combined with additional model predictions.
+save_hybrid: false
+
+# float: Confidence threshold for detection filtering.
+# Detections with a confidence score lower than this value are discarded.
+# Range: 0.0 to 1.0
+conf: 0.001
+
+# float: IoU threshold for Non-Maximum Suppression (NMS).
+# Helps remove duplicate detections.
+# Range: 0.0 to 1.0
+iou: 0.6
+
+# int: Maximum number of detections per image.
+# Limits the total number of detections allowed in dense scenes.
+# Range: Any positive integer.
+max_det: 300
+
+# bool: Enable half-precision (FP16) inference.
+# Reduces memory usage and increases speed with minimal accuracy loss (for supported hardware).
+half: false
+
+# str: Device to be used for evaluation (e.g., cpu, cuda:0).
+# Allows selection between CPU and GPU resources.
+device: 3
+
+# bool: Use OpenCV DNN module for ONNX inference.
+# Provides an alternative to PyTorch for inference when using ONNX models.
+dnn: false
+
+# bool: Generate and save evaluation plots.
+# Visualize predictions against ground truth for performance analysis.
+plots: true
+
+# bool: Enable rectangular inference.
+# Improves speed by reducing padding when using non-square images.
+rect: false
+
+# str: Dataset split for evaluation (val, test, train).
+# Specifies which dataset split to use.
+split: test
+
+# str: Path to directory where to save the experiments.
+# Specifies the directory where evaluation results will be saved.
+project: experiments
+
+# str: Subfolder name for this evaluation run.
+# Defines the subdirectory under the project folder for saving results.
+name: example_evaluation_run

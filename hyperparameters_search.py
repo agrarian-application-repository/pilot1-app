@@ -1,5 +1,5 @@
-from src.config_v2.hyperparameters_search import check_hs_args, preprocess_search_args
-from src.config_v2.utils import parse_config_file, read_yaml_config
+from src.configs.hyperparameters_search import check_hs_args, preprocess_search_args
+from src.configs.utils import parse_config_file, read_yaml_config
 from ultralytics import YOLO
 
 import wandb

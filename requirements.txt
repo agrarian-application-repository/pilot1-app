@@ -13,6 +13,7 @@ numpy
 requests
 scipy
 setuptools
+shapely
 tqdm
 ultralytics
 wandb

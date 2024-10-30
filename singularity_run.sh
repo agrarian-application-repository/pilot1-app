@@ -22,4 +22,4 @@ echo "$singularity_run_command"
 eval "$singularity_run_command"
 
 
-# bash singularity_run.sh train.py --data 'src/configs/example_dataset_config_images.yaml' --run_name 'test_run' --epochs 1
+# bash singularity_run.sh <script.py> [--arg1 arg1 --arg2 arg2]

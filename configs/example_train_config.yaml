@@ -1,8 +1,8 @@
 # Example Training Configuration
 
-model: /path/to/model.pt  # Path to Model checkpoint (.pt), str, path exists
-data: /path/to/data.yaml  # Path to dataset config file (.yaml), str, path exists
-epochs: 100  # Number of training epochs, int, [0, inf)
+model: yolo11m.pt  # Path to Model checkpoint (.pt), str, path exists
+data: data/Aerial_Sheep_v1/data.yaml  # Path to dataset config file (.yaml), str, path exists
+epochs: 20  # Number of training epochs, int, [0, inf)
 time: null  # Max training time in hours (optional), if set overrides 'epochs', null or float, > 0 if float
 patience: 20  # Early stopping patience, int (0,epochs]
 batch: 16  # Batch size, int or float, -1 for 60% of gpu usage, int >=0, or float in (0.0, 1.0] per dataset percentage
@@ -77,7 +77,3 @@ copy_paste_mode: flip  # Copy-paste mode, str, [flip, mixup]
 auto_augment: randaugment  # Auto augmentation policy, str, [randaugment, autoaugment, augmix]
 erasing: 0.4  # Random erasing probability, float, [0.0, 0.9]
 crop_fraction: 1.0  # Image cropping fraction, float, [0.1, 1.0]
-
-multi_scale: false
-
-
