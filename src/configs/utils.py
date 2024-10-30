@@ -74,10 +74,16 @@ def parse_detect_segment_config_files() -> tuple[str, str]:
     )
 
     parser.add_argument(
-        "--det_config", type=str, required=True, help="Path to the detector YAML configuration file."
+        "--det_config",
+        type=str,
+        required=True,
+        help="Path to the detector YAML configuration file.",
     )
     parser.add_argument(
-        "--seg_config", type=str, required=True, help="Path to the segmenter YAML configuration file."
+        "--seg_config",
+        type=str,
+        required=True,
+        help="Path to the segmenter YAML configuration file.",
     )
 
     args = parser.parse_args()

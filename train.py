@@ -1,8 +1,8 @@
-from src.configs.train import check_train_args
-from src.configs.utils import parse_config_file, read_yaml_config
 from ultralytics import YOLO
 
 import wandb
+from src.configs.train import check_train_args
+from src.configs.utils import parse_config_file, read_yaml_config
 from src.logging.wandb import get_wandb_api_key, get_wandb_entity
 
 

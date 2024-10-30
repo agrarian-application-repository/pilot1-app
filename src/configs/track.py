@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Any
 
 import cv2
+
 from src.configs.utils import is_valid_list_videos, is_valid_video, is_youtube_link
 
 

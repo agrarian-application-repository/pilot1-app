@@ -1,8 +1,8 @@
-from src.configs.evaluate import check_eval_args
-from src.configs.utils import parse_config_file, read_yaml_config
 from ultralytics import YOLO
 
 import wandb
+from src.configs.evaluate import check_eval_args
+from src.configs.utils import parse_config_file, read_yaml_config
 from src.logging.evaluation import log_eval_metrics
 from src.logging.wandb import get_wandb_api_key, get_wandb_entity
 

@@ -1,16 +1,22 @@
-import cv2
-from typing import Any
 from pathlib import Path
-from ultralytics import solutions, YOLO
+from typing import Any
+
+import cv2
+from ultralytics import YOLO, solutions
 
 
-def count_objects_in_video(yolo_config: dict[str: Any]) -> None:
+def count_objects_in_video(yolo_config: dict[str:Any]) -> None:
     cap = cv2.VideoCapture(str(yolo_config["source"]))
     assert cap.isOpened(), "Error reading video file"
-    w, h, fps = (int(cap.get(x)) for x in (cv2.CAP_PROP_FRAME_WIDTH, cv2.CAP_PROP_FRAME_HEIGHT, cv2.CAP_PROP_FPS))
+    w, h, fps = (
+        int(cap.get(x))
+        for x in (cv2.CAP_PROP_FRAME_WIDTH, cv2.CAP_PROP_FRAME_HEIGHT, cv2.CAP_PROP_FPS)
+    )
 
     # Video writer
-    video_writer = cv2.VideoWriter("object_counting_output.avi", cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
+    video_writer = cv2.VideoWriter(
+        "object_counting_output.avi", cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h)
+    )
 
     # Init Object Counter
     counter = solutions.ObjectCounter(
@@ -28,7 +34,9 @@ def count_objects_in_video(yolo_config: dict[str: Any]) -> None:
     while cap.isOpened():
         success, frame = cap.read()
         if not success:
-            print("Video frame is empty or video processing has been successfully completed.")
+            print(
+                "Video frame is empty or video processing has been successfully completed."
+            )
             break
         frame = counter.count(frame)
         video_writer.write(frame)
@@ -37,13 +45,18 @@ def count_objects_in_video(yolo_config: dict[str: Any]) -> None:
     video_writer.release()
 
 
-def heatmap_in_video(yolo_config: dict[str: Any]) -> None:
+def heatmap_in_video(yolo_config: dict[str:Any]) -> None:
     cap = cv2.VideoCapture(str(yolo_config["source"]))
     assert cap.isOpened(), "Error reading video file"
-    w, h, fps = (int(cap.get(x)) for x in (cv2.CAP_PROP_FRAME_WIDTH, cv2.CAP_PROP_FRAME_HEIGHT, cv2.CAP_PROP_FPS))
+    w, h, fps = (
+        int(cap.get(x))
+        for x in (cv2.CAP_PROP_FRAME_WIDTH, cv2.CAP_PROP_FRAME_HEIGHT, cv2.CAP_PROP_FPS)
+    )
 
     # Video writer
-    video_writer = cv2.VideoWriter("heatmap_output.avi", cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
+    video_writer = cv2.VideoWriter(
+        "heatmap_output.avi", cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h)
+    )
 
     # Init heatmap
     heatmap = solutions.Heatmap(
@@ -61,7 +74,9 @@ def heatmap_in_video(yolo_config: dict[str: Any]) -> None:
     while cap.isOpened():
         success, frame = cap.read()
         if not success:
-            print("Video frame is empty or video processing has been successfully completed.")
+            print(
+                "Video frame is empty or video processing has been successfully completed."
+            )
             break
         frame = heatmap.generate_heatmap(frame)
         video_writer.write(frame)

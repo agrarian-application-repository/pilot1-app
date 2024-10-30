@@ -1,13 +1,15 @@
-from src.configs.inference import check_inference_args, preprocess_inference_args
-from src.configs.utils import parse_detect_segment_config_files, read_yaml_config
 from ultralytics import YOLO
 
+from src.configs.inference import check_inference_args, preprocess_inference_args
+from src.configs.utils import parse_detect_segment_config_files, read_yaml_config
 from src.in_danger import perform_in_danger_analysis
 
 
 def main():
     # Parse the config files from command line
-    detect_config_file_path, segment_config_file_path = parse_detect_segment_config_files()
+    detect_config_file_path, segment_config_file_path = (
+        parse_detect_segment_config_files()
+    )
 
     # Read YAML config files and transform them into dicts
     detection_args = read_yaml_config(detect_config_file_path)
