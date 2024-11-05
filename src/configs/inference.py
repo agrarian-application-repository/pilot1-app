@@ -3,13 +3,9 @@ from typing import Any
 
 import cv2
 
-from src.configs.utils import (
-    is_valid_image,
-    is_valid_list_images,
-    is_valid_list_videos,
-    is_valid_video,
-    is_youtube_link,
-)
+from src.configs.utils import (is_valid_image, is_valid_list_images,
+                               is_valid_list_videos, is_valid_video,
+                               is_youtube_link)
 
 
 def check_inference_args(args: dict[str, Any]) -> dict[str, Any]:

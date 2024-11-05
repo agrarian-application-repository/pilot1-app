@@ -5,7 +5,7 @@ from src.configs.track import check_tracking_args, preprocess_tracking_args
 from src.configs.utils import parse_config_file, read_yaml_config
 from src.logging.track import log_tracking_results
 from src.logging.wandb import get_wandb_api_key, get_wandb_entity
-from src.tracking.solutions import count_objects_in_video, heatmap_in_video
+from src.tracking.solutions import heatmap_in_video
 
 
 def main():
@@ -21,8 +21,10 @@ def main():
     # Preprocess arguments based on input data format
     tracking_args = preprocess_tracking_args(tracking_args)  # TODO preprocessing
 
-    print(tracking_args)
-    count_objects_in_video(tracking_args.copy())
+    print("PERFORMING SOLUTIONS WITH THE FOLLOWING ARGUMENTS:")
+    print(tracking_args, "\n")
+
+    print("HEATMAP generation")
     heatmap_in_video(tracking_args.copy())
 
 

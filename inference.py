@@ -1,7 +1,8 @@
 from ultralytics import YOLO
 
 import wandb
-from src.configs.inference import check_inference_args, preprocess_inference_args
+from src.configs.inference import (check_inference_args,
+                                   preprocess_inference_args)
 from src.configs.utils import parse_config_file, read_yaml_config
 from src.logging.inference import log_inference_results
 from src.logging.wandb import get_wandb_api_key, get_wandb_entity
@@ -36,20 +37,21 @@ def main():
         for r in results:
             pass
 
-    # TODO log results
+    # TODO(?) logging predictions on wandb
+    """
     # wandb_api_key = get_wandb_api_key()
     # wandb.login(key=wandb_api_key)
 
     # wandb_entity = get_wandb_entity()
     # wandb.init(entity=wandb_entity)
+    wandb.init()
 
-    # inference_args["model"] = model_checkpoint # re-insert before logging
-    # wandb.config.update(**inference_args)
-
-    # log_inference_results(results)
+    inference_args["model"] = model_checkpoint  # re-insert before logging
+    wandb.config.update(inference_args)
 
     # Finish the W&B run
-    # wandb.finish()
+    wandb.finish()
+    """
 
 
 if __name__ == "__main__":

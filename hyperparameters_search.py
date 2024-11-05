@@ -1,7 +1,8 @@
 from ultralytics import YOLO
 
 import wandb
-from src.configs.hyperparameters_search import check_hs_args, preprocess_search_args
+from src.configs.hyperparameters_search import (check_hs_args,
+                                                preprocess_search_args)
 from src.configs.utils import parse_config_file, read_yaml_config
 from src.logging.wandb import get_wandb_api_key, get_wandb_entity
 

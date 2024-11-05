@@ -1,8 +1,8 @@
 # Example Training Configuration
 
 model: yolo11m.pt  # Path to Model checkpoint (.pt), str, path exists
-data: data/Aerial_Sheep_v1/data.yaml  # Path to dataset config file (.yaml), str, path exists
-epochs: 20  # Number of training epochs, int, [0, inf)
+data: data/Merged_sheep_v3/data.yaml  # Path to dataset config file (.yaml), str, path exists
+epochs: 300  # Number of training epochs, int, [0, inf)
 time: null  # Max training time in hours (optional), if set overrides 'epochs', null or float, > 0 if float
 patience: 20  # Early stopping patience, int (0,epochs]
 batch: 16  # Batch size, int or float, -1 for 60% of gpu usage, int >=0, or float in (0.0, 1.0] per dataset percentage
@@ -10,10 +10,10 @@ imgsz: 640  # Image size for training, int, >= 32
 save: true  # Enable saving of checkpoints, bool
 save_period: 10  # Save model checkpoints every 'save_period' epochs, int, (0, epochs]
 cache: false  # Cache dataset images in memory, faster training but more memory required, bool
-device: 3  # Device: 'cpu', gpu_id, or list of gpu_ids for distributed training, str or int >=0 or list of ints >=0
-workers: 8  # Number of worker threads for data loading, int, >=0
+device: [0,1,2,3]  # Device: 'cpu', gpu_id, or list of gpu_ids for distributed training, str or int >=0 or list of ints >=0
+workers: 16  # Number of worker threads for data loading, int, >=0
 project: experiments  # Project directory name for outputs, str
-name: example_train_run # name of the run, str
+name: for_maich # name of the run, str
 exist_ok: true  # Allow overwriting existing project/name directory, bool
 pretrained: true  # Start from a pretrained model, bool
 optimizer: auto  # Optimizer, str, [SGD, Adam, ...]
@@ -58,22 +58,23 @@ val: true  # Enable validation, bool
 plots: true  # Generate training/validation metric plots, bool
 
 # Augmentation Parameters
+multi_scale: true
 augment: true
-hsv_h: 0.015  # Hue adjustment, float, [0.0, 1.0]
+hsv_h: 0.01  # Hue adjustment, float, [0.0, 1.0]
 hsv_s: 0.7  # Saturation adjustment, float, [0.0, 1.0]
-hsv_v: 0.4  # Brightness adjustment, float [0.0, 1.0]
+hsv_v: 0.6  # Brightness adjustment, float [0.0, 1.0]
 degrees: 0.0  # Image rotation, int, [-180, +180]
-translate: 0.1  # Image translation, float, [0.0, 1.0]
+translate: 0.3  # Image translation, float, [0.0, 1.0]
 scale: 0.5  # Image scaling factor, float, >= 0.0
 shear: 0.0  # Shear degree, float, [-180, +180]
 perspective: 0.0  # Perspective transformation, float [0.0, 0.001]
-flipud: 0.0  # Upside down flip probability, float, [0.0, 1.0]
+flipud: 0.5  # Upside down flip probability, float, [0.0, 1.0]
 fliplr: 0.5  # Left-right flip probability, float, [0.0, 1.0]
 bgr: 0.0  # RGB to BGR channel flip probability, float, [0.0, 1.0]
-mosaic: 1.0  # Mosaic augmentation, float, [0.0, 1.0]
+mosaic: 0.5  # Mosaic augmentation, float, [0.0, 1.0]
 mixup: 0.0  # Mixup augmentation, float, [0.0, 1.0]
 copy_paste: 0.0  # Copy-paste augmentation, float, [0.0, 1.0]
 copy_paste_mode: flip  # Copy-paste mode, str, [flip, mixup]
 auto_augment: randaugment  # Auto augmentation policy, str, [randaugment, autoaugment, augmix]
-erasing: 0.4  # Random erasing probability, float, [0.0, 0.9]
+erasing: 0.2  # Random erasing probability, float, [0.0, 0.9]
 crop_fraction: 1.0  # Image cropping fraction, float, [0.1, 1.0]

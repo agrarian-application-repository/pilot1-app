@@ -36,20 +36,21 @@ def main():
         for r in results:
             pass
 
-    # TODO log results
+    # TODO(?) logging predictions on wandb
+    """
     # wandb_api_key = get_wandb_api_key()
     # wandb.login(key=wandb_api_key)
 
     # wandb_entity = get_wandb_entity()
     # wandb.init(entity=wandb_entity)
+    wandb.init()
 
     # tracking_args["model"] = model_checkpoint # re-insert before logging
-    # wandb.config.update(**inference_args)
-
-    # log_tracking_results(results)
+    # wandb.config.update(tracking_args)
 
     # Finish the W&B run
-    # wandb.finish()
+    wandb.finish()
+    """
 
 
 if __name__ == "__main__":

@@ -1,7 +1,9 @@
 from ultralytics import YOLO
 
-from src.configs.inference import check_inference_args, preprocess_inference_args
-from src.configs.utils import parse_detect_segment_config_files, read_yaml_config
+from src.configs.inference import (check_inference_args,
+                                   preprocess_inference_args)
+from src.configs.utils import (parse_detect_segment_config_files,
+                               read_yaml_config)
 from src.in_danger import perform_in_danger_analysis
 
 
