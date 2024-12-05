@@ -1,5 +1,7 @@
 # Tracking Configuration
 
+task: detect
+
 # str: Path to the model checkpoint file (required).
 # Specifies the .pt file for the model to be used during tracking.
 model: /path/to/model.pt

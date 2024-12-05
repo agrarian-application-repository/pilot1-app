@@ -1,11 +1,10 @@
 from ultralytics import YOLO
 
-import wandb
 from src.configs.inference import (check_inference_args,
                                    preprocess_inference_args)
 from src.configs.utils import parse_config_file, read_yaml_config
-from src.logging.inference import log_inference_results
-from src.logging.wandb import get_wandb_api_key, get_wandb_entity
+from src.logging.inference import (log_inference_detection_results,
+                                   log_inference_segmentation_results)
 
 
 def main():
@@ -14,19 +13,18 @@ def main():
     # Read YAML config file and transform it into a dict
     inference_args = read_yaml_config(config_file_path)
 
-    # Check arguments validity
-    inference_args = check_inference_args(
-        inference_args
-    )  # TODO argument checks - for correct or YOLO checks
-    # Preprocess arguments based on input data format
-    inference_args = preprocess_inference_args(inference_args)  # TODO preprocessing
+    # TODO Check arguments validity
+    inference_args = check_inference_args(inference_args)
+    # TODO Preprocess arguments based on input data format
+    inference_args = preprocess_inference_args(inference_args)
 
     print("PERFORMING INFERENCE WITH THE FOLLOWING ARGUMENTS:")
     print(inference_args, "\n")
 
     # Load the model
     model_checkpoint = inference_args.pop("model")
-    model = YOLO(model_checkpoint)
+    task = inference_args.pop("task")
+    model = YOLO(model=model_checkpoint, task=task)
 
     # Perform inference with the model
     results = model.predict(**inference_args)
@@ -37,21 +35,15 @@ def main():
         for r in results:
             pass
 
-    # TODO(?) logging predictions on wandb
-    """
-    # wandb_api_key = get_wandb_api_key()
-    # wandb.login(key=wandb_api_key)
+    # reinsert popped arguments  before logging
+    inference_args["model"] = model_checkpoint
+    inference_args["task"] = task
 
-    # wandb_entity = get_wandb_entity()
-    # wandb.init(entity=wandb_entity)
-    wandb.init()
-
-    inference_args["model"] = model_checkpoint  # re-insert before logging
-    wandb.config.update(inference_args)
-
-    # Finish the W&B run
-    wandb.finish()
-    """
+    # TODO logging
+    # if task == "detect":
+    #     log_inference_detection_results(results, inference_args)
+    # elif task == "segment":
+    #    log_inference_segmentation_results(results, inference_args)
 
 
 if __name__ == "__main__":

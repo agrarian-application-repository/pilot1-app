@@ -2,6 +2,7 @@ black
 isort
 lapx
 matplotlib
+networkx
 numpy
 opencv-python
 pyYAML
@@ -11,9 +12,11 @@ python-dotenv
 ray[tune]
 numpy
 requests
+scikit-image
 scipy
 setuptools
 shapely
+transformers
 tqdm
 ultralytics
 wandb

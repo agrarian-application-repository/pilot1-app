@@ -1,4 +1,5 @@
 # Example Training Configuration
+task: detect
 
 model: /path/to/model.pt  # Path to Model checkpoint (.pt), str, path exists
 data: /path/to/data.yaml  # Path to dataset config file (.yaml), str, path exists

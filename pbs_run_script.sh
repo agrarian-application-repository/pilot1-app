@@ -21,3 +21,4 @@ bash run_script.sh $args
 
 
 # qsub -v 'ARGS="train.py --config configs/example_train_config.yaml"' pbs_run_script.sh
+# qsub -v 'ARGS="in_danger.py --config configs/in_danger_config_v2.yaml"' pbs_run_script.sh

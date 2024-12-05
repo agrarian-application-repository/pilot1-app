@@ -62,35 +62,6 @@ def parse_config_file() -> str:
     return args.config
 
 
-def parse_detect_segment_config_files() -> tuple[str, str]:
-    """
-    Parses the command line arguments to retrieve the path to the YAML configuration file.
-
-    :return: Path to the detector YAML configuration file.
-    :return: Path to the segmenter YAML configuration file.
-    """
-    parser = argparse.ArgumentParser(
-        description="Parse detector and segmenter YAML configuration files for running the experiment."
-    )
-
-    parser.add_argument(
-        "--det_config",
-        type=str,
-        required=True,
-        help="Path to the detector YAML configuration file.",
-    )
-    parser.add_argument(
-        "--seg_config",
-        type=str,
-        required=True,
-        help="Path to the segmenter YAML configuration file.",
-    )
-
-    args = parser.parse_args()
-
-    return args.det_config, args.seg_config
-
-
 def read_yaml_config(yaml_file: str) -> dict[str, Any]:
     """
     Reads the training configuration from a YAML file.
@@ -198,14 +169,14 @@ def is_valid_checkpoint(checkpoint: Path) -> bool:
     Returns:
         bool: True if the file exists and has a `.pt` extension, otherwise False.
     """
-    return is_valid_pt_pt_file(checkpoint) or str(checkpoint) in BASE_CHECKPOINTS
+    return is_valid_pt_file(checkpoint) or str(checkpoint) in BASE_CHECKPOINTS
 
 
 def is_valid_tracker(conf_file: Path) -> bool:
     return is_valid_yaml_conf(conf_file) or str(conf_file) in BASE_TRACKERS
 
 
-def is_valid_pt_pt_file(pt_file: Path) -> bool:
+def is_valid_pt_file(pt_file: Path) -> bool:
     """
     Check if the given file path is a valid checkpoint file, i.e. if it exists and is a .pt file.
 

@@ -1,5 +1,7 @@
 # Evaluation Configuration
 
+task: detect
+
 # str: Path to the model checkpoint file (required).
 # Specifies the .pt file for the model to be evaluated.
 model: /path/to/model.pt

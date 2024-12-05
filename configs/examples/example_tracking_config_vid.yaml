@@ -1,5 +1,7 @@
 # Tracking Configuration
 
+task: detect
+
 # str: Path to the model checkpoint file (required).
 # Specifies the .pt file for the model to be used during inference.
 model: experiments/example_train_run/weights/best.pt

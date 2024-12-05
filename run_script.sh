@@ -5,7 +5,6 @@ module load cuda12.1
 
 source /archive/apps/miniconda/miniconda3/py310_23.1.0-1/etc/profile.d/conda.sh
 conda activate agrarian
-
 python "$@"
 
 conda deactivate

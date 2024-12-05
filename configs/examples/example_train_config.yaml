@@ -1,5 +1,7 @@
 # Example Training Configuration
 
+task: detect
+
 model: yolo11m.pt  # Path to Model checkpoint (.pt), str, path exists
 data: data/Aerial_Sheep_v1/data.yaml  # Path to dataset config file (.yaml), str, path exists
 epochs: 300  # Number of training epochs, int, [0, inf)

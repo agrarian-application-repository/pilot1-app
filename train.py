@@ -3,7 +3,7 @@ from ultralytics import YOLO
 import wandb
 from src.configs.train import check_train_args
 from src.configs.utils import parse_config_file, read_yaml_config
-from src.logging.wandb import get_wandb_api_key, get_wandb_entity
+from src.logging.wandb_access import get_wandb_api_key, get_wandb_entity
 
 
 def main():
@@ -12,17 +12,16 @@ def main():
     # Read YAML config file and transform it into a dict
     train_args = read_yaml_config(config_file_path)
 
-    # Check arguments validity
-    train_args = check_train_args(
-        train_args
-    )  # TODO argument checks - for correct or YOLO checks
+    # TODO Check arguments validity
+    train_args = check_train_args(train_args)
 
     print("PERFORMING TRAINING WITH THE FOLLOWING ARGUMENTS:")
     print(train_args, "\n")
 
     # Load the model
     model_checkpoint = train_args.pop("model")
-    model = YOLO(model_checkpoint)
+    task = train_args.pop("task")
+    model = YOLO(model=model_checkpoint, task=task)
 
     # wandb_api_key = get_wandb_api_key()
     # wandb.login(key=wandb_api_key)

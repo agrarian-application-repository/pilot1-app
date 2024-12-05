@@ -1,5 +1,7 @@
 # Example hyperparameters Search Configuration
 
+task: detect
+
 use_ray: true # leverage Ray algorithms for hyperparameters search, bool
 grace_period: 10 # Min number of epochs for which configuratyion is evaluated, int > 0
 gpu_per_trial: null # number of gpus to allocate to each trial, if non use all gpus, int >0 or None
