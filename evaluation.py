@@ -2,17 +2,16 @@ from ultralytics import YOLO
 
 from src.configs.evaluate import check_eval_args
 from src.configs.utils import parse_config_file, read_yaml_config
-from src.logging.evaluation import (log_eval_detection_results,
-                                    log_eval_segmentation_results)
+from src.logging.evaluation import log_eval_detection_results, log_eval_segmentation_results
 
 
 def main() -> None:
+
     # Parse the config file from command line
     config_file_path = parse_config_file()
     # Read YAML config file and transform it into a dict
     eval_args = read_yaml_config(config_file_path)
 
-    # TODO Check arguments validity
     eval_args = check_eval_args(eval_args)
 
     print("PERFORMING EVALUATION WITH THE FOLLOWING ARGUMENTS:")

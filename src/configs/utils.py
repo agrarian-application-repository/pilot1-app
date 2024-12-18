@@ -18,6 +18,7 @@ ALLOWED_IMAGE_FORMATS = [
     ".webp",
     ".pfm",
 ]
+
 ALLOWED_VIDEO_FORMATS = [
     ".asf",
     ".avi",
@@ -33,13 +34,22 @@ ALLOWED_VIDEO_FORMATS = [
     ".webm",
 ]
 
-BASE_CHECKPOINTS = [
+BASE_CHECKPOINTS_DETECT = [
     "yolo11n.pt",
     "yolo11s.pt",
     "yolo11m.pt",
     "yolo11l.pt",
     "yolo11x.pt",
 ]
+
+BASE_CHECKPOINTS_SEGMENT = [
+    "yolo11n-seg.pt",
+    "yolo11s-seg.pt",
+    "yolo11m-seg.pt",
+    "yolo11l-seg.pt",
+    "yolo11x-seg.pt",
+]
+
 BASE_TRACKERS = ["botsort.yaml", "bytetrack.yaml"]
 
 
@@ -49,14 +59,8 @@ def parse_config_file() -> str:
 
     :return: Path to the YAML configuration file.
     """
-    parser = argparse.ArgumentParser(
-        description="Parse YAML configuration file for running the experiment."
-    )
-
-    parser.add_argument(
-        "--config", type=str, required=True, help="Path to the YAML configuration file."
-    )
-
+    parser = argparse.ArgumentParser(description="Parse YAML configuration file for running the experiment.")
+    parser.add_argument("--config", type=str, required=True, help="Path to the YAML configuration file.")
     args = parser.parse_args()
 
     return args.config
@@ -79,101 +83,6 @@ def read_yaml_config(yaml_file: str) -> dict[str, Any]:
     except yaml.YAMLError as exc:
         print(f"Error parsing YAML file: {exc}")
         exit()
-
-
-def is_youtube_link(url: str) -> bool:
-    """
-    Check if the given URL is a valid YouTube link.
-
-    Args:
-        url (str): The URL string to be checked.
-
-    Returns:
-        bool: True if the URL is a valid YouTube link, otherwise False.
-    """
-    # Regular expression pattern for YouTube URLs
-    youtube_regex = re.compile(
-        r"^(https?://)?(www\.)?(youtube|youtu|youtube-nocookie)\.(com|be)/"
-        r"(watch\?v=|embed/|v/|.+\?v=)?([^&=%\?]{11})"
-    )
-
-    # Match the URL against the pattern
-    match = youtube_regex.match(url)
-
-    return bool(match)
-
-
-def is_valid_image(file: Path) -> bool:
-    """
-    Check if the given file is a valid image.
-
-    Args:
-        file (Path): The file path to be checked.
-
-    Returns:
-        bool: True if the file has a valid image file extension, otherwise False.
-    """
-    return file.suffix.lower() in ALLOWED_IMAGE_FORMATS
-
-
-def is_valid_list_images(files: list[Path]) -> bool:
-    """
-    Checks whether the provided list of files contains only images in allowed format.
-
-    Args:
-        files (List[Path]): List of file paths in the directory.
-
-    Returns:
-        bool: True if the list is not empty and it contains image files in allowed format, otherwise False.
-    """
-    return len(files) > 0 and all(
-        file.suffix.lower() in ALLOWED_IMAGE_FORMATS for file in files
-    )
-
-
-def is_valid_video(file: Path) -> bool:
-    """
-    Check if the given file is a valid video.
-
-    Args:
-        file (Path): The file path to be checked.
-
-    Returns:
-        bool: True if the file has a valid video file extension, otherwise False.
-    """
-    return file.suffix.lower() in ALLOWED_VIDEO_FORMATS
-
-
-def is_valid_list_videos(files: list[Path]) -> bool:
-    """
-    Checks whether the provided list of files contains only videos in allowed format.
-
-    Args:
-        files (List[Path]): List of file paths in the directory.
-
-    Returns:
-        bool: True if the list is not empty and it contains video files in allowed format, otherwise False.
-    """
-    return len(files) > 0 and all(
-        file.suffix.lower() in ALLOWED_VIDEO_FORMATS for file in files
-    )
-
-
-def is_valid_checkpoint(checkpoint: Path) -> bool:
-    """
-    Check if the given file path is a valid checkpoint file, i.e. if it exists and is a .pt file.
-
-    Args:
-        checkpoint (Path): The file path to be checked.
-
-    Returns:
-        bool: True if the file exists and has a `.pt` extension, otherwise False.
-    """
-    return is_valid_pt_file(checkpoint) or str(checkpoint) in BASE_CHECKPOINTS
-
-
-def is_valid_tracker(conf_file: Path) -> bool:
-    return is_valid_yaml_conf(conf_file) or str(conf_file) in BASE_TRACKERS
 
 
 def is_valid_pt_file(pt_file: Path) -> bool:
@@ -202,59 +111,119 @@ def is_valid_yaml_conf(conf_file: Path) -> bool:
     return conf_file.exists() and conf_file.is_file() and conf_file.suffix == ".yaml"
 
 
-def get_arguments_dict(args: Namespace) -> dict[str, Any]:
-    return vars(args)
-
-
-def check_bounded(
-    value: Union[int, float],
-    lower: Optional[Union[int, float]] = None,
-    upper: Optional[Union[int, float]] = None,
-    strict_lower: bool = False,
-    strict_upper: bool = False,
-) -> None:
+def is_valid_checkpoint(checkpoint: Path, task: str) -> bool:
     """
-    Check if a value is within specified bounds (lower, upper). The bounds can be strict or non-strict.
+    Check if the given file path is a valid checkpoint file, i.e. if it exists and is a .pt file.
 
-    Parameters:
-    - value: The value to check (int or float).
-    - lower: The lower bound (optional, int or float). If None, no lower bound is applied.
-    - upper: The upper bound (optional, int or float). If None, no upper bound is applied.
-    - strict_lower: Whether the lower bound should be strict (value must be greater than lower).
-    - strict_upper: Whether the upper bound should be strict (value must be less than upper).
+    Args:
+        checkpoint (Path): The file path to be checked.
+        task (str): The task to perform.
 
     Returns:
-    - None if the value is within bounds.
+        bool: True if the file exists and has a `.pt` extension, otherwise False.
+    """
+    if task == "detect":
+        return (str(checkpoint) in BASE_CHECKPOINTS_DETECT) or is_valid_pt_file(checkpoint)
+    elif task == "segment":
+        return (str(checkpoint) in BASE_CHECKPOINTS_SEGMENT) or is_valid_pt_file(checkpoint)
+    else:
+        raise NotImplementedError(f"Model check for task {task} not implemented")
 
-    Raises:
-    - ValueError if the value violates any bounds, with meaningful error messages.
+
+def is_valid_tracker(conf_file: Path) -> bool:
+    return is_valid_yaml_conf(conf_file) or str(conf_file) in BASE_TRACKERS
+
+
+def is_valid_youtube_link(url: str) -> bool:
+    """
+    Check if the given URL is a valid YouTube link.
+
+    Args:
+        url (str): The URL string to be checked.
+
+    Returns:
+        bool: True if the URL is a valid YouTube link, otherwise False.
+    """
+    # Regular expression pattern for YouTube URLs
+    youtube_regex = re.compile(
+        r"^(https?://)?(www\.)?(youtube|youtu|youtube-nocookie)\.(com|be)/"
+        r"(watch\?v=|embed/|v/|.+\?v=)?([^&=%\?]{11})"
+    )
+
+    # Match the URL against the pattern
+    match = youtube_regex.match(url)
+
+    return bool(match)
+
+
+def is_valid_image(img_path: Path) -> bool:
+    """
+    Check if the given img_path corresponds to a valid image.
+
+    Args:
+        img_path (Path): The image path to be checked.
+
+    Returns:
+        bool: True if the path corresponds to a valid image, otherwise False.
+    """
+    return img_path.exists() and img_path.is_file() and img_path.suffix.lower() in ALLOWED_IMAGE_FORMATS
+
+
+def is_valid_images_dir(dir_path: Path) -> bool:
+    """
+    Checks whether the provided path corresponds to a directory containing only valid images.
+
+    Args:
+        dir_path (Path): Path to the directory.
+
+    Returns:
+        bool: True if the provided path corresponds to a directory containing only valid images, otherwise False.
     """
 
-    # Check for lower bound
-    if lower is not None:
-        if strict_lower:
-            if value <= lower:
-                raise ValueError(
-                    f"Value {value} must be strictly greater than the lower bound {lower}."
-                )
-        else:
-            if value < lower:
-                raise ValueError(
-                    f"Value {value} must be greater than or equal to the lower bound {lower}."
-                )
+    if not dir_path.exists() or not dir_path.is_dir():
+        return False
 
-    # Check for upper bound
-    if upper is not None:
-        if strict_upper:
-            if value >= upper:
-                raise ValueError(
-                    f"Value {value} must be strictly less than the upper bound {upper}."
-                )
-        else:
-            if value > upper:
-                raise ValueError(
-                    f"Value {value} must be less than or equal to the upper bound {upper}."
-                )
+    for item in dir_path.iterdir():
+        if not is_valid_image(item):
+            return False
 
-    # If the function reaches this point, the value is valid
-    return None
+    return True
+
+
+def is_valid_video(video_path: Path) -> bool:
+    """
+    Check if the given video_path corresponds to a valid video.
+
+    Args:
+        video_path (Path): The video path to be checked.
+
+    Returns:
+        bool: True if the path corresponds to a valid video, otherwise False.
+    """
+    return video_path.exists() and video_path.is_file() and video_path.suffix.lower() in ALLOWED_VIDEO_FORMATS
+
+
+def is_valid_videos_dir(dir_path: Path) -> bool:
+    """
+    Checks whether the provided path corresponds to a directory containing only valid videos.
+
+    Args:
+        dir_path (Path): Path to the directory.
+
+    Returns:
+        bool: True if the provided path corresponds to a directory containing only valid videos, otherwise False.
+    """
+
+    if not dir_path.exists() or not dir_path.is_dir():
+        return False
+
+    for item in dir_path.iterdir():
+        if not is_valid_video(item):
+            return False
+
+    return True
+
+
+
+
+

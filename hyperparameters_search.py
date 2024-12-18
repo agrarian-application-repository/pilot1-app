@@ -1,8 +1,8 @@
 from ultralytics import YOLO
 
 import wandb
-from src.configs.hyperparameters_search import (check_hs_args,
-                                                preprocess_search_args)
+from src.configs.hyperparameters_search import check_hs_args
+
 from src.configs.utils import parse_config_file, read_yaml_config
 from src.logging.wandb_access import get_wandb_api_key, get_wandb_entity
 
@@ -13,11 +13,7 @@ def main():
     # Read YAML config file and transform it into a dict
     hs_args = read_yaml_config(config_file_path)
 
-    # TODO Check arguments validity
     hs_args = check_hs_args(hs_args)
-
-    # Setup 'search' argument to contain tune.uniform() or tune.choice() ranges
-    hs_args = preprocess_search_args(hs_args)
 
     print("PERFORMING HYPERPARAMETERS SEARCH WITH THE FOLLOWING ARGUMENTS:")
     print(hs_args, "\n")

@@ -1,90 +1,134 @@
 from pathlib import Path
 from typing import Any
 
-import cv2
-
-from src.configs.utils import (is_valid_list_videos, is_valid_video,
-                               is_youtube_link)
+from src.configs.utils import (
+    is_valid_checkpoint,
+    is_valid_tracker,
+    is_valid_video,
+    is_valid_videos_dir,
+    is_valid_youtube_link
+)
 
 
 def check_tracking_args(args: dict[str, Any]) -> dict[str, Any]:
-    data_path = args["source"]
 
-    # Check if the data path is a YouTube link
-    if is_youtube_link(data_path):
-        args["_media"] = "youtube"
+    args["stream"] = True
+    args["persist"] = True
 
-    else:
-        data_path = Path(data_path)
+    assert isinstance(args['task'], str) and args['task'] == 'detect', \
+        f"'task' must be one of ['detect']. Got {args['task']}"
 
-        # If the data path is a directory, check if it contains only videos
-        if data_path.is_dir():
-            files = [file for file in data_path.iterdir()]
+    assert is_valid_checkpoint(Path(args['model']), args['task']), \
+        f"'model' must be a valid .PT checkpoint file for task '{args['task']}'. Got '{args['model']}'"
 
-            if is_valid_list_videos(files):
-                args["_media"] = "videos"
-            else:
-                print(f"ERROR: ({data_path}) is not a folder of valid videos")
-                exit()
+    assert is_valid_tracker(Path(args['tracker'])), \
+        f"'tracker' must be a valid .YAML tracker config file. Got '{args['tracker']}'"
 
-        # If the data path is a single file, check if it is a valid video
-        elif data_path.is_file():
+    assert is_valid_video(Path(args['source'])) or \
+           is_valid_videos_dir(Path(args['source'])) or \
+           is_valid_youtube_link(args['source']), \
+        f"'source' must be an image, a video, a directory of images, a directory of video, or a youtube link. Got {args['source']}"
 
-            if is_valid_video(data_path):
-                args["_media"] = "video"
-            else:
-                print(f"ERROR: ({data_path}) is not a valid video")
-                exit()
+    # ---------- other YOLO args ---------------
 
-        else:
-            # If none of the checks pass, raise an error and exit
-            print(
-                f"ERROR: ({data_path}) is not a valid video, a folder of videos, nor a youtube link"
-            )
-            exit()
+    assert isinstance(args['conf'], float) and 0.0 < args['conf'] <= 1.0, \
+        f"'conf' must be a float in (0.0, 1.0]. Got {args['conf']}"
 
-    return args
+    assert isinstance(args['iou'], float) and 0.0 < args['iou'] <= 1.0, \
+        f"'iou' must be a float in (0.0, 1.0]. Got {args['iou']}"
 
+    assert isinstance(args['imgsz_h'], int) and args['imgsz_h'] >= 32, \
+        f"'imgsz_h' must be an integer >= 32. Got {args['imgsz_h']}"
 
-def preprocess_tracking_args(args: dict[str, Any]) -> dict[str, Any]:
-    media_type = args.pop("_media")
+    assert isinstance(args['imgsz_w'], int) and args['imgsz_w'] >= 32, \
+        f"'imgsz_w' must be an integer >= 32. Got {args['imgsz_w']}"
 
-    # Transform source paths, if necessary
-    if media_type != "youtube":
-        args["source"] = Path(args["source"])
-    else:
-        pass  # Leave youtube path as is
+    args['imgsz'] = (args['imgsz_h'], args['imgsz_w'])
+    args.pop('imgsz_h')
+    args.pop('imgsz_w')
 
-    # assign "stream" attribute based on media type
-    args["stream"] = (
-        True  # for yt and videos, always use stream=True. No images for tracking
-    )
-    args["persist"] = True  # for yt and videos, always persist tracking
+    assert isinstance(args['half'], bool), \
+        f"'half' must be a boolean. Got {args['half']}"
 
-    # Handle dimensions
-    if args["width"] is None or args["height"] is None:
+    assert (isinstance(args['device'], int) and args['device'] >= 0) or \
+           (isinstance(args['device'], str) and args['device'] in ['cpu', 'mps']), \
+        f"'device' must be a non-negative integer or a string in ['cpu', 'mps']. Got {args['device']} "
 
-        if media_type == "video":
-            video = cv2.VideoCapture(args["source"])
-            height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
-        elif media_type == "videos":
-            first_video = [
-                subpath for subpath in args["source"].iterdir() if subpath.is_file()
-            ][0]
-            first_video = cv2.VideoCapture(first_video)
-            height = int(first_video.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            width = int(first_video.get(cv2.CAP_PROP_FRAME_WIDTH))
-        else:  # youtube
-            yt_video = cv2.VideoCapture(args["source"])
-            height = int(yt_video.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            width = int(yt_video.get(cv2.CAP_PROP_FRAME_WIDTH))
+    assert isinstance(args['batch'], int) and args['batch'] > 0, \
+        f"'batch' must be a positive integer. Got {args['batch']}"
 
-    imgsz_w = args["width"] if args["width"] is not None else width
-    imgsz_h = args["height"] if args["height"] is not None else height
+    assert isinstance(args['max_det'], int) and args['max_det'] > 0, \
+        f"'max_det' must be a positive integer. Got {args['max_det']}"
 
-    args["imgsz"] = (imgsz_h, imgsz_w)
-    args.pop("width")
-    args.pop("height")
+    assert isinstance(args['vid_stride'], int) and args['vid_stride'] > 0, \
+        f"'vid_stride' must be a positive integer. Got {args['vid_stride']}"
+
+    assert isinstance(args['stream_buffer'], bool), \
+        f"'stream_buffer' must be a boolean. Got {args['stream_buffer']}"
+
+    assert isinstance(args['visualize'], bool), \
+        f"'visualize' must be a boolean. Got {args['visualize']}"
+
+    assert isinstance(args['augment'], bool), \
+        f"'augment' must be a boolean. Got {args['augment']}"
+
+    assert isinstance(args['agnostic_nms'], bool), \
+        f"'agnostic_nms' must be a boolean. Got {args['agnostic_nms']}"
+
+    assert args['classes'] is None or \
+           (isinstance(args['classes'], list) and
+            sum([isinstance(c, int) for c in args['classes']]) == len(args['classes']) and  # all integers
+            sum([c >= 0 for c in args['classes']]) == len(args['classes']) and  # all positives
+            len(args['classes']) == len(set(args['classes']))  # no duplicates
+            ), \
+        f"'classes' must be None or a list of integer class IDs. Got {args['classes']}"
+
+    assert isinstance(args['retina_masks'], bool), \
+        f"'retina_masks' must be a boolean. Got {args['retina_masks']}"
+
+    assert args['embed'] is None or \
+           (isinstance(args['embed'], list) and
+            sum([isinstance(layer, int) for layer in args['embed']]) == len(args['embed']) and  # all integers
+            sum([layer >= 0 for layer in args['embed']]) == len(args['embed']) and  # all non-negatives
+            len(args['embed']) == len(set(args['embed']))  # no duplicates
+            ), \
+        f"'embed' must be None or a list of non-negative integers. Got {args['embed']}"
+
+    assert isinstance(args['project'], str) and len(args['project']) > 0, \
+        f"'project' must be a non empty string. Got {args['project']}"
+
+    assert isinstance(args['name'], str) and len(args['name']) > 0, \
+        f"'name' must be a non empty string. Got {args['name']}"
+
+    assert isinstance(args['show'], bool), \
+        f"'show' must be a boolean. Got {args['show']}"
+
+    assert isinstance(args['save'], bool), \
+        f"'save' must be a boolean. Got {args['save']}"
+
+    assert isinstance(args['save_frames'], bool), \
+        f"'save_frames' must be a boolean. Got {args['save_frames']}"
+
+    assert isinstance(args['save_txt'], bool), \
+        f"'save_txt' must be a boolean. Got {args['save_txt']}"
+
+    assert isinstance(args['save_conf'], bool), \
+        f"'save_conf' must be a boolean. Got {args['save_conf']}"
+
+    assert isinstance(args['save_crop'], bool), \
+        f"'save_crop' must be a boolean. Got {args['save_crop']}"
+
+    assert isinstance(args['show_labels'], bool), \
+        f"'show_labels' must be a boolean. Got {args['show_labels']}"
+
+    assert isinstance(args['show_conf'], bool), \
+        f"'show_conf' must be a boolean. Got {args['show_conf']}"
+
+    assert isinstance(args['show_boxes'], bool), \
+        f"'show_boxes' must be a boolean. Got {args['show_boxes']}"
+
+    assert args['line_width'] is None or \
+           (isinstance(args['line_width'], int) and args['line_width'] > 0), \
+        f"'line_width' must be None or a positive integer. Got {args['line_width']}"
 
     return args

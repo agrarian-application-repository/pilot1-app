@@ -1,23 +1,25 @@
 # Evaluation Configuration
 
+# str: Evaluation task
+# Specifies which task the yolo model should execute
+# Range: ['detect', 'segment']
 task: detect
 
-# str: Path to the model checkpoint file (required).
+# str: Path to the model checkpoint file.
 # Specifies the .pt file for the model to be evaluated.
 model: /path/to/model.pt
 
-# str: Path to the dataset YAML configuration file (required).
+# str: Path to the dataset YAML configuration file.
 # Specifies dataset paths, class names, and number of classes.
 data: /path/to/data.yaml
 
 # int: Image size for evaluation.
-# All images will be resized to this dimension before inference.
-# Range: Any positive integer.
+# All images will be resized to (imgsz x imgsz) before evaluation.
+# Range: Any integer >=32.
 imgsz: 640
 
-# int or float: Batch size for evaluation.
-# -1 for AutoBatch (adjusts based on GPU memory).
-# Range: -1 (for AutoBatch), or any positive integer, or range 0.0 to 1.0 if float
+# int: Batch size for evaluation.
+# Range: -1 (for AutoBatch based on GPU memory), or any positive integer.
 batch: 16
 
 # bool: Whether to save results in JSON format.
@@ -30,12 +32,12 @@ save_hybrid: false
 
 # float: Confidence threshold for detection filtering.
 # Detections with a confidence score lower than this value are discarded.
-# Range: 0.0 to 1.0
-conf: 0.001
+# Range: (0.0, 1.0]
+conf: 0.3
 
 # float: IoU threshold for Non-Maximum Suppression (NMS).
-# Helps remove duplicate detections.
-# Range: 0.0 to 1.0
+# Helps reduce duplicate detections by suppressing overlapping boxes.
+# Range: (0.0, 1.0]
 iou: 0.6
 
 # int: Maximum number of detections per image.
@@ -47,9 +49,11 @@ max_det: 300
 # Reduces memory usage and increases speed with minimal accuracy loss (for supported hardware).
 half: false
 
-# str: Device to be used for evaluation (e.g., cpu, cuda:0).
+# int or str: Device to be used for evaluation.
 # Allows selection between CPU and GPU resources.
-device: cuda:3
+# Range int: any non-negative integer
+# Range str: ['cpu', 'mps']
+device: 0
 
 # bool: Use OpenCV DNN module for ONNX inference.
 # Provides an alternative to PyTorch for inference when using ONNX models.
@@ -69,8 +73,8 @@ split: test
 
 # str: Path to directory where to save the experiments.
 # Specifies the directory where evaluation results will be saved.
-project: experiments
+project: path/to/experiments_folder
 
 # str: Subfolder name for this evaluation run.
 # Defines the subdirectory under the project folder for saving results.
-name: example_evaluation_run
+name: run_name

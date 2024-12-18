@@ -1,4 +1,6 @@
-# AGRARIAN
+![AGRARIAN](assets/agrarian.png)
+
+# AGRARIAN: Herd Monitoring
 
 ## Setup
 1.  Copy the project with

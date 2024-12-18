@@ -7,12 +7,12 @@ from src.logging.wandb_access import get_wandb_api_key, get_wandb_entity
 
 
 def main():
+
     # Parse the config file from command line
     config_file_path = parse_config_file()
     # Read YAML config file and transform it into a dict
     train_args = read_yaml_config(config_file_path)
 
-    # TODO Check arguments validity
     train_args = check_train_args(train_args)
 
     print("PERFORMING TRAINING WITH THE FOLLOWING ARGUMENTS:")
