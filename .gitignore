@@ -4,6 +4,9 @@ experiments/
 runs/
 wandb/
 
+# to do
+TODO.md
+
 # Singularity image
 agrarian.sif
 

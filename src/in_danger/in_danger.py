@@ -43,6 +43,8 @@ def perform_in_danger_analysis(
     fps = int(cap.get(cv2.CAP_PROP_FPS))
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
+    input_args["vid_stride"] = min(input_args["vid_stride"], total_frames)
+
     output_dir = Path(output_args["output_dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
 

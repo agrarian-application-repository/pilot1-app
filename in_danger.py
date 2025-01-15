@@ -1,7 +1,6 @@
-from src.configs.in_danger import (check_in_danger_args,
-                                   preprocess_in_danger_args)
+from src.configs.in_danger import check_in_danger_args, preprocess_in_danger_args
 from src.configs.utils import parse_config_file, read_yaml_config
-from src.in_danger import perform_in_danger_analysis
+from src.in_danger.in_danger_v2 import perform_in_danger_analysis
 
 
 def main():
