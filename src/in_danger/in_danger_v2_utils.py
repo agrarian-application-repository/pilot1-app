@@ -315,8 +315,8 @@ def create_slope_mask_epsg32633(dem_data, transform, angle_threshold):
     pixel_size_x_m = transform[0]  # Cell width (in meters)
     pixel_size_y_m = -transform[4]  # Cell height (in meters, negative because of affine conventions)
 
-    print(f"DEM pixel resolution (X): {pixel_size_x_m} meters")
-    print(f"DEM pixel resolution (Y): {pixel_size_y_m} meters")
+    print(f"DEM pixel resolution (X): {pixel_size_x_m:.2f} meters")
+    print(f"DEM pixel resolution (Y): {pixel_size_y_m:.2f} meters")
 
     # Compute gradients (dz/dx and dz/dy)
     dz_dy, dz_dx = np.gradient(dem_data, pixel_size_y_m, pixel_size_x_m)

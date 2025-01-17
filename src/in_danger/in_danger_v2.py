@@ -102,8 +102,6 @@ def perform_in_danger_analysis(
 
     # ============== LOAD AI MODELS ===================================
 
-    crono_start = time()
-
     # Load AI models
     detection_model_checkpoint = detection_args.pop("model_checkpoint")
     segmentation_model_checkpoint = segmentation_args.pop("model_checkpoint")
@@ -112,21 +110,13 @@ def perform_in_danger_analysis(
     detector = YOLO(detection_model_checkpoint, task="detect")  # Animal detection model
     segmenter = YOLO(segmentation_model_checkpoint, task="segment")  # Dangerous terrain segmentation model
 
-    print(f"AI models loaded in {time()-crono_start:.1f} seconds")
-
     # ============== LOAD FLIGHT INFO ===================================
-
-    crono_start = time()
 
     # Open drone flight data
     flight_data_file_path = Path(input_args["flight_data"])
     flight_data_file = open(flight_data_file_path, "r")
 
-    print(f"Flight data loaded in {time()-crono_start:.1f} seconds")
-
     # ============== LOAD VIDEO INFO ===================================
-
-    crono_start = time()
 
     # Open video and get properties
     cap = cv2.VideoCapture(input_args["source"])
@@ -140,23 +130,22 @@ def perform_in_danger_analysis(
     # avoids unreasonable video strides
     input_args["vid_stride"] = max(1, min(input_args["vid_stride"], total_frames))
 
-    print(f"Video info loaded in {time()-crono_start:.1f} seconds")
+    # set the row/col identifier of the frame corners
+    frame_corners = np.array([
+        [0                  , 0               ],    # upper left (0,0)
+        [0                  , frame_width - 1 ],    # upper right (0, C-1)
+        [frame_height - 1   , 0               ],    # lower left (R-1, 0)
+        [frame_height - 1   , frame_width - 1 ],    # lower right (R-1, C-1)
+    ])
 
     # ============== LOAD ALERTS FILE ===================================
-
-    crono_start = time()
 
     alerts_file_path = (output_dir / output_args["alert_file_name"]).with_suffix(".txt")
     alerts_file = open(alerts_file_path, "w")
 
-    print(f"Alerts file loaded in {time()-crono_start:.1f} seconds")
-
     # ============== LOAD VIDEO WRITERS ===================================
 
-    crono_start = time()
-
     annotated_writer = None
-    mask_writer = None
 
     if output_args["save_videos"]:
         annotated_video_path = (output_dir / output_args["annotated_video_name"]).with_suffix(".mp4")
@@ -167,13 +156,11 @@ def perform_in_danger_analysis(
             frameSize=(frame_width, frame_height)
         )
 
-    print(f"Video Writers loaded in {time()-crono_start:.1f} seconds")
-
     # ============== BEGIN VIDEO PROCESSING ===================================
 
     # Frame counter
-    true_frame_id = 0
     frame_id = 0
+    processed_frames_counter = 0
 
     # Alert cooldown initialization
     alerts_frames_cooldown = output_args["alerts_cooldown_seconds"] * fps   # convert cooldown from seconds to frames
@@ -190,19 +177,18 @@ def perform_in_danger_analysis(
             print("Video processing has been successfully completed.")
             break
 
-        if true_frame_id % input_args["vid_stride"] != 0:
-            true_frame_id += 1  # Update frame ID for logging
-            print("skippin' frame")
+        if frame_id % input_args["vid_stride"] != 0:
+            frame_id += 1  # Update frame ID
             continue  # go to next frame directly (processes 1 frame every 'vid_stride' frames)
 
-        frame_id += 1  # update the actual number of frames processed
-        true_frame_id += 1  # Update frame ID for logging
-        print(f"\n------------- Processing frame {true_frame_id}/{total_frames}-----------")
+        processed_frames_counter += 1  # update the actual number of frames processed
+        frame_id += 1  # Update frame ID
+        print(f"\n------------- Processing frame {frame_id}/{total_frames}-----------")
 
         # cv2 loads image in BGR, convert to RGB
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         # load frame flight data
-        flight_frame_data = parse_drone_frame(flight_data_file, frame_id=true_frame_id)
+        flight_frame_data = parse_drone_frame(flight_data_file, frame_id)
 
         """ Perform detection and get bounding boxes (13 ms)"""
 
@@ -241,13 +227,6 @@ def perform_in_danger_analysis(
         frame_width_m = frame_width * meters_per_pixel
         frame_height_m = frame_height * meters_per_pixel
         print(f"Frame dimensions: {frame_width_m:.2f}x{frame_height_m:.2f} meters")
-
-        frame_corners = np.array([
-            [0, 0],
-            [0, frame_width-1],
-            [frame_height-1, 0],
-            [frame_height-1, frame_width-1],
-        ])
 
         # get the coordinates of the 4 corners of the frame.
         # The rectangle may be oriented in any direction wrt North
@@ -338,7 +317,7 @@ def perform_in_danger_analysis(
 
         # if cooldown has passed, check for dangerous overlapping and report them with the appropriate string(s)
         inter = time()
-        cooldown_has_passed = (true_frame_id - last_alert_frame) >= alerts_frames_cooldown
+        cooldown_has_passed = (frame_id - last_alert_frame) >= alerts_frames_cooldown
         danger_exists = False
         if cooldown_has_passed:
             danger_types = []
@@ -354,8 +333,8 @@ def perform_in_danger_analysis(
             if len(danger_types) > 0:
                 danger_exists = True
                 danger_type_str = " & ".join(danger_types)
-                send_alert(alerts_file, true_frame_id, danger_type_str)
-                last_alert_frame = true_frame_id
+                send_alert(alerts_file, frame_id, danger_type_str)
+                last_alert_frame = frame_id
 
         compint_time = time() - inter
 
@@ -415,10 +394,9 @@ def perform_in_danger_analysis(
                 # save the annotated rgb mask and annotated frame
                 annotated_writer.write(annotated_frame)
             if danger_exists:  # if annotation code has been entered because an animal is in danger after cooldown ...
-                annotated_img_path = Path(output_dir, f"danger_frame_{true_frame_id}_annotated.png")
+                annotated_img_path = Path(output_dir, f"danger_frame_{frame_id}_annotated.png")
                 cv2.imwrite(annotated_img_path, annotated_frame)
             print(f"\tFrame saving completed in {(time()-inter)*1000:.1f} ms")
-
 
             print(f"Video annotations completed in {(time() - crono_start)*1000:.1f} ms")
 
@@ -428,11 +406,11 @@ def perform_in_danger_analysis(
     """ Processing completed, print stats and release resources"""
 
     total_time = time() - start_time
-    processing_speed = total_frames / total_time
-    print(f"Detection and segmentation for  {total_frames} completed in end {total_time:.1f} seconds")
-    print(f"Processing rate: {processing_speed:.2f} fps")
-    print(f"Input video fps: {fps}")
-    print(f"Processing is real time: {processing_speed >= fps}")
+    print(f"Danger Analysis for {processed_frames_counter} frames (out of {total_frames}) completed in {total_time:.1f} seconds")
+    real_processing_rate = processed_frames_counter / total_time
+    print(f"Real processing rate: {real_processing_rate:.1f} fps. Real time: {real_processing_rate >= fps}")
+    apparent_processing_rate = total_frames / total_time
+    print(f"Apparent processing rate: {apparent_processing_rate:.1f} fps. Real time: {apparent_processing_rate >= fps}")
 
     combined_dem_masks_tif.close()
 
@@ -445,5 +423,3 @@ def perform_in_danger_analysis(
         annotated_writer.release()
 
     print(f"Videos and alerts log have been saved at {output_dir}")
-
-
