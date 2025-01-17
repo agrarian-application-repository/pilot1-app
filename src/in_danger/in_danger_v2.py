@@ -212,21 +212,21 @@ def perform_in_danger_analysis(
         # load frame flight data
         flight_frame_data = parse_drone_frame(flight_data_file, frame_id=true_frame_id)
 
-        """ Perform detection and get bounding boxes (? ms)"""
+        """ Perform detection and get bounding boxes (13 ms)"""
 
         crono_start = time()
         # Detect animals in frame
         classes, boxes_centers, boxes_wh, boxes_corner1, boxes_corner2 = perform_detection(detector, frame, detection_args)
-        print(f"detection of animals completed in {time() - crono_start} seconds")
+        print(f"detection of animals completed in {(time() - crono_start)*1000:.1f} ms")
 
-        """ Perform segmentation and build segmentation danger mask (? ms)"""
+        """ Perform segmentation and build segmentation danger mask (15 ms)"""
 
         crono_start = time()
         # Highlight dangerous objects
         segment_danger_mask = perform_segmentation(segmenter, frame, segmentation_args)
-        print(f"Segmentation and danger mask creation completed in {time() - crono_start} seconds")
+        print(f"Segmentation and danger mask creation completed in {(time() - crono_start)*1000:.1f} ms")
 
-        """ extract coordinates of frame (and animals) from drone position and flight height (? ms)"""
+        """ extract coordinates of frame (and animals) from drone position and flight height (0.2 ms)"""
 
         crono_start = time()
 
@@ -248,7 +248,7 @@ def perform_in_danger_analysis(
 
         frame_width_m = frame_width * meters_per_pixel
         frame_height_m = frame_height * meters_per_pixel
-        print(f"Frame dimensions: {frame_width_m}x{frame_height_m} meters")
+        print(f"Frame dimensions: {frame_width_m:.2f}x{frame_height_m:.2f} meters")
 
         frame_corners = np.array([
             [0, 0],
@@ -256,8 +256,6 @@ def perform_in_danger_analysis(
             [frame_height-1, 0],
             [frame_height-1, frame_width-1],
         ])
-
-        print(frame_corners)
 
         # get the coordinates of the 4 corners of the frame.
         # The rectangle may be oriented in any direction wrt North
@@ -283,9 +281,9 @@ def perform_in_danger_analysis(
          )
         <<<XXX"""
 
-        print(f"Frame location computed in {time() - crono_start} seconds. (Animals position not computed)")
+        print(f"Frame location computed in {(time() - crono_start)*1000:.1f} ms. (Animals position not computed)")
 
-        """ create DEM validity/geofencing/slope masks overlapping with frame given the frame corner cooridnates (? ms)"""
+        """ create DEM validity/geofencing/slope masks overlapping with frame given the frame corner cooridnates (5 ms)"""
 
         crono_start = time()
 
@@ -299,27 +297,26 @@ def perform_in_danger_analysis(
 
         area_masking_nodata = 255
         combined_dem_mask_over_frame, _ = rasterio_mask(combined_dem_masks_tif, [frame_polygon], nodata=area_masking_nodata, crop=True)
-        print(combined_dem_mask_over_frame.shape)
         combined_dem_mask_over_frame = np.array([rotate_array(combined_dem_mask_over_frame[c], angle=-flight_frame_data["gb_yaw"], reshape=True, order=0) for c in range(combined_dem_mask_over_frame.shape[0])])
-        print(combined_dem_mask_over_frame.shape)
         combined_dem_mask_over_frame = clip_array_into_rectangle_no_nodata(combined_dem_mask_over_frame, area_masking_nodata)
-        print(combined_dem_mask_over_frame.shape)
         combined_dem_mask_over_frame = upscale_array_to_image_size(combined_dem_mask_over_frame, frame_height, frame_width)
-        print(combined_dem_mask_over_frame.shape)
 
         dem_nodata_danger_mask = combined_dem_mask_over_frame[0]
         geofencing_danger_mask = combined_dem_mask_over_frame[1]
         slope_danger_mask = combined_dem_mask_over_frame[2]
 
-        print(f"Frame-overlapping DEM validity and slope masks computed in {time() - crono_start} seconds")
+        print(f"Frame-overlapping DEM validity and slope masks computed in {(time() - crono_start)*1000:.1f} ms")
 
-        """ Compute safety areas around each animal, and check for intersections with danger masks. If yes, send alert (? ms)"""
+        """ Compute safety areas around each animal, and check for intersections with danger masks. If yes, send alert (12 ms)"""
 
         crono_start = time()
 
         # create the safety mask
+        inter = time()
         safety_mask = create_safety_mask(frame_height, frame_width, boxes_centers, safety_radius_pixels)
+        st_time = time()-inter
 
+        inter = time()
         # create danger mask
         combined_danger_mask = merge_3d_mask(np.stack([
             segment_danger_mask,
@@ -327,20 +324,25 @@ def perform_in_danger_analysis(
             geofencing_danger_mask,
             slope_danger_mask,
         ]))
+        dm_time = time() - inter
 
         # create the intersection mask between safety areas and segmentation dangerous areas
+        inter = time()
         intersection_segment = np.logical_and(safety_mask, segment_danger_mask)
         intersection_nodata = np.logical_and(safety_mask, dem_nodata_danger_mask)
         intersection_geofencing = np.logical_and(safety_mask, geofencing_danger_mask)
         intersection_slope = np.logical_and(safety_mask, slope_danger_mask)
+        ands_time = time() - inter
 
         # compute overall intersection
+        inter = time()
         combined_intersections = merge_3d_mask(np.stack([
             intersection_segment,
             intersection_nodata,
             intersection_geofencing,
             intersection_slope
         ]))
+        inter_time = time() - inter
 
         """XXX>>>
         # Check for intersection between safety area and dangerous areas, non-zero intersection indicates overlap
@@ -354,6 +356,7 @@ def perform_in_danger_analysis(
         <<<XXX"""
 
         # if cooldown has passed, check for damngerous overlapping and report them with the appropriate string(s)
+        inter = time()
         cooldown_has_passed = (true_frame_id - last_alert_frame) >= alerts_frames_cooldown
         danger_exists = False
         if cooldown_has_passed:
@@ -373,57 +376,90 @@ def perform_in_danger_analysis(
                 send_alert(alerts_file, true_frame_id, danger_type_str)
                 last_alert_frame = true_frame_id
 
-        print(f"Danger analysis and reporting completed in {time() - crono_start} seconds")
+        compint_time = time() - inter
 
-        """ Additional annotations if videos are to be saved, or for frames where danger exist (? ms)"""
+        print(f"Danger analysis and reporting completed in {(time() - crono_start)*1000:.1f} ms")
+        print(f"\tCompute safety mask mask in {st_time*1000:.1f} ms")
+        print(f"\tCompute combined danger mask in {dm_time*1000:.1f} ms")
+        print(f"\tCompute single intersections masks in {ands_time*1000:.1f} ms")
+        print(f"\tCompute combined intersection mask in {inter_time*1000:.1f} ms")
+        print(f"\tCompute and reporting danger types in {compint_time*1000:.1f} ms")
 
+        """ Additional annotations if videos are to be saved, or for frames where danger exist (74 ms)
+        Optimization Opportunities:
+        1. Batching Disk Writes:
+        Disk I/O is one of the slowest parts of the process. Writing files frame by frame can be inefficient, especially if you’re saving many images.
+        Solution: Buffer the frames (e.g., accumulate them in memory) and write them to disk periodically, or use a background thread/process for I/O.
+        2. Avoid Repeated Path Creation:
+        The Path object creation is relatively lightweight, but it can add up in tight loops.
+        Solution: Pre-compute constant paths or reusable parts of the path.
+        3. Optimize cv2.imwrite:
+        cv2.imwrite is slower because it compresses images before saving.
+        Solution: Use less compression or switch to a faster image format like .bmp if file size isn’t critical.
+        4. Parallelize Save Operations:
+        Writing frames and images can be offloaded to a background thread or separate process to avoid blocking the main execution.
+        """
 
         # annotations can be skipped if videos are not be saved and no animal is in danger
         if output_args["save_videos"] or (danger_exists and cooldown_has_passed):
 
             crono_start = time()
-
+            
+            inter = time()
             annotated_frame = frame.copy()  # copy of the original frame on which to draw
             rgb_mask_frame = np.zeros((frame_height, frame_width, 3), dtype=np.uint8)
+            print(f"\tFrame copy and empty rgb mask generated in {(time()-inter)*1000:.1f} ms")
 
             # draw safety circles
+            inter = time()
             draw_safety_areas(annotated_frame, rgb_mask_frame, boxes_centers, safety_radius_pixels)
+            print(f"\tsafety areas generated in {(time()-inter)*1000:.1f} ms")
 
             # Overlay dangerous areas in red on the annotated frame
+            inter = time()
             annotated_frame = draw_dangerous_area(annotated_frame, rgb_mask_frame, combined_danger_mask, combined_intersections)
             """
             # Overlay dangerous areas in shades of red on the annotated frame, multiask version
             draw_dangerous_area_multimask(annotated_frame, rgb_mask_frame, combined_danger_mask, combined_intersections, shades_of_red)
             """
+            print(f"\tDangerous are drawn in {(time()-inter)*1000:.1f} ms")
 
             # Highlight intersection area in yellow
+            inter = time()
             draw_animal_in_danger_area(rgb_mask_frame, combined_intersections)
             """
             # Highlight intersection area in shades of yellow, multimask version
             draw_animal_in_danger_area_multimask(rgb_mask_frame, combined_intersections, shades_of_yellow)
             """
+            print(f"\tintersection area drawn in {(time()-inter)*1000:.1f} ms")
 
             # draw detection boxes
+            inter = time()
             draw_detections(annotated_frame, rgb_mask_frame, classes, boxes_corner1, boxes_corner2)
+            print(f"\tFrame copy and empty rgb mask generated in {(time()-inter)*1000:.1f} ms")
 
             # draw animal count
+            inter = time()
             draw_count(classes, annotated_frame, frame_height)
+            print(f"\tAnimal Count drawn in {(time()-inter)*1000:.1f} ms")
 
+            inter = time()
             if output_args["save_videos"]:  # if the annotation code has been entered because saving the videos ...
                 # save the annotated rgb mask and annotated frame
                 mask_writer.write(rgb_mask_frame)
                 annotated_writer.write(annotated_frame)
-
             if danger_exists:  # if annotation code has been entered because an animal is in danger after cooldown ...
                 mask_img_path = Path(output_dir, f"danger_frame_{true_frame_id}_mask.png")
                 annotated_img_path = Path(output_dir, f"danger_frame_{true_frame_id}_annotated.png")
                 cv2.imwrite(mask_img_path, rgb_mask_frame)
                 cv2.imwrite(annotated_img_path, annotated_frame)
+            print(f"\tFrame saving completed in {(time()-inter)*1000:.1f} ms")
 
-            print(f"Video annotations completed in {time() - crono_start} seconds")
+
+            print(f"Video annotations completed in {(time() - crono_start)*1000:.1f} ms")
 
         iteration_time = time() - crono_iter_start
-        print(f"Iteration completed in {iteration_time} seconds. Equivalent fps = {1/iteration_time:.2f}")
+        print(f"Iteration completed in {iteration_time*1000:.1f} ms. Equivalent fps = {1/iteration_time:.2f}")
 
     """ Processing completed, print stats and release resources"""
 
