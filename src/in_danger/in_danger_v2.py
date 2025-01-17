@@ -167,14 +167,6 @@ def perform_in_danger_analysis(
             frameSize=(frame_width, frame_height)
         )
 
-        mask_video_path = (output_dir / output_args["mask_video_name"]).with_suffix(".mp4")
-        mask_writer = cv2.VideoWriter(
-            filename=mask_video_path,
-            fourcc=cv2.VideoWriter_fourcc(*"mp4v"),
-            fps=fps,
-            frameSize=(frame_width, frame_height)
-        )
-
     print(f"Video Writers loaded in {time()-crono_start:.1f} seconds")
 
     # ============== BEGIN VIDEO PROCESSING ===================================
@@ -326,7 +318,7 @@ def perform_in_danger_analysis(
         ]))
         dm_time = time() - inter
 
-        # create the intersection mask between safety areas and segmentation dangerous areas
+        # create the intersection mask between safety areas and dangerous areas masks
         inter = time()
         intersection_segment = np.logical_and(safety_mask, segment_danger_mask)
         intersection_nodata = np.logical_and(safety_mask, dem_nodata_danger_mask)
@@ -344,18 +336,7 @@ def perform_in_danger_analysis(
         ]))
         inter_time = time() - inter
 
-        """XXX>>>
-        # Check for intersection between safety area and dangerous areas, non-zero intersection indicates overlap
-        danger_exists = np.any(combined_intersections > 0)
-        cooldown_has_passed = (true_frame_id - last_alert_frame) >= alerts_frames_cooldown
-
-        # if overlap exists and cooldown has passed, send alert and update cooldown period
-        if danger_exists and cooldown_has_passed:
-            send_alert(alerts_file, true_frame_id)
-            last_alert_frame = true_frame_id
-        <<<XXX"""
-
-        # if cooldown has passed, check for damngerous overlapping and report them with the appropriate string(s)
+        # if cooldown has passed, check for dangerous overlapping and report them with the appropriate string(s)
         inter = time()
         cooldown_has_passed = (true_frame_id - last_alert_frame) >= alerts_frames_cooldown
         danger_exists = False
@@ -407,36 +388,22 @@ def perform_in_danger_analysis(
             
             inter = time()
             annotated_frame = frame.copy()  # copy of the original frame on which to draw
-            rgb_mask_frame = np.zeros((frame_height, frame_width, 3), dtype=np.uint8)
-            print(f"\tFrame copy and empty rgb mask generated in {(time()-inter)*1000:.1f} ms")
+            print(f"\tFrame copy generated in {(time()-inter)*1000:.1f} ms")
 
             # draw safety circles
             inter = time()
-            draw_safety_areas(annotated_frame, rgb_mask_frame, boxes_centers, safety_radius_pixels)
+            draw_safety_areas(annotated_frame, boxes_centers, safety_radius_pixels)
             print(f"\tsafety areas generated in {(time()-inter)*1000:.1f} ms")
 
             # Overlay dangerous areas in red on the annotated frame
             inter = time()
-            annotated_frame = draw_dangerous_area(annotated_frame, rgb_mask_frame, combined_danger_mask, combined_intersections)
-            """
-            # Overlay dangerous areas in shades of red on the annotated frame, multiask version
-            draw_dangerous_area_multimask(annotated_frame, rgb_mask_frame, combined_danger_mask, combined_intersections, shades_of_red)
-            """
-            print(f"\tDangerous are drawn in {(time()-inter)*1000:.1f} ms")
-
-            # Highlight intersection area in yellow
-            inter = time()
-            draw_animal_in_danger_area(rgb_mask_frame, combined_intersections)
-            """
-            # Highlight intersection area in shades of yellow, multimask version
-            draw_animal_in_danger_area_multimask(rgb_mask_frame, combined_intersections, shades_of_yellow)
-            """
-            print(f"\tintersection area drawn in {(time()-inter)*1000:.1f} ms")
+            draw_dangerous_area(annotated_frame, combined_danger_mask, combined_intersections)
+            print(f"\tDangerous areas AND danger INTERSECTION drawn in {(time()-inter)*1000:.1f} ms")
 
             # draw detection boxes
             inter = time()
-            draw_detections(annotated_frame, rgb_mask_frame, classes, boxes_corner1, boxes_corner2)
-            print(f"\tFrame copy and empty rgb mask generated in {(time()-inter)*1000:.1f} ms")
+            draw_detections(annotated_frame, classes, boxes_corner1, boxes_corner2)
+            print(f"\tDetections drawn in {(time()-inter)*1000:.1f} ms")
 
             # draw animal count
             inter = time()
@@ -446,12 +413,9 @@ def perform_in_danger_analysis(
             inter = time()
             if output_args["save_videos"]:  # if the annotation code has been entered because saving the videos ...
                 # save the annotated rgb mask and annotated frame
-                mask_writer.write(rgb_mask_frame)
                 annotated_writer.write(annotated_frame)
             if danger_exists:  # if annotation code has been entered because an animal is in danger after cooldown ...
-                mask_img_path = Path(output_dir, f"danger_frame_{true_frame_id}_mask.png")
                 annotated_img_path = Path(output_dir, f"danger_frame_{true_frame_id}_annotated.png")
-                cv2.imwrite(mask_img_path, rgb_mask_frame)
                 cv2.imwrite(annotated_img_path, annotated_frame)
             print(f"\tFrame saving completed in {(time()-inter)*1000:.1f} ms")
 
@@ -479,8 +443,6 @@ def perform_in_danger_analysis(
 
     if annotated_writer is not None:
         annotated_writer.release()
-    if mask_writer is not None:
-        mask_writer.release()
 
     print(f"Videos and alerts log have been saved at {output_dir}")
 

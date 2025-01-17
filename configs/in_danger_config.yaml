@@ -71,9 +71,6 @@ output:
   # str: Name of the video showing the annotated original data (with/without sheep count and tracks)
   annotated_video_name: 'in_danger_annotated'
 
-  # str: Name of the video showing the in-danger mask
-  mask_video_name: 'in_danger_masks'
-
   # bool: show sheep count on the annotated video
   draw_count: true
 

@@ -705,7 +705,6 @@ def create_safety_mask(frame_height, frame_width, boxes_centers, safety_radius):
 
 def draw_safety_areas(
         annotated_frame,
-        rgb_mask_frame,
         boxes_centers,
         safety_radius,
 ):
@@ -713,70 +712,27 @@ def draw_safety_areas(
     for box_center in boxes_centers:
         # Draw safety circle on annotated frame (green)
         cv2.circle(annotated_frame, box_center, safety_radius, GREEN, 2)
-        # Draw safety circle on rgb mask around bounding box (green - fill)
-        cv2.circle(rgb_mask_frame, box_center, safety_radius, GREEN, cv2.FILLED)
 
 
 def draw_dangerous_area(
         annotated_frame,
-        rgb_mask_frame,
         dangerous_mask,
         intersection
 ):
-    alpha = 0.5
     red_overlay = np.zeros_like(annotated_frame)
+
     red_overlay[dangerous_mask == 1] = RED  # Red color channel only
-    annotated_frame = cv2.addWeighted(red_overlay, alpha, annotated_frame, 1 - alpha, 0, annotated_frame)
+    # red_overlay[dangerous_mask.astype(bool)] = RED  # Red color channel only
 
-    # Dangerous areas in red on mask frame
-    rgb_mask_frame[np.where((dangerous_mask - intersection) > 0)] = RED
+    annotated_frame = cv2.addWeighted(red_overlay, 0.5, annotated_frame, 0.5, 0, annotated_frame)
 
-    return annotated_frame
-
-
-def draw_dangerous_area_multimask(
-        annotated_frame,
-        rgb_mask_frame,
-        dangerous_masks,
-        intersections,
-        colors
-):
-    alpha = 0.5
-
-    # Initialize the red overlay as a zero array of the same shape as annotated_frame
-    danger_overlay = np.zeros_like(annotated_frame)
-
-    # Vectorized alpha blending of dangerous masks onto the annotated_frame
-    for i in range(dangerous_masks.shape[0]):
-        dangerous_mask = dangerous_masks[i]
-        intersection = intersections[i]
-        color = colors[i]
-
-        # Create overlay for the dangerous areas using broadcasting
-        danger_overlay[dangerous_mask == 1] = color  # Assign the color for each mask
-
-        # Perform alpha blending for each mask
-        annotated_frame = (1 - alpha) * annotated_frame + alpha * danger_overlay
-
-        # Update the rgb_mask_frame in a vectorized way
-        # Where the condition (dangerous_mask - intersection) > 0, update the frame with the color
-        rgb_mask_frame[(dangerous_mask - intersection) > 0] = color
-
-    return annotated_frame
-
-
-def draw_animal_in_danger_area(rgb_mask_frame, intersection):
-    rgb_mask_frame[np.where(intersection > 0)] = YELLOW
-
-
-def draw_animal_in_danger_area_multimask(rgb_mask_frame, intersections, colors):
-    for i in range(intersections.shape[0]):
-        rgb_mask_frame[np.where(intersections[i] > 0)] = colors[i]
+    # Dangerous intersection areas in YELLOW on mask frame
+    annotated_frame[np.where((dangerous_mask - intersection) > 0)] = YELLOW
+    # annotated_frame[intersection.astype(bool)] = YELLOW
 
 
 def draw_detections(
         annotated_frame,
-        rgb_mask_frame,
         classes,
         boxes_corner1,
         boxes_corner2,
@@ -785,8 +741,6 @@ def draw_detections(
     for obj_class, box_corner1, box_corner2 in zip(classes, boxes_corner1, boxes_corner2):
         # Draw bounding box on annotated frame (blue sheep, purple goat), on top of safety circles
         cv2.rectangle(annotated_frame, box_corner1, box_corner2, CLASS_COLOR[obj_class], 2)
-        # Draw bounding box on rgb mask frame (fill / blue sheep, purple goat), on top of the safety circles
-        cv2.rectangle(rgb_mask_frame, box_corner1, box_corner2, CLASS_COLOR[obj_class], cv2.FILLED)
 
 
 def draw_count(
