@@ -1,0 +1,87 @@
+input:
+
+  # str: Data source (a video) for in-danger analysis.
+  source: 'data/MAICH_v1/DJI_20241024104935_0008_D.MP4'
+
+  # int : Video height for in-danger analysis. If null, use original data height
+  # Range: Any positive integer.
+  height: null
+
+  # int : Video width for in-danger analysis. If null, use original data width
+  # Range: Any positive integer.
+  width: null
+
+  # int: Frame stride for video inputs.
+  # Allows skipping frames to speed up inference. Higher values skip more frames.
+  # Range: Any positive integer.
+  vid_stride: 1
+
+######################################################################################################################
+
+output:
+
+  # str: Name of the directory where the results of the analysis will be saved
+  output_dir: 'experiments/test_health_monitoring'
+
+  # str: Whether to save processed videos of not
+  save_videos: true
+
+  # str: Name of the files on which alerts will be saved
+  alert_file_name: 'alerts'
+
+  # int: Minimum number of seconds between alerts
+  alerts_cooldown_seconds: 1
+
+  # str: Name of the video showing the annotated original data (with/without sheep count and tracks)
+  annotated_video_name: 'in_danger_annotated'
+
+######################################################################################################################
+
+tracking:
+
+  # str: Path to the detection model checkpoint file (required).
+  # Specifies the .pt file for the model to be used during tracking.
+  model_checkpoint: 'experiments/for_maich/weights/best.pt'
+
+  # float: Confidence threshold for detection filtering.
+  # Detections with a confidence score below this value will be discarded.
+  # Range: 0.0 to 1.0
+  conf: 0.3
+
+  # float: IoU threshold for detection Non-Maximum Suppression (NMS).
+  # Helps reduce duplicate detections by suppressing overlapping boxes.
+  # Range: 0.0 to 1.0
+  iou: 0.7
+
+  # bool: Enable half-precision (FP16) inference.
+  # Can increase inference speed on supported GPUs with minimal accuracy loss.
+  half: false
+
+  # str: Device for processing (e.g., cpu, cuda:0).
+  # Specifies whether to use CPU or a particular GPU for inference.
+  device: 3
+
+  # int: Maximum number of detections per image.
+  # Limits the total number of objects that can be detected in a single image.
+  # Range: Any positive integer.
+  max_det: 300
+
+  # list[int]: Filter detections by specific class IDs for the detector model.
+  # Only predictions belonging to the specified class IDs will be returned.
+  classes: null
+
+  # bool: Enable test-time augmentation (TTA) during tracking.
+  # Improves detection robustness by augmenting inputs, at the cost of slower inference.
+  augment: false
+
+  # bool: Enable class-agnostic Non-Maximum Suppression (NMS).
+  # Treats all classes equally during NMS, merging overlapping boxes regardless of class.
+  agnostic_nms: false
+
+######################################################################################################################
+
+anomaly_detection:
+
+  # str: Path to the anomaly detection model file (required).
+  # Specifies the .pt file for the model to be used for anomaly detection
+  model_path: ''

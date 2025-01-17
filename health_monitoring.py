@@ -23,8 +23,8 @@ def main():
     perform_health_monitoring_analysis(
         input_args=health_monitoring_args["input"],
         output_args=health_monitoring_args["output"],
-        detection_args=health_monitoring_args["detection"],
-        anomaly_args=health_monitoring_args["anomaly"],
+        detection_args=health_monitoring_args["tracking"],
+        anomaly_args=health_monitoring_args["anomaly_detection"],
     )
 
 

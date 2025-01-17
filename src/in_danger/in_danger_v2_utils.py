@@ -17,8 +17,6 @@ import matplotlib.pyplot as plt
 from ultralytics import YOLO
 from rasterio.crs import CRS
 
-# from skimage import transform as skt
-
 
 RED = (255, 0, 0)
 GREEN = (0, 255, 0)
@@ -28,22 +26,6 @@ WHITE = (255, 255, 255)
 BLACK = (255, 0, 0)
 PURPLE = (128, 0, 128)
 CLASS_COLOR = [BLUE, PURPLE]
-
-shades_of_red = [
-    (255, 0, 0),  # Bright Red
-    (139, 0, 0),  # Dark Red
-    (255, 102, 102),  # Light Red
-    (220, 20, 60),  # Crimson Red
-    (205, 92, 92)  # Indian Red
-]
-
-shades_of_yellow = [
-    (255, 255, 0),  # Bright Yellow (similar to Bright Red)
-    (204, 204, 0),  # Dark Yellow (similar to Dark Red)
-    (255, 255, 102),  # Light Yellow (similar to Light Red)
-    (255, 215, 0),  # Golden Yellow (similar to Crimson Red)
-    (255, 160, 0)  # Amber Yellow (similar to Indian Red)
-]
 
 
 def plot_2d_array(array, png_path, title="2D Array Plot", cmap="viridis", colorbar=True):
@@ -689,7 +671,7 @@ def upscale_array_to_image_size(array, target_height, target_width):
 
 def send_alert(alerts_file, frame_id: int, danger_type:str="Generic"):
     # Write alert to file
-    alerts_file.write(f"Alert: True Frame {frame_id} - Animal(s) near or in dangerous area.  Danger type: {danger_type}.\n")
+    alerts_file.write(f"Alert: Frame {frame_id} - Animal(s) near or in dangerous area.  Danger type: {danger_type}.\n")
 
 
 def create_safety_mask(frame_height, frame_width, boxes_centers, safety_radius):
