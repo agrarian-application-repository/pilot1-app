@@ -10,6 +10,9 @@ from shapely.geometry import Polygon, box
 from rasterio.features import rasterize
 from rasterio.warp import calculate_default_transform, reproject, Resampling
 from rasterio.mask import mask as rasterio_mask
+from rasterio.transform import rowcol
+from rasterio.transform import Affine, from_origin
+from rasterio.windows import bounds
 
 import cv2
 import numpy as np
@@ -17,14 +20,18 @@ import matplotlib.pyplot as plt
 from ultralytics import YOLO
 from rasterio.crs import CRS
 
+import geopy
+from geopy.distance import geodesic
 
-RED = (255, 0, 0)
+
+RED = (0, 0, 255)
 GREEN = (0, 255, 0)
-BLUE = (0, 0, 255)
-YELLOW = (255, 255, 0)
+BLUE = (255, 0, 0)
+YELLOW = (0, 255, 255)
 WHITE = (255, 255, 255)
-BLACK = (255, 0, 0)
+BLACK = (0, 0, 0)
 PURPLE = (128, 0, 128)
+
 CLASS_COLOR = [BLUE, PURPLE]
 
 
@@ -59,12 +66,13 @@ def plot_histogram(data, png_path, bins=100, title="Histogram", xlabel="Value", 
     Plot a histogram from a NumPy array.
 
     Parameters:
-        data (numpy array): The input data for the histogram.
+        :param data (numpy array): The input data for the histogram.
         bins (int): Number of bins for the histogram. Default is 30.
         title (str): Title of the histogram. Default is "Histogram".
         xlabel (str): Label for the x-axis. Default is "Value".
         ylabel (str): Label for the y-axis. Default is "Frequency".
         color (str): Color of the histogram bars. Default is 'blue'.
+        :param png_path:
     """
     plt.figure(figsize=(10, 6))
     plt.hist(data.ravel(), bins=bins, color=color, edgecolor='black')
@@ -140,7 +148,11 @@ def create_dangerous_slope_mask(tif, array, angle_threshold, output_dir, plot=Fa
     )
 
     # create slope map using meter-converted dem
-    dangerous_slope_mask_epsg32633 = create_slope_mask_epsg32633(reprojected_array, reprojected_transform, angle_threshold)
+    dangerous_slope_mask_epsg32633, pixel_size_y_m, pixel_size_x_m = create_slope_mask_epsg32633(
+        dem_data=reprojected_array,
+        transform=reprojected_transform,
+        angle_threshold=angle_threshold
+    )
 
     # convert DEM array back into WSG84 reference system
     dangerous_slope_mask, _ = reproject_array(
@@ -163,7 +175,7 @@ def create_dangerous_slope_mask(tif, array, angle_threshold, output_dir, plot=Fa
         plot_2d_array(dangerous_slope_mask, output_dir/"slope_mask.png", title="slope DEM mask")
         plot_histogram(dangerous_slope_mask, output_dir/"hist_slope_mask.png", title="slope DEM histogram")
 
-    return dangerous_slope_mask
+    return dangerous_slope_mask, pixel_size_y_m, pixel_size_x_m
 
 
 def reproject_array(
@@ -227,58 +239,18 @@ def reproject_array(
     reprojected_data = np.empty((dst_height, dst_width), dtype=src_dtype)
 
     # Perform the reprojection
-    reproject(
-        source=src_array,  # Reprojecting the first band
-        destination=reprojected_data,
-        src_transform=src_transform,
-        src_crs=src_crs,
-        dst_transform=dst_transform,
-        dst_crs=dst_crs,
-        resampling=resampling
-    )
+    with rasterio.Env():
+        reproject(
+            source=src_array,  # Reprojecting the first band
+            destination=reprojected_data,
+            src_transform=src_transform,
+            src_crs=src_crs,
+            dst_transform=dst_transform,
+            dst_crs=dst_crs,
+            resampling=resampling
+        )
 
     return reprojected_data, dst_transform
-
-
-def create_slope_mask_wsg84(dem_data, bounds, transform, angle_threshold):
-    """
-    Create a mask where the terrain inclination exceeds a certain slope angle.
-
-    Parameters:
-        dem_data (numpy array): 3D array (1,H,W) of elevation values.
-        transform (Affine): Affine transformation of the DEM.
-        angle_threshold (float): Slope angle threshold in degrees.
-
-    Returns:
-        numpy array: Mask with 1 where the slope exceeds the angle, 0 otherwise.
-    """
-    # Calculate pixel size (resolution) in meters
-    pixel_size_x_deg = transform[0]  # Cell width (in degrees)
-    pixel_size_y_deg = -transform[4]  # Cell height (in degrees, negative because of affine conventions)
-
-    # Get the center latitude of the raster
-    center_lat = (bounds[1] + bounds[3]) / 2  # Average of top and bottom latitude
-
-    # Convert pixel size from degrees to meters
-    pixel_size_x_m = pixel_size_x_deg * 111320 * math.cos(math.radians(center_lat))
-    pixel_size_y_m = pixel_size_y_deg * 111320
-
-    print(f"DEM pixel size resolution on x: {pixel_size_x_m}m")
-    print(f"DEM pixel size resolution on y: {pixel_size_y_m}m")
-
-    # Compute gradients (dz/dx and dz/dy)
-    dz_dy, dz_dx = np.gradient(dem_data, pixel_size_y_m, pixel_size_x_m)
-
-    # Compute slope in radians
-    slope_radians = np.arctan(np.sqrt(dz_dx ** 2 + dz_dy ** 2))
-
-    # Convert slope to degrees
-    slope_degrees = np.degrees(slope_radians)
-
-    # Create mask where slope exceeds threshold
-    mask = (slope_degrees > angle_threshold).astype(np.uint8)
-
-    return mask
 
 
 def create_slope_mask_epsg32633(dem_data, transform, angle_threshold):
@@ -312,7 +284,7 @@ def create_slope_mask_epsg32633(dem_data, transform, angle_threshold):
     # Create mask where slope exceeds threshold
     mask = (slope_degrees > angle_threshold).astype(np.uint8)
 
-    return mask
+    return mask, pixel_size_y_m, pixel_size_x_m
 
 
 # TODO check and bugfixing
@@ -342,18 +314,6 @@ def create_polygon_mask(tif, lon_lat_tuples_list, crop):
         mask = np.ones((tif.height, tif.width), dtype=np.uint8)
 
     return mask
-
-"""
-def extract_image_from_tif(tif, lon_lat_tuples_list, crop):
-    # Convert the list of lat-lon tuples into a Shapely Polygon
-    polygon = Polygon(lon_lat_tuples_list)
-
-    try:
-        # from the tif, all pixels outside the polygon are set to np.nan
-        masked_array, masked_tif_transform = rasterio_mask(tif, [polygon], nodata=np.nan, crop=crop)
-        # create a mask by setting the value to 1 where the tif array is nan, leaving zeros inside the polygon
-        mask = np.isnan(masked_array[0]).astype(np.uint8)
-"""
 
 
 def terminate_if_no_valid_pixels(array):
@@ -430,28 +390,6 @@ def _convert_value(value):
             # Keep as string if it can't be converted
             return value
 
-"""
-def parse_drone_frame(file, frame_id):
-    lines = file.readlines()
-
-    current_frame = None
-
-    for i, line in enumerate(lines):
-        line = line.strip()
-        # Check if the line is a frame number
-        if line.isdigit():
-            current_frame = int(line)
-
-        # When the current frame matches the desired frame_id
-        if current_frame == frame_id:
-            # The useful line is 4 lines after the frame number
-            useful_line = lines[i + 4].strip()
-            return parse_line_to_dict(useful_line)
-
-    # If no matching frame or data found
-    raise ValueError(f"Frame ID {frame_id} or flight data not found.")
-"""
-
 
 def parse_drone_frame(file, frame_id):
     # Read all lines from the file
@@ -493,7 +431,7 @@ def get_meters_per_pixel(
 
     Parameters:
     - rel_altitude_m: The altitude of the drone in meters.
-    - focal_length_mm: The focal length of the camera in millimeters.
+    - focal_length_mm: The true focal length of the camera in millimeters.
     - sensor_width_mm: The width of the camera sensor in millimeters.
     - sensor_height_mm: The height of the camera sensor in millimeters.
     - sensor_width_pixels: The sensor width in pixels (original sensor resolution).
@@ -502,8 +440,7 @@ def get_meters_per_pixel(
     - image_height_pixels: The output image height in pixels (final image resolution).
 
     Returns:
-    - ground_resolution_x: Ground resolution in pixels per meter along the x-axis (horizontal).
-    - ground_resolution_y: Ground resolution in pixels per meter along the y-axis (vertical).
+    - ground_resolution: Ground resolution in meters per pixels.
     """
 
     # Calculate ground resolution (in meters/pixel) for both axes using the full sensor resolution
@@ -511,12 +448,10 @@ def get_meters_per_pixel(
     # -------------- *  ------------
     #  millimeters        pixels
 
-    # TODO ASSERT sensor_width_mm/sensor_height_mm == sensor_width_pixels/sensor_height_pixels
-
     ground_resolution = (rel_altitude_m / focal_length_mm) * (sensor_width_mm / sensor_width_pixels)
 
     # 4:3 is more square than 16:9
-    # while the mapping from 5184 to 1920 still covers the whole sensor,
+    # while the mapping from 5280 to 1920 still covers the whole sensor,
     # applying the same scaling factor to the height results in a picture longer than 1080 vertically (1440).
     # The excess pixels are cut off, but the pixels to meters relationship for height remains that of 1440
     # therefore the scaling factor is the same as for the width
@@ -530,7 +465,6 @@ def get_meters_per_pixel(
     return ground_resolution
 
 
-# TODO check and bugfixing
 def get_objects_coordinates(
         objects_coords,
         center_lat,
@@ -540,15 +474,6 @@ def get_objects_coordinates(
         meters_per_pixel,
         angle_wrt_north
 ):
-    """
-    Calculate the coordinates of the four corners of a rectangle.
-
-    Parameters:
-        ...
-
-    Returns:
-        list of tuple: Coordinates of the four corners in (lon, lat).
-    """
 
     # objects_coords must be a (N,2) numpy array
     assert isinstance(objects_coords, np.ndarray) \
@@ -556,39 +481,97 @@ def get_objects_coordinates(
            and objects_coords.shape[1] == 2
 
     # get the (x,y) position of the center of the frame
-    center_point_pixel_x = frame_width_pixels / 2
-    center_point_pixel_y = frame_height_pixels / 2
+    center_point_pixel_x = (frame_width_pixels - 1) / 2
+    center_point_pixel_y = ((frame_height_pixels - 1) / 2) * (-1)
 
-    # Convert center point lat/long to radians
-    center_lat_rad = math.radians(center_lat)
-    center_lon_rad = math.radians(center_lon)
-    theta_rad = math.radians(angle_wrt_north)
+    print("center_point: ", (center_point_pixel_x, center_point_pixel_y))
+    print("others: ", objects_coords)
 
-    # Earth radius in meters
-    earth_radius_m = 6378137
+    center_point_coords = geopy.Point(latitude=center_lat, longitude=center_lon)
+    print("geo Center: ", center_point_coords)
 
-    # Precompute corner angles relative to the center
+    # Precompute distances of points from the center of the frame
+    distances_y_m = (((-1) * objects_coords[:, 1]) - center_point_pixel_y) * meters_per_pixel  # Shape (N,)
     distances_x_m = (objects_coords[:, 0] - center_point_pixel_x) * meters_per_pixel  # Shape (N,)
-    distances_y_m = (objects_coords[:, 1] - center_point_pixel_y) * meters_per_pixel  # Shape (N,)
-
-    # Compute total Euclidean distances
     distances_m = np.sqrt(distances_x_m ** 2 + distances_y_m ** 2)  # Shape (N,)
+    print("distances: ", distances_m)
 
-    # Compute angles in radians using atan2
-    angles = np.atan2(distances_y_m, distances_x_m) + theta_rad  # Shape (N,)
+    base_angles = np.degrees(np.atan2(distances_y_m, distances_x_m))
+    print("base_angles: ", base_angles)
+    print(angle_wrt_north)
+    angles = (base_angles - angle_wrt_north)
+    print("angles: ", angles)
+    bearings = np.mod(90 - angles, 360)
+    print("bearings: ", bearings)
 
-    # Latitude change in radians
-    dlats = (distances_m / earth_radius_m) * np.cos(angles)
-    # Longitude change in radians
-    dlons = (distances_m / (earth_radius_m * math.cos(center_lat_rad))) * np.sin(angles)
+    # compute target point coordinates by creating a circle of a certain radius around the start point
+    # and identify the target point based on the bearing angle
+    print("corners coordinates")
+    final_coords = []
+    for distance_m, bearing in zip(distances_m, bearings):
+        destination = geopy.distance.geodesic(kilometers=distance_m/1000).destination(center_point_coords, bearing)
+        final_coords.append([destination.longitude, destination.latitude])
+        print(destination.latitude, destination.longitude)
 
-    # Convert back to degrees
-    corners_lats = np.degrees(dlats + center_lat_rad)
-    corners_longs = np.degrees(dlons + center_lon_rad)
+    return np.array(final_coords)
 
-    corners = np.stack((corners_longs, corners_lats), axis=-1)
 
-    return corners
+def extract_masks_window(raster_dataset, center_lonlat, rectangle_lonlat):
+    """
+    Extracts a square window from a raster that fully encompasses a rotated rectangle.
+
+    Args:
+        raster_dataset (rasterio.DatasetReader): Opened raster dataset.
+        center_lonlat (tuple): (longitude, latitude) of the center point.
+        rectangle_lonlat (numpy.ndarray): (4,2) array of (longitude, latitude) rectangle corners.
+
+    Returns:
+        window_array (numpy.ndarray): Extracted raster window as a NumPy array.
+        window_transform (Affine): Georeferencing transform of the extracted window.
+    """
+    # --- Step 1: Convert center point to pixel coordinates ---
+    transform = raster_dataset.transform
+    center_y, center_x = rowcol(transform=transform, xs=center_lonlat[0], ys=center_lonlat[1])
+
+    # --- Step 2: Convert rectangle corners to pixel coordinates ---
+    pixel_coords_yx = np.array([rowcol(transform=transform, xs=lon, ys=lat) for lon, lat in rectangle_lonlat])
+
+    # Compute the maximum pixel distance from the center
+    pixel_dists = np.linalg.norm(pixel_coords_yx - np.array([center_y, center_x]), axis=1)
+    max_dist = int(np.max(pixel_dists))  # Maximum pixel distance
+
+    # --- Step 3: Compute square window size (odd number with buffer) ---
+    buffer = int(np.ceil(max_dist * 0.5))  # Extra space for rotation
+    half_size = max_dist + buffer
+    window_size = 2 * half_size + 1  # Ensure window is odd
+
+    # --- Step 4: Define the window in pixel coordinates ---
+    window_row_start = center_y - half_size
+    window_col_start = center_x - half_size
+
+    # --- Step 5: Extract the window from the raster ---
+    window = rasterio.windows.Window(col_off=window_col_start, row_off=window_row_start, width=window_size, height=window_size)
+    window_transform = raster_dataset.window_transform(window)
+
+    # Read the window from the raster
+    window_array = raster_dataset.read(window=window)
+
+    # get the bounds of the window
+    window_bounds = bounds(window, raster_dataset.transform)    # TODO original or window transform
+
+    return window_array, window_transform, window_bounds, window_size
+
+
+def get_window_size_m(reference_lat, window_bounds):
+    (min_lon, min_lat, max_lon, max_lat) = window_bounds
+    assert min_lat < reference_lat < max_lat
+
+    # points in form (lat,long)
+    point1 = (reference_lat, min_lon)
+    point2 = (reference_lat, max_lon)
+    distance_m = geodesic(point1, point2).meters
+
+    return distance_m
 
 
 def create_runtime_geofencing_mask(min_long, min_lat, max_long, max_lat, polygon, resolution_x, resolution_y):
@@ -648,8 +631,72 @@ def is_polygon_within_bounds(bounds, polygon):
     return is_inside
 
 
+def map_window_onto_drone_frame(
+    window,
+    window_transform,
+    window_crs,
+    center_coords,
+    corners_coords,
+    angle_wrt_north,
+    frame_width,
+    frame_height,
+    window_size_pixels,
+    window_size_m,
+    frame_pixel_size_m,
+):
+
+    center_lon = center_coords[0]
+    center_lat = center_coords[1]
+    new_upper_left_lon = corners_coords[0, 0]
+    new_upper_left_lat = corners_coords[0, 1]
+
+    # divide the lenght of the window by the meters/pixels in the frame to get how many frame pixels the window would be
+    # then divide the number frame-equivalent window pixels by the actual number of pixels in the window
+    # to get the upscaling factor
+    scaling_ratio = (window_size_m / frame_pixel_size_m) / window_size_pixels
+
+    # --- 1. SCALE: Adjust pixel size to match target frame ---
+    scaling = Affine.scale(scaling_ratio)
+
+    # --- 2. TRANSLATE: Move rotation center point (the drone position) to (0,0) = upper left corner ---
+    to_origin = Affine.translation(-center_lon, -center_lat)
+
+    # --- 3. ROTATE: Apply rotation around the upper left corner ---
+    rotation = Affine.rotation(angle_wrt_north)
+
+    # rotation_angle = math.radians(angle_wrt_north)
+    # cos_theta = math.cos(rotation_angle)
+    # sin_theta = math.sin(rotation_angle)
+    # rotation = Affine(
+    #    cos_theta, -sin_theta, 0,
+    #    sin_theta, cos_theta, 0
+    # )
+
+    # --- 4. TRANSLATE so that the upper left corner of the frame is the new (0,0) ---
+    to_upper_left = Affine.translation(new_upper_left_lon, new_upper_left_lat)
+
+    # Final combined transform: 4 <- 3 <- 2 <- 1
+    rotated_rescaled_transform = to_upper_left * rotation * to_origin * scaling
+
+    reprojected_mask = np.zeros((window.shape[0], frame_height, frame_width), dtype=np.uint8)
+    with rasterio.Env():
+        reproject(
+            source=window,
+            destination=reprojected_mask,
+            src_transform=window_transform,
+            src_crs=window_crs,
+            dst_transform=rotated_rescaled_transform,
+            dst_crs=window_crs,  # Assume the drone uses the same CRS as the binary mask (?)
+            resampling=Resampling.nearest
+        )
+
+    return reprojected_mask
+
+
+"""
 def clip_array_into_rectangle_no_nodata(array, nodata):
-    """Clip the rotated array into the bounding box of the valid (non-NaN) values."""
+    # Clip the rotated array into the bounding box of the valid (non-NaN) values.
+    
     # Find indices of non-NaN values
     valid_rows = np.any(array != nodata, axis=1)
     valid_cols = np.any(array != nodata, axis=0)
@@ -667,9 +714,10 @@ def upscale_array_to_image_size(array, target_height, target_width):
     resized_array_hcw = cv2.resize(array_hwc, (target_width, target_height), interpolation=cv2.INTER_NEAREST)
     resized_chw = np.transpose(resized_array_hcw, (2, 0, 1))
     return resized_chw
+"""
 
 
-def send_alert(alerts_file, frame_id: int, danger_type:str="Generic"):
+def send_alert(alerts_file, frame_id: int, danger_type: str = "Generic"):
     # Write alert to file
     alerts_file.write(f"Alert: Frame {frame_id} - Animal(s) near or in dangerous area.  Danger type: {danger_type}.\n")
 
@@ -698,19 +746,20 @@ def draw_safety_areas(
 
 def draw_dangerous_area(
         annotated_frame,
-        dangerous_mask,
+        dangerous_mask_no_intersersection,
         intersection
 ):
     red_overlay = np.zeros_like(annotated_frame)
+    yellow_overlay = np.zeros_like(annotated_frame)
 
-    red_overlay[dangerous_mask == 1] = RED  # Red color channel only
-    # red_overlay[dangerous_mask.astype(bool)] = RED  # Red color channel only
+    #red_overlay[dangerous_mask_no_intersersection == 1] = RED  # Red color channel only
+    #yellow_overlay[intersection == 1] = YELLOW  # Red color channel only
 
-    annotated_frame = cv2.addWeighted(red_overlay, 0.5, annotated_frame, 0.5, 0, annotated_frame)
+    red_overlay[dangerous_mask_no_intersersection.astype(bool)] = RED  # Red color channel only
+    yellow_overlay[intersection.astype(bool)] = YELLOW  # YELLOW color channel only
 
-    # Dangerous intersection areas in YELLOW on mask frame
-    annotated_frame[np.where((dangerous_mask - intersection) > 0)] = YELLOW
-    # annotated_frame[intersection.astype(bool)] = YELLOW
+    cv2.addWeighted(red_overlay, 0.25, annotated_frame, 0.75, 0, annotated_frame)
+    cv2.addWeighted(yellow_overlay, 0.25, annotated_frame, 0.75, 0, annotated_frame)
 
 
 def draw_detections(
@@ -728,44 +777,62 @@ def draw_detections(
 def draw_count(
         classes,
         annotated_frame,
-        frame_height,
 ):
-    # Overlay the count text on the annotated frame
-    font_face = cv2.FONT_HERSHEY_SIMPLEX
-    font_scale = 0.5
-    text_color = BLACK
-    fill_color = WHITE
-    thickness = 1
-    line_type = cv2.LINE_AA
-    org = (10, frame_height - 10)  # text position in image
 
+    frame_height = annotated_frame.shape[0]
+
+    # Dynamically scale font size and thickness based on frame height
+    font_face = cv2.FONT_HERSHEY_SIMPLEX
+    base_font_scale = 0.001 * frame_height  # Scale with frame height
+    base_thickness = max(1, int(0.002 * frame_height))  # Ensure thickness is at least 1
+    text_color = (0, 0, 0)  # BLACK
+    fill_color = (255, 255, 255)  # WHITE
+    line_type = cv2.LINE_AA
+    org = (10, frame_height - 10)  # Initial position of the bottom-left corner of the text
+
+    # Count classes
     num_classes = classes.max() + 1
     class_counts = np.zeros(num_classes, dtype=np.int32)
     class_counts[: len(np.bincount(classes))] = np.bincount(classes)
 
-    text = ""
-    for idx, count in enumerate(class_counts):
-        text = f"N. Detected class {idx}: {count}\n"
+    # Generate text lines
+    lines = [f"N. Detected class {idx}: {count}" for idx, count in enumerate(class_counts)]
 
-    (text_width, text_height), _ = cv2.getTextSize(
-        text=text,
-        fontFace=font_face,
-        fontScale=font_scale,
-        thickness=thickness
-    )
-    textbox_coord_ul = (org[0] - 5, org[1] - text_height - 5)
-    textbox_coord_br = (org[0] + text_width + 5, org[1] + 5)
+    # Measure text dimensions for all lines
+    max_line_width = 0
+    total_height = 0
+    line_height = 0
+    for line in lines:
+        (line_width, line_height), _ = cv2.getTextSize(
+            text=line,
+            fontFace=font_face,
+            fontScale=base_font_scale,
+            thickness=base_thickness,
+        )
+        max_line_width = max(max_line_width, line_width)
+        total_height += line_height + 5  # Add a little spacing between lines
+
+    # Adjust text box coordinates (expand upward for all lines)
+    textbox_coord_ul = (org[0] - 5, org[1] - total_height - 5)  # Expand upward
+    textbox_coord_br = (org[0] + max_line_width + 5, org[1] + 5)
 
     # Draw white rectangle as background
     cv2.rectangle(annotated_frame, textbox_coord_ul, textbox_coord_br, fill_color, cv2.FILLED)
 
-    cv2.putText(
-        img=annotated_frame,
-        text=text,
-        org=org,
-        fontFace=font_face,
-        fontScale=font_scale,
-        color=text_color,
-        thickness=thickness,
-        lineType=line_type,
-    )
+    # Draw each line of text inside the box
+    y_offset = org[1] - total_height + line_height  # Start at the top line
+    for line in lines:
+        cv2.putText(
+            img=annotated_frame,
+            text=line,
+            org=(org[0], y_offset),
+            fontFace=font_face,
+            fontScale=base_font_scale,
+            color=text_color,
+            thickness=base_thickness,
+            lineType=line_type,
+        )
+        y_offset += line_height + 5  # Move down to the next line
+
+    return annotated_frame
+

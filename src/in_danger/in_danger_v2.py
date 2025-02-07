@@ -24,7 +24,7 @@ def perform_in_danger_analysis(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # ============== LOAD AND PREPROCESS DEM ===================================
-    plot_dem_preprocessing = True
+    plot_dem_preprocessing = False
 
     crono_start = time()
 
@@ -57,7 +57,7 @@ def perform_in_danger_analysis(
     terminate_if_no_valid_pixels(merge_3d_mask(aggregated_dem_masks))
 
     # Create a mask highlighting the areas where the slope angle is above a given threshold
-    dangerous_slope_mask = create_dangerous_slope_mask(
+    dangerous_slope_mask, dem_pixel_size_y_m, dem_pixel_size_x_m = create_dangerous_slope_mask(
         tif=dem_tif,
         array=dem_np,
         angle_threshold=input_args["slope_angle_threshold"],
@@ -86,9 +86,9 @@ def perform_in_danger_analysis(
             crs=dem_tif.crs,
             transform=dem_tif.transform,
     ) as dst:
-        dst.write(aggregated_dem_masks[0], 1)  # Write DEM nodata mask to band 1
-        dst.write(aggregated_dem_masks[1], 2)  # Write DEM geofencing mask to band 2
-        dst.write(aggregated_dem_masks[2], 3)  # Write DEM slope mask to band 3
+        dst.write(nodata_dem_mask, 1)  # Write DEM nodata mask to band 1
+        dst.write(geofencing_mask, 2)  # Write DEM geofencing mask to band 2
+        dst.write(dangerous_slope_mask, 3)  # Write DEM slope mask to band 3
 
     # Close previously opened tifs
     dem_tif.close()
@@ -130,12 +130,12 @@ def perform_in_danger_analysis(
     # avoids unreasonable video strides
     input_args["vid_stride"] = max(1, min(input_args["vid_stride"], total_frames))
 
-    # set the row/col identifier of the frame corners
+    # set the row/col identifier of the frame corners (x,y)
     frame_corners = np.array([
-        [0                  , 0               ],    # upper left (0,0)
-        [0                  , frame_width - 1 ],    # upper right (0, C-1)
-        [frame_height - 1   , 0               ],    # lower left (R-1, 0)
+        [0                  , 0               ],    # upper left (0, 0)
+        [frame_width - 1    , 0               ],    # upper right (C-1, 0)
         [frame_height - 1   , frame_width - 1 ],    # lower right (R-1, C-1)
+        [0                  , frame_height - 1],    # lower left ( 0, R-1)
     ])
 
     # ============== LOAD ALERTS FILE ===================================
@@ -164,16 +164,16 @@ def perform_in_danger_analysis(
 
     # Alert cooldown initialization
     alerts_frames_cooldown = output_args["alerts_cooldown_seconds"] * fps   # convert cooldown from seconds to frames
-    last_alert_frame = - fps  # to avoid dealing with initial None value, at frame 0 alert is allowed
+    last_alert_frame_id = - fps  # to avoid dealing with initial None value, at frame 0 alert is allowed
 
     # Time keeper
-    start_time = time()
+    processing_start_time = time()
 
     # Video processing loop
     while cap.isOpened():
-        crono_iter_start = time()
+        iteration_start_time = time()
         success, frame = cap.read()
-        if not success:
+        if not success or frame_id > 2:
             print("Video processing has been successfully completed.")
             break
 
@@ -185,8 +185,6 @@ def perform_in_danger_analysis(
         frame_id += 1  # Update frame ID
         print(f"\n------------- Processing frame {frame_id}/{total_frames}-----------")
 
-        # cv2 loads image in BGR, convert to RGB
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         # load frame flight data
         flight_frame_data = parse_drone_frame(flight_data_file, frame_id)
 
@@ -209,9 +207,10 @@ def perform_in_danger_analysis(
         crono_start = time()
 
         # Perform the pixels to meters conversion using the sensor resolution
+        # TODO ASSERT sensor_width_mm/sensor_height_mm == sensor_width_pixels/sensor_height_pixels
         meters_per_pixel = get_meters_per_pixel(
             rel_altitude_m=flight_frame_data["rel_alt"],
-            focal_length_mm=flight_frame_data["focal_len"],
+            focal_length_mm=input_args["true_focal_len_mm"],
             sensor_width_mm=input_args["drone_sensor_width_mm"],
             sensor_height_mm=input_args["drone_sensor_height_mm"],
             sensor_width_pixels=input_args["drone_sensor_width_pixels"],
@@ -220,41 +219,41 @@ def perform_in_danger_analysis(
             image_height_pixels=frame_height,
         )
 
-        meters_per_pixel *= 3 # TODO remove DBG
-
-        safety_radius_pixels = int(input_args["safety_radius_m"] / meters_per_pixel)
-
         frame_width_m = frame_width * meters_per_pixel
         frame_height_m = frame_height * meters_per_pixel
         print(f"Frame dimensions: {frame_width_m:.2f}x{frame_height_m:.2f} meters")
 
+        safety_radius_pixels = int(input_args["safety_radius_m"] / meters_per_pixel)
+
         # get the coordinates of the 4 corners of the frame.
         # The rectangle may be oriented in any direction wrt North
         corners_coordinates = get_objects_coordinates(
-            objects_coords=frame_corners,
+            objects_coords=frame_corners,   # (X,Y)
             center_lat=flight_frame_data["latitude"],
             center_lon=flight_frame_data["longitude"],
             frame_width_pixels=frame_width,
             frame_height_pixels=frame_height,
             meters_per_pixel=meters_per_pixel,
-            angle_wrt_north=-flight_frame_data["gb_yaw"],
+            angle_wrt_north=flight_frame_data["gb_yaw"],
         )
 
         """XXX>>>
-        animals_coordinates = get_objects_coordinates(
-            objects_coords=boxes_centers,
+        animals_coordinates, _ = get_objects_coordinates(
+            objects_coords=boxes_centers,   # (X,Y)
             center_lat=flight_frame_data["latitude"],
             center_lon=flight_frame_data["longitude"],
             frame_width_pixels=frame_width,
             frame_height_pixels=frame_height,
             meters_per_pixel=meters_per_pixel,
-            angle_wrt_north=-flight_frame_data["gb_yaw"],
+            angle_wrt_north=flight_frame_data["gb_yaw"],
          )
         <<<XXX"""
 
         print(f"Frame location computed in {(time() - crono_start)*1000:.1f} ms. (Animals position not computed)")
 
-        """ create DEM validity/geofencing/slope masks overlapping with frame given the frame corner cooridnates (5 ms)"""
+        """ 
+        create DEM validity/geofencing/slope masks overlapping with frame given the frame corner cooridnates (5 ms)
+        """
 
         crono_start = time()
 
@@ -266,11 +265,30 @@ def perform_in_danger_analysis(
             print(f"FRAME bounds: {corners_coordinates}")
             exit()
 
-        area_masking_nodata = 255
-        combined_dem_mask_over_frame, _ = rasterio_mask(combined_dem_masks_tif, [frame_polygon], nodata=area_masking_nodata, crop=True)
-        combined_dem_mask_over_frame = np.array([rotate_array(combined_dem_mask_over_frame[c], angle=-flight_frame_data["gb_yaw"], reshape=True, order=0) for c in range(combined_dem_mask_over_frame.shape[0])])
-        combined_dem_mask_over_frame = clip_array_into_rectangle_no_nodata(combined_dem_mask_over_frame, area_masking_nodata)
-        combined_dem_mask_over_frame = upscale_array_to_image_size(combined_dem_mask_over_frame, frame_height, frame_width)
+        center_coords = (flight_frame_data["longitude"], flight_frame_data["latitude"])
+
+        masks_window, masks_window_transform, masks_window_bounds, masks_window_size = extract_masks_window(
+            raster_dataset=combined_dem_masks_tif,
+            center_lonlat=center_coords,
+            rectangle_lonlat=corners_coordinates,
+        )
+
+        # find the distance between two points on opposite side of the window at the drone latitude
+        window_size_m = get_window_size_m(flight_frame_data["latitude"], masks_window_bounds)
+
+        combined_dem_mask_over_frame = map_window_onto_drone_frame(
+            window=masks_window,
+            window_transform=masks_window_transform,
+            window_crs=combined_dem_masks_tif.crs,
+            center_coords=center_coords,
+            corners_coords=corners_coordinates,
+            angle_wrt_north=flight_frame_data["gb_yaw"],
+            frame_width=frame_width,
+            frame_height=frame_height,
+            window_size_pixels=masks_window_size,
+            window_size_m=window_size_m,
+            frame_pixel_size_m=meters_per_pixel,
+        )
 
         dem_nodata_danger_mask = combined_dem_mask_over_frame[0]
         geofencing_danger_mask = combined_dem_mask_over_frame[1]
@@ -315,9 +333,12 @@ def perform_in_danger_analysis(
         ]))
         inter_time = time() - inter
 
+        combined_danger_mask_no_intersections = combined_danger_mask - combined_intersections
+        assert np.min(combined_danger_mask_no_intersections) >= 0 and np.max(combined_danger_mask_no_intersections) <= 1
+
         # if cooldown has passed, check for dangerous overlapping and report them with the appropriate string(s)
         inter = time()
-        cooldown_has_passed = (frame_id - last_alert_frame) >= alerts_frames_cooldown
+        cooldown_has_passed = (frame_id - last_alert_frame_id) >= alerts_frames_cooldown
         danger_exists = False
         if cooldown_has_passed:
             danger_types = []
@@ -334,7 +355,7 @@ def perform_in_danger_analysis(
                 danger_exists = True
                 danger_type_str = " & ".join(danger_types)
                 send_alert(alerts_file, frame_id, danger_type_str)
-                last_alert_frame = frame_id
+                last_alert_frame_id = frame_id
 
         compint_time = time() - inter
 
@@ -376,7 +397,7 @@ def perform_in_danger_analysis(
 
             # Overlay dangerous areas in red on the annotated frame
             inter = time()
-            draw_dangerous_area(annotated_frame, combined_danger_mask, combined_intersections)
+            draw_dangerous_area(annotated_frame, combined_danger_mask_no_intersections, combined_intersections)
             print(f"\tDangerous areas AND danger INTERSECTION drawn in {(time()-inter)*1000:.1f} ms")
 
             # draw detection boxes
@@ -386,12 +407,12 @@ def perform_in_danger_analysis(
 
             # draw animal count
             inter = time()
-            draw_count(classes, annotated_frame, frame_height)
+            draw_count(classes, annotated_frame)
             print(f"\tAnimal Count drawn in {(time()-inter)*1000:.1f} ms")
 
             inter = time()
             if output_args["save_videos"]:  # if the annotation code has been entered because saving the videos ...
-                # save the annotated rgb mask and annotated frame
+                # save the annotated frame
                 annotated_writer.write(annotated_frame)
             if danger_exists:  # if annotation code has been entered because an animal is in danger after cooldown ...
                 annotated_img_path = Path(output_dir, f"danger_frame_{frame_id}_annotated.png")
@@ -400,12 +421,12 @@ def perform_in_danger_analysis(
 
             print(f"Video annotations completed in {(time() - crono_start)*1000:.1f} ms")
 
-        iteration_time = time() - crono_iter_start
+        iteration_time = time() - iteration_start_time
         print(f"Iteration completed in {iteration_time*1000:.1f} ms. Equivalent fps = {1/iteration_time:.2f}")
 
     """ Processing completed, print stats and release resources"""
 
-    total_time = time() - start_time
+    total_time = time() - processing_start_time
     print(f"Danger Analysis for {processed_frames_counter} frames (out of {total_frames}) completed in {total_time:.1f} seconds")
     real_processing_rate = processed_frames_counter / total_time
     print(f"Real processing rate: {real_processing_rate:.1f} fps. Real time: {real_processing_rate >= fps}")

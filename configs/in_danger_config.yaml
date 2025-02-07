@@ -1,3 +1,5 @@
+# https://sdk-forum.dji.net/hc/en-us/articles/12325496609689-What-is-the-custom-camera-parameters-for-Mavic-3-Enterprise-series-and-Mavic-3M
+
 input:
 
   # str: Data source (a video) for in-danger analysis.
@@ -15,7 +17,7 @@ input:
   dem_mask: null
 
   # float: radius of the of the safety around each sheep/goats, in meters
-  safety_radius_m: 5.0
+  safety_radius_m: 1.5
 
   # float: slope angle after which the portion of terrain is considered dangerous for the animals
   slope_angle_threshold: 30.0
@@ -27,17 +29,20 @@ input:
     - [ 24.7, 35.2 ]
     - [ 21.2, 33.2 ]
 
+  # float: true focal lenght of the camera in mm
+  true_focal_len_mm: 12.29
+
   # float: width of the camera sensor in millimeters
-  drone_sensor_width_mm: 17.3 # standard for 4/3 CMOS ensor
+  drone_sensor_width_mm: 17.4 # standard for 4/3 CMOS ensor
 
   # float: height of the camera sensor in millimeters
   drone_sensor_height_mm: 13.0  # standard for 4/3 CMOS sensor
 
   # int: width of the camera sensor in pixels
-  drone_sensor_width_pixels: 5184 # standard Effective 20MP for 4/3 CMOS sensor
+  drone_sensor_width_pixels: 5280 # standard Effective 20MP f29r 4/3 CMOS sensor
 
   # int: height of the camera sensor in pixels
-  drone_sensor_height_pixels: 3888  # standard Effective 20MP for 4/3 CMOS sensor
+  drone_sensor_height_pixels: 3956  # standard Effective 20MP for 4/3 CMOS sensor
 
   # int : Video height for in-danger analysis. If null, use original data height
   # Range: Any positive integer.
@@ -50,7 +55,7 @@ input:
   # int: Frame stride for video inputs.
   # Allows skipping frames to speed up inference. Higher values skip more frames.
   # Range: Any positive integer.
-  vid_stride: 1
+  vid_stride: 3
 
 ######################################################################################################################
 

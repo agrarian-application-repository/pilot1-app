@@ -1,4 +1,9 @@
 import cv2
+import torch
+from torch_geometric.data import Data
+from torch_geometric.nn import radius_graph, knn_graph
+from scipy.spatial.distance import cdist
+import numpy as np
 
 RED = (255, 0, 0)
 GREEN = (0, 255, 0)
@@ -22,6 +27,9 @@ class HistoryTracker:
         self.window_size = window_size
         self.data = {}
 
+        self.last_ids_list = []
+        self.last_positions_list = []
+
     def update(self, ids, coordinates):
 
         """
@@ -29,8 +37,6 @@ class HistoryTracker:
         - ids: List of keys to update
         - coordinates: List of (x, y) tuples corresponding to the ids
         """
-
-        updated_keys = []
 
         # Iterate over the ids and coordinates provided in the update
         for i, (key, coords) in enumerate(zip(ids, coordinates)):
@@ -46,12 +52,10 @@ class HistoryTracker:
                 self.data[key]["coords"].append(coords)
                 self.data[key]["valid"].append(True)
                 # And remove the oldest value to maintain the window size
-                self.data[key]["coords"].pop(0)
-                self.data[key]["valid"].pop(0)
+                del self.data[key]["coords"][0]
+                del self.data[key]["valid"][0]
 
-            updated_keys.append(key)
-
-        non_updated_keys = set(self.data.keys()) - set(updated_keys)
+        non_updated_keys = set(self.data.keys()) - set(ids)
 
         for key in non_updated_keys:
             # Repeat the last value, setting validity indicator to False
@@ -59,25 +63,219 @@ class HistoryTracker:
             self.data[key]["coords"].append(last_value)
             self.data[key]["valid"].append(False)
             # And remove the oldest value to maintain the window size
-            self.data[key]["coords"].pop(0)
-            self.data[key]["valid"].pop(0)
+            del self.data[key]["coords"][0]
+            del self.data[key]["valid"][0]
+
+        # save the set of ids and positions contributing to the last update
+        self.last_ids_list = ids
+        self.last_positions_list = coordinates
+
+    def get_ids_history(self, ids):
+        # ids must already exist
+        if not set(ids).issubset(set(self.data.keys())):
+            raise ValueError(f"Cannot get history of an id that does not exists. requested: {set(ids)}, existing: {set(self.data.keys())}")
+
+        tracked = {}
+        for id in ids:
+            tracked[id] = {}
+            tracked[id]["coords"] = np.array(self.data[id]["coords"]).T     # (2, TSlenght)
+            tracked[id]["valid"] = np.array(self.data[id]["valid"]).reshape(1, -1)  # (1, TSlenght)
+
+        return tracked
+
+    def get_and_aggregate_ids_history(self, ids):
+        """
+        Retrieves and aggregates time series data for given IDs.
+
+        Parameters:
+            ids (list): List of IDs to fetch history for.
+
+        Returns:
+            coords_array (numpy.ndarray): (N, 2, TS_length) array of coordinates.
+            valid_array (numpy.ndarray): (N, 1, TS_length) array of validity flags.
+        """
+        tracked = self.get_ids_history(ids)  # Get individual histories
+
+        # Extract coordinate and validity arrays
+        coords_list = [tracked[id]["coords"] for id in ids]  # List of (2, TS_length) arrays
+        valid_list = [tracked[id]["valid"] for id in ids]  # List of (1, TS_length) arrays
+
+        # Convert lists to numpy arrays of shape (N, 2, TS_length) and (N, 1, TS_length)
+        aggregated_coords_array = np.stack(coords_list, axis=0)  # Shape: (N, 2, TS_length)
+        aggregated_valid_array = np.stack(valid_list, axis=0)  # Shape: (N, 1, TS_length)
+
+        return aggregated_coords_array, aggregated_valid_array
+
+    def get_last_update_arrays(self):
+        last_ids_array = np.array(self.last_ids_list)   # (N, )
+        last_positions_array = np.array(self.last_positions_list)   # (N,2)
+        return last_ids_array, last_positions_array
 
 
-def perform_tracking(detector, history: HistoryTracker, frame, tracking_args):
+def create_distance_matrix(currently_tracked_data):
+
+    nodes_ids = list(currently_tracked_data.keys())  # List of entity IDs
+
+    # Extract the last valid coordinates for each node
+    last_coords = []
+    for id in nodes_ids:
+        # all ids must be valid at last point in time t, because are the one see by the tracker at that frame
+        if currently_tracked_data[id]["valid"][0, -1] is False:
+            raise ValueError(f"Last value should be valid, but is not. ID: {id}, validity: {currently_tracked_data[id]['valid']}")
+
+        last_coords.append(currently_tracked_data[id]["coords"][:, -1])  # Extract last x_norm/y_norm
+        # y_norm = y_norm_yolo * aspect_ratio to preserve spatial relationship in non-square frame yolo detection
+        # for 16:9, x varies in [0,1], y varies in [0,16/9] such that a distance of 1 pixel on the x is equal to a distance of 1 pixel on the y
+
+    last_coords = np.array(last_coords)  # Shape: (num_nodes, 2)
+
+    # Compute pairwise distances
+    distance_matrix = cdist(last_coords, last_coords, metric='euclidean')
+    return distance_matrix
+
+
+def create_edges(num_nodes, distance_matrix):
+    # Create edge index and edge attributes
+    edge_index = []
+    edge_attr = []
+
+    for i in range(num_nodes):
+        for j in range(i + 1, num_nodes):  # Avoid duplicate edges
+            edge_index.append([i, j])
+            edge_index.append([j, i])  # Ensure undirected edges
+            edge_attr.append(distance_matrix[i, j])
+            edge_attr.append(distance_matrix[i, j])  # Duplicate for symmetry
+
+    edge_index = torch.tensor(edge_index, dtype=torch.long).T  # Shape (2, num_edges)
+    edge_attr = torch.tensor(edge_attr, dtype=torch.float).unsqueeze(1)  # Shape (num_edges, 1)
+
+    return edge_index, edge_attr
+
+
+def create_knn_graph(tracked_positions, k=5):
+    """
+    Create a k-Nearest Neighbors (k-NN) graph.
+
+    Parameters:
+        tracked_positions (Tensor): (N, 2) tensor containing node positions.
+        k (int): Number of nearest neighbors to connect each node to.
+
+    Returns:
+        edge_index (Tensor): (2, E) tensor defining the edges of the graph.
+    """
+    edge_index = knn_graph(tracked_positions, k=k, loop=False)
+    return edge_index
+
+
+# TODO check if breaks because of differemnt aspect ratio
+def create_radius_graph(tracked_positions, r=0.1):
+    """
+    Create a radius-based graph where edges are created between nodes within a given radius.
+
+    Parameters:
+        tracked_positions (Tensor): (N, 2) tensor containing node positions.
+        r (float): Radius within which nodes are connected.
+
+    Returns:
+        edge_index (Tensor): (2, E) tensor defining the edges of the graph.
+    """
+    edge_index = radius_graph(tracked_positions, r=r, loop=False)
+    return edge_index
+
+
+def create_fully_connected_graph(num_nodes):
+    """
+    Create a fully connected graph where each node is connected to every other node.
+
+    Parameters:
+        num_nodes (int): Number of nodes in the graph.
+
+    Returns:
+        edge_index (Tensor): (2, E) tensor defining the edges of the graph.
+    """
+    row = torch.arange(num_nodes).repeat(num_nodes)
+    col = torch.arange(num_nodes).repeat_interleave(num_nodes)
+    edge_index = torch.stack([row, col], dim=0)
+
+    # Remove self-loops
+    mask = edge_index[0] != edge_index[1]
+    edge_index = edge_index[:, mask]
+
+    return edge_index
+
+
+# TODO check if breaks because of differemnt aspect ratio
+def meters_to_normalized_radius(radius_m, frame_width_m):
+    """
+    Converts a radius in meters to the normalized YOLO space.
+
+    Parameters:
+        radius_m (float): Radius in meters.
+        frame_width_m (float): Frame width in meters.
+
+    Returns:
+        float: Normalized radius for YOLO.
+    """
+
+    normalized_radius = max(radius_m / frame_width_m, 1.0)
+
+    return normalized_radius
+
+
+def create_pyg_dataset(history, strategy, strategy_value=None):
+
+    num_nodes = len(history.last_ids_list)
+
+    tracked_ids, tracked_positions = history.get_last_update_arrays()
+    # (N,) array and (N,2)=(x,y) array
+
+    if strategy == "radius":
+        edge_index = create_knn_graph(tracked_positions, k=strategy_value)
+    elif strategy == "knn":
+        edge_index = create_radius_graph(tracked_positions, r=strategy_value) # TODO x,y different_scales
+    else:
+        edge_index = create_fully_connected_graph(num_nodes)
+
+    pos, valid = history.get_and_aggregate_ids_history(history.last_ids_list)
+
+    # Create PyG Data object
+    data = Data(
+        ids=torch.tensor(tracked_ids, dtype=torch.int),
+        pos=torch.tensor(pos, dtype=torch.float),  # sequence of object positions (Nnodes, x_norm & y_norm, TSlenght) = (N, 2,T)
+        valid=torch.tensor(valid, dtype=torch.float),   # sequence of validities (Nnodes, 1, TSlenght) = (N, 1, T)
+        edge_index=edge_index,
+        edge_attr=edge_attr,
+    )
+
+    return data
+
+
+def perform_anomaly_detection(anomaly_detector, history: HistoryTracker, anomaly_detection_args):
+
+    dataset = create_pyg_dataset(history, strategy, strategy_value)
+
+    status = anomaly_detector(dataset)
+
+    return status
+
+
+def perform_tracking(detector, history: HistoryTracker, frame, tracking_args, aspect_ratio):
     # track animals in frame
     tracking_results = detector.track(source=frame, stream=True, persist=True, **tracking_args)
 
-    # Parse detection results to get bounding boxes
-    classes = tracking_results[0].boxes.cls.cpu().numpy()
+    # Parse detection results to get bounding boxes & create additional variables to store useful inf
+    classes = tracking_results[0].boxes.cls.cpu().numpy().astype(int)
     xywh_boxes = tracking_results[0].boxes.xywh.cpu().numpy().astype(int)
-    xywhn_boxes = tracking_results[0].boxes.xywhn.cpu().numpy().astype(int)
     xyxy_boxes = tracking_results[0].boxes.xyxy.cpu().numpy().astype(int)
 
-    # Create additional variables to store useful info from the detections
     boxes_centers = xywh_boxes[:, :2]
-    normalized_boxes_centers = xywhn_boxes[:, :2]
     boxes_corner1 = xyxy_boxes[:, :2]
     boxes_corner2 = xyxy_boxes[:, 2:]
+
+    xywhn_boxes = tracking_results[0].boxes.xywhn.cpu().numpy()
+    normalized_boxes_centers = xywhn_boxes[:, :2]
+    normalized_boxes_centers[:1] = normalized_boxes_centers[:1] * aspect_ratio
+    normalized_boxes_centers = normalized_boxes_centers.astype(int)
 
     # Parse tracking ID
     if tracking_results[0].boxes.id is not None:
@@ -90,10 +288,6 @@ def perform_tracking(detector, history: HistoryTracker, frame, tracking_args):
     history.update(ids_list, positions_list)
 
     return classes, boxes_centers, normalized_boxes_centers, boxes_corner1, boxes_corner2
-
-
-def perform_anomaly_detection(anomaly_detector, normalized_boxes_centers, anomaly_detection_args):
-    pass
 
 
 def send_alert(alerts_file, frame_id: int):

@@ -1,6 +1,6 @@
 # from src.configs.health_monitoring import check_health_monitoring_args, preprocess_health_monitoring_args
 from src.configs.utils import parse_config_file, read_yaml_config
-from src.health_monitoring import perform_health_monitoring_analysis
+from src.health_monitoring.health_monitoring import perform_health_monitoring_analysis
 
 
 def main():
@@ -23,8 +23,8 @@ def main():
     perform_health_monitoring_analysis(
         input_args=health_monitoring_args["input"],
         output_args=health_monitoring_args["output"],
-        detection_args=health_monitoring_args["tracking"],
-        anomaly_args=health_monitoring_args["anomaly_detection"],
+        tracking_args=health_monitoring_args["tracking"],
+        anomaly_detection_args=health_monitoring_args["anomaly_detection"],
     )
 
 

@@ -10,10 +10,11 @@ import torch
 from utils import *
 
 
-RED = (255, 0, 0)
+RED = (0, 0, 255)
 GREEN = (0, 255, 0)
-BLUE = (0, 0, 255)
+BLUE = (255, 0, 0)
 PURPLE = (128, 0, 128)
+
 CLASS_COLOR = [BLUE, PURPLE]
 
 
@@ -45,6 +46,7 @@ def perform_health_monitoring_analysis(
     frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = int(cap.get(cv2.CAP_PROP_FPS))
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    aspect_ratio = frame_width / frame_height
 
     # avoids unreasonable video strides
     input_args["vid_stride"] = max(1, min(input_args["vid_stride"], total_frames))
@@ -67,6 +69,10 @@ def perform_health_monitoring_analysis(
             frameSize=(frame_width, frame_height)
         )
 
+    # ============== INITIALIZE HISTORY TRACKER ===================================
+
+    history_tracker = HistoryTracker(input_args["time_window_size"])
+    
     # ============== BEGIN VIDEO PROCESSING ===================================
 
     # Frame counter
@@ -75,9 +81,7 @@ def perform_health_monitoring_analysis(
 
     # Alert cooldown initialization
     alerts_frames_cooldown = output_args["alerts_cooldown_seconds"] * fps   # convert cooldown from seconds to frames
-    last_alert_frame = - fps  # to avoid dealing with initial None value, at frame 0 alert is allowed
-
-    history_tracker = HistoryTracker(input_args["time_window_size"])
+    last_alert_frame_id = - fps  # to avoid dealing with initial None value, at frame 0 alert is allowed
 
     # Time keeper
     processing_start_time = time()
@@ -98,27 +102,24 @@ def perform_health_monitoring_analysis(
         frame_id += 1  # Update frame ID
         print(f"\n------------- Processing frame {frame_id}/{total_frames}-----------")
 
-        # cv2 loads image in BGR, convert to RGB
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
         """ Perform object tracking"""
 
         # Track animals in frame
-        classes, boxes_centers, normalized_boxes_centers, boxes_corner1, boxes_corner2 = perform_tracking(tracker, history_tracker, frame, tracking_args)
+        classes, boxes_centers, normalized_boxes_centers, boxes_corner1, boxes_corner2 = perform_tracking(tracker, history_tracker, frame, tracking_args, aspect_ratio)
 
         """ Perform anomaly detection"""
 
         # TODO implement
-        are_anomalous = perform_anomaly_detection(anomaly_detector, normalized_boxes_centers, anomaly_detection_args)
+        are_anomalous = perform_anomaly_detection(anomaly_detector, history_tracker, anomaly_detection_args)
         anomaly_exists = np.any(are_anomalous)
 
         """ Raise alert if anomaly is detected"""
 
-        # if cooldown has passed and an animal is behaving abonarmally, report them with the appropriate string
-        cooldown_has_passed = (frame_id - last_alert_frame) >= alerts_frames_cooldown
+        # if cooldown has passed and an animal is behaving abnormally, report them with the appropriate string
+        cooldown_has_passed = (frame_id - last_alert_frame_id) >= alerts_frames_cooldown
         if cooldown_has_passed and anomaly_exists:
                 send_alert(alerts_file, frame_id)
-                last_alert_frame = frame_id
+                last_alert_frame_id = frame_id
 
         """ Annotate video if it has to be saved"""
 
