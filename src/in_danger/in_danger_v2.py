@@ -275,6 +275,7 @@ def perform_in_danger_analysis(
 
         # find the distance between two points on opposite side of the window at the drone latitude
         window_size_m = get_window_size_m(flight_frame_data["latitude"], masks_window_bounds)
+        dem_pixel_size_m = window_size_m / masks_window_size
 
         combined_dem_mask_over_frame = map_window_onto_drone_frame(
             window=masks_window,
