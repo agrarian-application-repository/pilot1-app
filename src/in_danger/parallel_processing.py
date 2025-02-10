@@ -3,18 +3,21 @@ import queue
 import threading
 import concurrent.futures
 
-
-# Dummy processing functions
-def process_operation1(frame):
-    # Your actual processing code goes here.
-    return "result1"
+from src.in_danger.in_danger_v2_utils import perform_detection, perform_segmentation
 
 
-def process_operation2(frame):
-    return "result2"
+def detection_process(detector, frame, detection_args):
+    classes, boxes_centers, boxes_wh, boxes_corner1, boxes_corner2 = perform_detection(detector, frame, detection_args)
+    return classes, boxes_centers, boxes_wh, boxes_corner1, boxes_corner2
 
 
-def process_operation3(frame):
+def segmentation_process(segmenter, frame, segmentation_args):
+    segment_danger_mask = perform_segmentation(segmenter, frame, segmentation_args)
+    return segment_danger_mask
+
+
+def georeferenced_data_handling_process(flight_data_file, frame_id):
+    flight_frame_data = parse_drone_frame(flight_data_file, frame_id)
     return "result3"
 
 
@@ -67,14 +70,17 @@ def main():
                 break
 
             # Submit the three operations in parallel.
-            future1 = executor.submit(process_operation1, frame)
-            future2 = executor.submit(process_operation2, frame)
-            future3 = executor.submit(process_operation3, frame)
+            future1 = executor.submit(detection_process, detector, frame, detection_args)
+            future2 = executor.submit(segmentation_process, segmenter, frame, segmentation_args)
+            future3 = executor.submit(georeferenced_data_handling_process, frame)
 
             # Wait for the three results.
-            result1 = future1.result()
-            result2 = future2.result()
-            result3 = future3.result()
+            classes, boxes_centers, boxes_wh, boxes_corner1, boxes_corner2 = future1.result()
+            segment_danger_mask = future2.result()
+            combined_dem_mask_over_frame = future3.result()
+
+            # create safety mask
+            # check intersections
 
             combined = combine_results(result1, result2, result3)
             writer_queue.put((frame, combined))

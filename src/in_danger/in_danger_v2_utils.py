@@ -1,24 +1,17 @@
 from pathlib import Path
 from time import time
-from typing import Any
 import re
-import math
-import rasterio
-
-from shapely.vectorized import contains as vectorized_contains
-from shapely.geometry import Polygon, box
-from rasterio.features import rasterize
-from rasterio.warp import calculate_default_transform, reproject, Resampling
-from rasterio.mask import mask as rasterio_mask
+from shapely.geometry import box
+from rasterio.warp import reproject, Resampling
 from rasterio.transform import rowcol
-from rasterio.transform import Affine, from_origin
 from rasterio.windows import bounds
+from affine import Affine
+import rasterio
+from rasterio.features import rasterize
 
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
-from ultralytics import YOLO
-from rasterio.crs import CRS
 
 import geopy
 from geopy.distance import geodesic
@@ -87,233 +80,20 @@ def plot_histogram(data, png_path, bins=100, title="Histogram", xlabel="Value", 
     print(f"Histogram saved to: {png_path}")
 
 
-def get_dem(dem_path, output_dir, plot):
+def get_dem(dem_path):
     # Open the DEM
     dem_tif = rasterio.open(Path(dem_path))
-    dem_np = dem_tif.read(1)  # Read the first band (1-index)
-
-    if plot:
-        plot_2d_array(dem_np, output_dir/"dem.png", title="DEM")
-        plot_histogram(dem_np, output_dir/"hist_dem.png", title="DEM histogram")
-
-    return dem_tif, dem_np
+    return dem_tif
 
 
-def get_dem_mask(dem_mask_path, fallback_mask_shape, output_dir, plot=False):
-    # Open or create the DEM mask
+def get_dem_mask(dem_mask_path):
+    # Open the DEM mask if provided, otherwise assume all pixels are valid are return None
     if dem_mask_path is not None:
         dem_mask_tif = rasterio.open(Path(dem_mask_path))
-        nodata_dem_mask = dem_mask_tif.read(1)  # Read the first band (1-index)
-        nodata_dem_mask = nodata_dem_mask.astype(dtype=np.uint8)  # convert to int8
-        terminate_if_no_valid_pixels(nodata_dem_mask)  # if all the dem is invalid, terminate
     else:
-        # if no mask is provided, assume all pixels are valid
         dem_mask_tif = None
-        nodata_dem_mask = np.zeros(fallback_mask_shape, dtype=np.uint8)
 
-    if plot:
-        plot_2d_array(nodata_dem_mask, output_dir / "dem_mask.png", title="nodata DEM mask")
-        plot_histogram(nodata_dem_mask, output_dir / "hist_dem_mask.png", title="nodata DEM histogram")
-
-    return dem_mask_tif, nodata_dem_mask
-
-
-def get_geofencing_mask(dem_tif, geofencing_vertexes, fallback_mask_shape, output_dir, plot=False):
-    # Create a mask highlighting the areas outside the geofenced boundaries
-    if geofencing_vertexes is not None:
-        geofencing_mask = create_polygon_mask(dem_tif, geofencing_vertexes, crop=False)
-    else:
-        # if no geofencing vertextes are provided, assume all pixels are valid
-        geofencing_mask = np.zeros(fallback_mask_shape, dtype=np.uint8)
-
-    if plot:
-        plot_2d_array(geofencing_mask, output_dir / "geofencing_mask.png", title="geofenced DEM mask")
-        plot_histogram(geofencing_mask, output_dir / "hist_geofencing_mask.png", title="geofenced DEM histogram")
-
-    return geofencing_mask
-
-
-def create_dangerous_slope_mask(tif, array, angle_threshold, output_dir, plot=False):
-
-    # project the DEM array into EPSG:32633 to get info on ground resolution of the DEM
-    reprojected_array, reprojected_transform = reproject_array(
-        src_array=array,
-        src_transform=tif.transform,
-        src_crs=tif.crs,
-        src_width=tif.width,
-        src_height=tif.height,
-        src_bounds=tif.bounds,
-        src_dtype=tif.meta['dtype'],
-        dst_crs="EPSG:32633",
-    )
-
-    # create slope map using meter-converted dem
-    dangerous_slope_mask_epsg32633, pixel_size_y_m, pixel_size_x_m = create_slope_mask_epsg32633(
-        dem_data=reprojected_array,
-        transform=reprojected_transform,
-        angle_threshold=angle_threshold
-    )
-
-    # convert DEM array back into WSG84 reference system
-    dangerous_slope_mask, _ = reproject_array(
-        src_array=dangerous_slope_mask_epsg32633,
-        src_transform=reprojected_transform,
-        src_crs="EPSG:32633",
-        src_width=dangerous_slope_mask_epsg32633.shape[1],
-        src_height=dangerous_slope_mask_epsg32633.shape[0],
-        src_bounds=tif.bounds,
-        src_dtype=dangerous_slope_mask_epsg32633.dtype,
-        dst_crs="WGS84",
-        dst_transform=tif.transform,
-        dst_width=tif.width,
-        dst_height=tif.height,
-    )
-
-    dangerous_slope_mask = dangerous_slope_mask.astype(np.uint8)
-
-    if plot:
-        plot_2d_array(dangerous_slope_mask, output_dir/"slope_mask.png", title="slope DEM mask")
-        plot_histogram(dangerous_slope_mask, output_dir/"hist_slope_mask.png", title="slope DEM histogram")
-
-    return dangerous_slope_mask, pixel_size_y_m, pixel_size_x_m
-
-
-def reproject_array(
-    src_array,
-    src_transform,
-    src_crs,
-    src_width,
-    src_height,
-    src_bounds,
-    src_dtype,
-    dst_crs,
-    dst_transform=None,
-    dst_width=None,
-    dst_height=None,
-    resampling=Resampling.nearest
-):
-    """
-    Reproject a 2D NumPy array to a new CRS.
-
-    Parameters:
-        src_array (numpy array): Source data array.
-        src_transform (Affine): Affine transform of the source array.
-        src_crs (str): Source CRS (e.g., "EPSG:4326").
-        src_width (int): Width of the source array.
-        src_height (int): Height of the source array.
-        src_bounds (tuple): Bounds of the source array (left, bottom, right, top).
-        src_dtype (numpy dtype): Data type of the source array.
-        dst_crs (str): Destination CRS (e.g., "EPSG:32633").
-        dst_transform (Affine, optional): Affine transform of the destination array.
-        dst_width (int, optional): Width of the destination array.
-        dst_height (int, optional): Height of the destination array.
-        resampling (rasterio.warp.Resampling, optional): Resampling method. Default is Resampling.nearest.
-
-    Returns:
-        numpy array: Reprojected data array.
-        Affine: Affine transform of the reprojected data.
-    """
-
-    assert (dst_transform is None and dst_width is None and dst_height is None) or \
-           (dst_transform is not None and dst_width is not None and dst_height is not None), \
-        "Target transform and dimensions must either all be provided or all omitted."
-
-    src_crs = src_crs.to_string() if isinstance(src_crs, CRS) else src_crs
-    dst_crs = dst_crs.to_string() if isinstance(dst_crs, CRS) else dst_crs
-
-    if dst_transform is None and dst_width is None and dst_height is None:
-        # Calculate transform and new dimensions
-        left, bottom, right, top = src_bounds
-        dst_transform, dst_width, dst_height = calculate_default_transform(
-            src_crs=src_crs,
-            dst_crs=dst_crs,
-            width=src_width,
-            height=src_height,
-            left=left,
-            bottom=bottom,
-            right=right,
-            top=top
-        )
-
-    # Prepare the destination array
-    reprojected_data = np.empty((dst_height, dst_width), dtype=src_dtype)
-
-    # Perform the reprojection
-    with rasterio.Env():
-        reproject(
-            source=src_array,  # Reprojecting the first band
-            destination=reprojected_data,
-            src_transform=src_transform,
-            src_crs=src_crs,
-            dst_transform=dst_transform,
-            dst_crs=dst_crs,
-            resampling=resampling
-        )
-
-    return reprojected_data, dst_transform
-
-
-def create_slope_mask_epsg32633(dem_data, transform, angle_threshold):
-    """
-    Create a mask where the terrain inclination exceeds a certain slope angle.
-
-    Parameters:
-        dem_data (numpy array): 3D array (1,H,W) of elevation values.
-        transform (Affine): Affine transformation of the DEM.
-        angle_threshold (float): Slope angle threshold in degrees.
-
-    Returns:
-        numpy array: Mask with 1 where the slope exceeds the angle, 0 otherwise.
-    """
-    # Calculate pixel size (resolution) in meters
-    pixel_size_x_m = transform[0]  # Cell width (in meters)
-    pixel_size_y_m = -transform[4]  # Cell height (in meters, negative because of affine conventions)
-
-    print(f"DEM pixel resolution (X): {pixel_size_x_m:.2f} meters")
-    print(f"DEM pixel resolution (Y): {pixel_size_y_m:.2f} meters")
-
-    # Compute gradients (dz/dx and dz/dy)
-    dz_dy, dz_dx = np.gradient(dem_data, pixel_size_y_m, pixel_size_x_m)
-
-    # Compute slope in radians
-    slope_radians = np.arctan(np.sqrt(dz_dx ** 2 + dz_dy ** 2))
-
-    # Convert slope to degrees
-    slope_degrees = np.degrees(slope_radians)
-
-    # Create mask where slope exceeds threshold
-    mask = (slope_degrees > angle_threshold).astype(np.uint8)
-
-    return mask, pixel_size_y_m, pixel_size_x_m
-
-
-# TODO check and bugfixing
-def create_polygon_mask(tif, lon_lat_tuples_list, crop):
-    """
-    Create a mask for a GeoTIFF where everything outside a given polygon is set to 1.
-
-    Parameters:
-        tif (rasterio.io.DatasetReader): Opened GeoTIFF file.
-        lon_lat_tuples_list (list of tuple): List of (longitude, latitude) tuples defining the polygon vertexes.
-        crop (bool): whether to return a smaller array describing only the area around the area inside the polygon
-
-    Returns:
-        numpy.ndarray: A mask with 1 outside the polygon and 0 inside.
-    """
-    # Convert the list of lat-lon tuples into a Shapely Polygon
-    polygon = Polygon(lon_lat_tuples_list)
-
-    try:
-        # from the tif, all pixels outside the polygon are set to np.nan
-        masked_array, masked_tif_transform = rasterio_mask(tif, [polygon], nodata=np.nan, crop=crop)
-        # create a mask by setting the value to 1 where the tif array is nan, leaving zeros inside the polygon
-        mask = np.isnan(masked_array[0]).astype(np.uint8)
-    except rasterio.errors.WindowError:
-        # if the polygon is completely outside of the tif area, mask all the area
-        print(f"Polygon is outside the tif. Bounds: {tif.bounds}, Polygon: {polygon}")
-        mask = np.ones((tif.height, tif.width), dtype=np.uint8)
-
-    return mask
+    return dem_mask_tif
 
 
 def terminate_if_no_valid_pixels(array):
@@ -333,11 +113,10 @@ def perform_detection(detector, frame, detection_args):
 
     # Create additional variables to store useful info from the detections
     boxes_centers = xywh_boxes[:, :2]
-    boxes_wh = xywh_boxes[:, 2:]
     boxes_corner1 = xyxy_boxes[:, :2]
     boxes_corner2 = xyxy_boxes[:, 2:]
 
-    return classes, boxes_centers, boxes_wh, boxes_corner1, boxes_corner2
+    return classes, boxes_centers, boxes_corner1, boxes_corner2
 
 
 def perform_segmentation(segmenter, frame, segmentation_args):
@@ -491,8 +270,8 @@ def get_objects_coordinates(
     print("geo Center: ", center_point_coords)
 
     # Precompute distances of points from the center of the frame
-    distances_y_m = (((-1) * objects_coords[:, 1]) - center_point_pixel_y) * meters_per_pixel  # Shape (N,)
-    distances_x_m = (objects_coords[:, 0] - center_point_pixel_x) * meters_per_pixel  # Shape (N,)
+    distances_x_m = (objects_coords[:, 0] - center_point_pixel_x) * meters_per_pixel  # distances on X, Shape (N,)
+    distances_y_m = (((-1) * objects_coords[:, 1]) - center_point_pixel_y) * meters_per_pixel  # distances on Y, Shape (N,)
     distances_m = np.sqrt(distances_x_m ** 2 + distances_y_m ** 2)  # Shape (N,)
     print("distances: ", distances_m)
 
@@ -516,12 +295,13 @@ def get_objects_coordinates(
     return np.array(final_coords)
 
 
-def extract_masks_window(raster_dataset, center_lonlat, rectangle_lonlat):
+def extract_dem_window(dem_tif, dem_mask_tif, center_lonlat, rectangle_lonlat):
     """
     Extracts a square window from a raster that fully encompasses a rotated rectangle.
 
     Args:
-        raster_dataset (rasterio.DatasetReader): Opened raster dataset.
+        dem_tif (rasterio.DatasetReader): Opened raster dataset.
+        dem_mask_tif (rasterio.DatasetReader): Opened raster mask dataset.
         center_lonlat (tuple): (longitude, latitude) of the center point.
         rectangle_lonlat (numpy.ndarray): (4,2) array of (longitude, latitude) rectangle corners.
 
@@ -530,7 +310,7 @@ def extract_masks_window(raster_dataset, center_lonlat, rectangle_lonlat):
         window_transform (Affine): Georeferencing transform of the extracted window.
     """
     # --- Step 1: Convert center point to pixel coordinates ---
-    transform = raster_dataset.transform
+    transform = dem_tif.transform
     center_y, center_x = rowcol(transform=transform, xs=center_lonlat[0], ys=center_lonlat[1])
 
     # --- Step 2: Convert rectangle corners to pixel coordinates ---
@@ -549,24 +329,51 @@ def extract_masks_window(raster_dataset, center_lonlat, rectangle_lonlat):
     window_row_start = center_y - half_size
     window_col_start = center_x - half_size
 
-    # --- Step 5: Extract the window from the raster ---
-    window = rasterio.windows.Window(col_off=window_col_start, row_off=window_row_start, width=window_size, height=window_size)
-    window_transform = raster_dataset.window_transform(window)
+    window_row_end = center_y + half_size
+    window_col_end = center_x + half_size
 
-    # Read the window from the raster
-    window_array = raster_dataset.read(window=window)
+    # center in indexes (row=9, col=6), half size =3
+    # => window_row_start = 6 ... |6|7|8| X |10|11|12
+    # => window_col_start = 3 ... |3|4|5| X |7 |8 |9
+
+    # --- Step 5: Make sure the window is inside the tif ---
+    if (
+            window_col_start < 0 or
+            window_row_start < 0 or
+            window_col_end > (dem_tif.width - 1) or
+            window_row_end > (dem_tif.height - 1)
+    ):
+        print(f"ERROR: Cannot monitor the safety of animals when the drones is leaving the DEM area")
+        print(f"DEM rows: {dem_tif.height}")
+        print(f"DEM window rows: [{window_row_start}, {window_row_start + window_size}]")
+        print(f"DEM columns: {dem_tif.width}")
+        print(f"DEM window columns: [{window_col_start}, {window_col_start + window_size}]")
+        exit()
+
+    # --- Step 6: Extract the window from the raster ---
+    window = rasterio.windows.Window(col_off=window_col_start, row_off=window_row_start, width=window_size, height=window_size)
+    window_transform = dem_tif.window_transform(window)
+
+    # Read the dem window from the raster
+    dem_window_array = dem_tif.read(window=window)
+
+    # Read the dem window from the raster (if None, assume mask alla values are valid)
+    if dem_mask_tif is not None:
+        dem_mask_window_array = dem_mask_tif.read(window=window)
+    else:
+        dem_mask_window_array = np.zeros((window_size, window_size), dtype=np.uint8)
 
     # get the bounds of the window
-    window_bounds = bounds(window, raster_dataset.transform)    # TODO original or window transform
+    window_bounds = bounds(window, dem_tif.transform)    # TODO original or window transform
 
-    return window_array, window_transform, window_bounds, window_size
+    return dem_window_array, dem_mask_window_array, window_transform, window_bounds, window_size
 
 
 def get_window_size_m(reference_lat, window_bounds):
     (min_lon, min_lat, max_lon, max_lat) = window_bounds
     assert min_lat < reference_lat < max_lat
 
-    # points in form (lat,long)
+    # points for geopy must be in form (lat,long)
     point1 = (reference_lat, min_lon)
     point2 = (reference_lat, max_lon)
     distance_m = geodesic(point1, point2).meters
@@ -574,41 +381,96 @@ def get_window_size_m(reference_lat, window_bounds):
     return distance_m
 
 
-def create_runtime_geofencing_mask(min_long, min_lat, max_long, max_lat, polygon, resolution_x, resolution_y):
-    # TODO what to do with rotation (min/max is upper or lower?)
+def compute_slope_mask_runtime(elev_array, pixel_size, slope_threshold_deg):
     """
-    Create a geofencing mask for a polygon within given geographic bounds.
+    Compute a mask indicating where the terrain slope is steeper than a given threshold.
 
-    Parameters:
-    - min_long: Minimum longitude.
-    - min_lat: Minimum latitude.
-    - max_long: Maximum longitude.
-    - max_lat: Maximum latitude.
-    - polygon: Shapely Polygon object.
-    - resolution_x: Number of grid points along the horizontal (longitude) direction
-    - resolution_y: Number of grid points along the horizontal (vertical) direction
+    Parameters
+    ----------
+    elev_array : np.ndarray
+        A square 2D array of elevation values.
+    pixel_size : float
+        The size of each pixel in meters.
+    slope_threshold_deg : float
+        The slope threshold in degrees. Cells with a slope greater than this threshold
+        will be marked with a 1 in the output mask.
 
-    Returns:
-    - mask: 2D boolean numpy array of shape (resolution, resolution).
-    - longitudes: 2D array of longitude values.
-    - latitudes: 2D array of latitude values.
+    Returns
+    -------
+    np.ndarray
+        A 2D array (of the same shape as elev_array) containing 1 where the slope is
+        greater than slope_threshold_deg and 0 elsewhere.
     """
+    # Compute the gradient along the y (row) and x (column) directions.
+    # Note: np.gradient returns gradients in the order (axis0, axis1) which correspond
+    # to (dy, dx) given the array dimensions.
+    gy, gx = np.gradient(elev_array, pixel_size)
 
-    # Create a grid of longitude and latitude values
-    # min_long/max_lat ------- max_long/max_lat
-    #       |                           |
-    #       |                           |
-    #       |                           |
-    #       |                           |
-    # min_long/min_lat ------- max_long/min_lat
-    longitudes = np.linspace(min_long, max_long, resolution_x)
-    latitudes = np.linspace(max_lat, min_lat, resolution_y)
-    long_grid, lat_grid = np.meshgrid(longitudes, latitudes)
+    # Compute the magnitude of the slope (rise over run)
+    # The slope in radians is given by arctan(sqrt((dz/dx)^2 + (dz/dy)^2)).
+    slope_radians = np.arctan(np.sqrt(gx ** 2 + gy ** 2))
 
-    # Create the mask using shapely's vectorized contains
-    mask = vectorized_contains(polygon, long_grid, lat_grid)
-    # Invert the mask: True -> 0 (inside the polygon), False -> 1 (outside the polygon)
-    mask = (~mask).astype(np.uint8)
+    # Convert the slope to degrees
+    slope_degrees = np.degrees(slope_radians)
+
+    # Create a mask where a cell is 1 if the slope exceeds the threshold, 0 otherwise.
+    mask = (slope_degrees > slope_threshold_deg).astype(np.uint8)
+
+    return mask
+
+
+def create_geofencing_mask_runtime(frame_width, frame_height, corners_coordinates, polygon):
+
+    # Example: suppose your frame is a numpy array with shape (H, W)
+    # (Here H is the number of rows, W is the number of columns)
+
+    # Your 4 corner coordinates (longitude, latitude)
+    # In order: upper-left, upper-right, bottom-right, bottom-left
+    ul = corners_coordinates[0]
+    ur = corners_coordinates[1]
+    br = corners_coordinates[2]
+    bl = corners_coordinates[3]
+
+    # If we assume the mapping is affine we can use three of the points.
+    # Here we assume that the pixel at (0,0) corresponds to ul,
+    # the pixel at (W-1, 0) corresponds to ur, and
+    # the pixel at (0, H-1) corresponds to bl.
+    #
+    # Then the affine transformation parameters are:
+    #    x_geo = c + a * col + b * row
+    #    y_geo = f + d * col + e * row
+    #
+    # So we set:
+    a = (ur[0] - ul[0]) / (frame_width - 1)  # pixel width in x-direction
+    d = (ur[1] - ul[1]) / (frame_width - 1)  # change in y per column
+    b = (bl[0] - ul[0]) / (frame_height - 1)  # change in x per row
+    e = (bl[1] - ul[1]) / (frame_height - 1)  # pixel height (often negative if latitude decreases downward)
+    c = ul[0]
+    f = ul[1]
+
+    # Create the affine transform: it maps from (col, row) to (x, y)
+    transform = Affine(a, b, c, d, e, f)
+
+    # Now, suppose your Shapely polygon is defined as:
+    # (You may have constructed it already in your code.)
+    # polygon = Polygon([...])
+
+    # Use rasterio.features.rasterize to create an array of shape (H, W)
+    # The polygon will be burned with a value of 1 and all other pixels will be 0.
+    mask_inside = rasterize(
+        [(polygon, 1)],  # list of (geometry, value)
+        out_shape=(frame_height, frame_width),
+        transform=transform,
+        fill=0,
+        dtype=np.uint8
+    )
+
+    # At this point, mask_inside has value 1 for pixels inside the polygon and 0 outside.
+    # Since you want the mask to be 0 inside and 1 outside, simply invert the mask:
+    mask = 1 - mask_inside
+
+    # 'mask' is now a numpy array of shape (H, W) with 0 inside the polygon and 1 outside.
+
     return mask
 
 
@@ -693,28 +555,72 @@ def map_window_onto_drone_frame(
     return reprojected_mask
 
 
-"""
-def clip_array_into_rectangle_no_nodata(array, nodata):
-    # Clip the rotated array into the bounding box of the valid (non-NaN) values.
-    
-    # Find indices of non-NaN values
-    valid_rows = np.any(array != nodata, axis=1)
-    valid_cols = np.any(array != nodata, axis=0)
+def create_dangerous_intersections_masks(
+    frame_height,
+    frame_width,
+    boxes_centers,
+    safety_radius_pixels,
+    segment_danger_mask,
+    dem_nodata_danger_mask,
+    geofencing_danger_mask,
+    slope_danger_mask,
 
-    # Find the bounding box
-    min_row, max_row = np.where(valid_rows)[0][[0, -1]]
-    min_col, max_col = np.where(valid_cols)[0][[0, -1]]
+):
+    crono_start = time()
 
-    # Crop to the bounding box
-    return array[min_row:max_row+1, min_col:max_col+1]
+    # create the safety mask
+    inter = time()
+    safety_mask = create_safety_mask(frame_height, frame_width, boxes_centers, safety_radius_pixels)
+    st_time = time() - inter
 
+    # create the intersection mask between safety areas and dangerous areas masks
+    inter = time()
+    intersection_segment = np.logical_and(safety_mask, segment_danger_mask)
+    intersection_nodata = np.logical_and(safety_mask, dem_nodata_danger_mask)
+    intersection_geofencing = np.logical_and(safety_mask, geofencing_danger_mask)
+    intersection_slope = np.logical_and(safety_mask, slope_danger_mask)
+    ands_time = time() - inter
 
-def upscale_array_to_image_size(array, target_height, target_width):
-    array_hwc = np.transpose(array, (1, 2, 0))
-    resized_array_hcw = cv2.resize(array_hwc, (target_width, target_height), interpolation=cv2.INTER_NEAREST)
-    resized_chw = np.transpose(resized_array_hcw, (2, 0, 1))
-    return resized_chw
-"""
+    danger_types = []
+    if np.any(intersection_segment > 0):
+        danger_types.append("Vehicles Danger")
+    if np.any(intersection_nodata > 0):
+        danger_types.append("Missing DEM data Danger")
+    if np.any(intersection_geofencing > 0):
+        danger_types.append("Out of Geofenced area Danger DEM data")
+    if np.any(intersection_slope > 0):
+        danger_types.append("Steep slope Danger")
+
+    inter = time()
+    # compute combined danger mask
+    combined_danger_mask = merge_3d_mask(np.stack([
+        segment_danger_mask,
+        dem_nodata_danger_mask,
+        geofencing_danger_mask,
+        slope_danger_mask,
+    ]))
+    dm_time = time() - inter
+
+    # compute combined intersection mask
+    inter = time()
+    combined_intersections = merge_3d_mask(np.stack([
+        intersection_segment,
+        intersection_nodata,
+        intersection_geofencing,
+        intersection_slope
+    ]))
+    inter_time = time() - inter
+
+    combined_danger_mask_no_intersections = combined_danger_mask - combined_intersections
+    assert np.min(combined_danger_mask_no_intersections) >= 0 and np.max(combined_danger_mask_no_intersections) <= 1
+
+    print(f"Danger analysis and reporting completed in {(time() - crono_start) * 1000:.1f} ms")
+    print(f"\tCompute safety mask mask in {st_time * 1000:.1f} ms")
+    print(f"\tCompute single intersections masks in {ands_time * 1000:.1f} ms")
+    print(f"\tCompute combined danger mask in {dm_time * 1000:.1f} ms")
+    print(f"\tCompute combined intersection mask in {inter_time * 1000:.1f} ms")
+
+    return combined_danger_mask_no_intersections, combined_intersections, danger_types
 
 
 def send_alert(alerts_file, frame_id: int, danger_type: str = "Generic"):
@@ -835,4 +741,71 @@ def draw_count(
         y_offset += line_height + 5  # Move down to the next line
 
     return annotated_frame
+
+
+def annotate_and_save_frame(
+        annotated_writer,
+        output_dir,
+        frame,
+        frame_id,
+        cooldown_has_passed,
+        danger_exists,
+        classes,
+        boxes_centers,
+        boxes_corner1,
+        boxes_corner2,
+        safety_radius_pixels,
+        danger_mask,
+        intersection_mask,
+):
+    """ Additional annotations if videos are to be saved, or for frames where danger exist (74 ms)
+    Optimization Opportunities:
+    1. Batching Disk Writes:
+    Disk I/O is one of the slowest parts of the process. Writing files frame by frame can be inefficient, especially if you’re saving many images.
+    Solution: Buffer the frames (e.g., accumulate them in memory) and write them to disk periodically, or use a background thread/process for I/O.
+    2. Avoid Repeated Path Creation:
+    The Path object creation is relatively lightweight, but it can add up in tight loops.
+    Solution: Pre-compute constant paths or reusable parts of the path.
+    3. Optimize cv2.imwrite:
+    cv2.imwrite is slower because it compresses images before saving.
+    Solution: Use less compression or switch to a faster image format like .bmp if file size isn’t critical.
+    4. Parallelize Save Operations:
+    Writing frames and images can be offloaded to a background thread or separate process to avoid blocking the main execution.
+    """
+
+    crono_start = time()
+
+    inter = time()
+    annotated_frame = frame.copy()  # copy of the original frame on which to draw
+    print(f"\tFrame copy generated in {(time() - inter) * 1000:.1f} ms")
+
+    # draw safety circles
+    inter = time()
+    draw_safety_areas(annotated_frame, boxes_centers, safety_radius_pixels)
+    print(f"\tsafety areas generated in {(time() - inter) * 1000:.1f} ms")
+
+    # Overlay dangerous areas (in red) and intersections (in yellow) on the annotated frame
+    inter = time()
+    draw_dangerous_area(annotated_frame, danger_mask, intersection_mask)
+    print(f"\tDangerous areas AND danger INTERSECTION drawn in {(time() - inter) * 1000:.1f} ms")
+
+    # draw detection boxes
+    inter = time()
+    draw_detections(annotated_frame, classes, boxes_corner1, boxes_corner2)
+    print(f"\tDetections drawn in {(time() - inter) * 1000:.1f} ms")
+
+    # draw animal count
+    inter = time()
+    draw_count(classes, annotated_frame)
+    print(f"\tAnimal Count drawn in {(time() - inter) * 1000:.1f} ms")
+
+    inter = time()
+    # save the annotated frame
+    annotated_writer.write(annotated_frame)
+    if cooldown_has_passed and danger_exists:  # save also an image for better identify the exact frame
+        annotated_img_path = Path(output_dir, f"danger_frame_{frame_id}_annotated.png")
+        cv2.imwrite(annotated_img_path, annotated_frame)
+    print(f"\tFrame saving completed in {(time() - inter) * 1000:.1f} ms")
+
+    print(f"Video annotations completed in {(time() - crono_start) * 1000:.1f} ms")
 

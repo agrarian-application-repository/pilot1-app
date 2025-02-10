@@ -64,9 +64,6 @@ output:
   # str: Name of the directory where the results of the analysis will be saved
   output_dir: 'experiments/test_in_danger_v2'
 
-  # str: Whether to save processed videos of not
-  save_videos: true
-
   # str: Name of the files on which alerts will be saved
   alert_file_name: 'alerts'
 

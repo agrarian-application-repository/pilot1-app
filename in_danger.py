@@ -15,6 +15,7 @@ def main():
 
     # TODO Preprocess arguments based on input data format
     # in_danger_args = preprocess_in_danger_args(in_danger_args)
+    # TODO ASSERT sensor_width_mm/sensor_height_mm == sensor_width_pixels/sensor_height_pixels
 
     print("PERFORMING IN-DANGER WITH THE FOLLOWING ARGUMENTS:")
     print(in_danger_args)
