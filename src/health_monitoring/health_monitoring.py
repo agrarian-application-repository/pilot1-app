@@ -78,9 +78,11 @@ def perform_health_monitoring_analysis(
     frame_id = 0
     processed_frames_counter = 0
 
-    # Alert cooldown initialization
-    alerts_frames_cooldown = output_args["alerts_cooldown_seconds"] * fps   # convert cooldown from seconds to frames
-    last_alert_frame_id = - fps  # to avoid dealing with initial None value, at frame 0 alert is allowed
+    # Alert cooldown initialization:
+    # - convert cooldown from seconds to frames
+    alerts_frames_cooldown = output_args["alerts_cooldown_seconds"] * fps
+    # - initialize 'last_alert_frame_id' so that at frame 0 alert is allowed, avoids dealing with None value
+    last_alert_frame_id = - fps
 
     # Time keeper
     processing_start_time = time()
@@ -106,7 +108,13 @@ def perform_health_monitoring_analysis(
         Perform object tracking
         """
         # Track animals in frame
-        classes, boxes_centers, normalized_boxes_centers, boxes_corner1, boxes_corner2 = perform_tracking(tracker, history_tracker, frame, tracking_args, aspect_ratio)
+        classes, boxes_centers, normalized_boxes_centers, boxes_corner1, boxes_corner2 = perform_tracking(
+            detector=tracker,
+            history=history_tracker,
+            frame=frame,
+            tracking_args=tracking_args,
+            aspect_ratio=aspect_ratio,
+        )
 
         """ 
         STEP2 2:
@@ -114,7 +122,11 @@ def perform_health_monitoring_analysis(
         """
 
         # TODO implement
-        are_anomalous = perform_anomaly_detection(anomaly_detector, history_tracker, anomaly_detection_args)
+        are_anomalous = perform_anomaly_detection(
+            anomaly_detector=anomaly_detector,
+            history=history_tracker,
+            anomaly_detection_args=anomaly_detection_args
+        )
 
         """
         STEP 3:
