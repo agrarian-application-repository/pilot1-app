@@ -5,6 +5,7 @@ from torch_geometric.nn import radius_graph, knn_graph
 from scipy.spatial.distance import cdist
 import numpy as np
 from pathlib import Path
+from src.in_danger.in_danger_v2_utils import parse_drone_frame, get_meters_per_pixel
 
 RED = (255, 0, 0)
 GREEN = (0, 255, 0)
@@ -168,7 +169,6 @@ def create_knn_graph(tracked_positions, k=5):
     return edge_index
 
 
-# TODO check if breaks because of differemnt aspect ratio
 def create_radius_graph(tracked_positions, r=0.1):
     """
     Create a radius-based graph where edges are created between nodes within a given radius.
@@ -205,37 +205,78 @@ def create_fully_connected_graph(num_nodes):
     return edge_index
 
 
-# TODO check if breaks because of differemnt aspect ratio
-def meters_to_normalized_radius(radius_m, frame_width_m):
-    """
-    Converts a radius in meters to the normalized YOLO space.
+def create_pyg_graph(
+        num_nodes,
+        tracked_positions,
+        input_args,
+        flight_data_file,
+        frame_id,
+        frame_width,
+        frame_height,
+):
 
-    Parameters:
-        radius_m (float): Radius in meters.
-        frame_width_m (float): Frame width in meters.
+    if input_args["graph_strategy"] == "knn":
+        edge_index = create_knn_graph(tracked_positions, k=input_args["graph_knn"])
 
-    Returns:
-        float: Normalized radius for YOLO.
-    """
+    elif input_args["graph_strategy"] == "radius":
 
-    normalized_radius = max(radius_m / frame_width_m, 1.0)
+        # load frame flight data to extract drone elevation
+        flight_frame_data = parse_drone_frame(flight_data_file, frame_id)
 
-    return normalized_radius
+        # compute GSR (ground sampling resolution) = meters/pixel given drone elevation and camera params
+        meters_per_pixel = get_meters_per_pixel(
+            rel_altitude_m=flight_frame_data["rel_alt"],
+            focal_length_mm=input_args["true_focal_len_mm"],
+            sensor_width_mm=input_args["drone_sensor_width_mm"],
+            sensor_height_mm=input_args["drone_sensor_height_mm"],
+            sensor_width_pixels=input_args["drone_sensor_width_pixels"],
+            sensor_height_pixels=input_args["drone_sensor_height_pixels"],
+            image_width_pixels=frame_width,
+            image_height_pixels=frame_height,
+        )
+
+        # compute the size in meters of the frame's width
+        frame_width_m = frame_width * meters_per_pixel
+
+        # radius is a value in [0.0, 1.0]
+        # is computed as the proportion between the size in meters specified by the user
+        # over the width of the frame
+        # this accounts for drone changes in elevation:
+        # - if the drone climbs the radius will get smaller over the frame (size in meters doesn't change)
+        # - if the drone descends the radius will get larger over the frame (size in meters doesn't change)
+        radius = max(1.0, (input_args["graph_radius_meters"] / frame_width_m))
+
+        edge_index = create_radius_graph(tracked_positions, r=radius)
+
+    else:
+        edge_index = create_fully_connected_graph(num_nodes)
+
+    return edge_index
 
 
-def create_pyg_dataset(history, strategy, strategy_value=None):
+def create_pyg_dataset(
+        history,
+        input_args,
+        flight_data_file,
+        frame_id,
+        frame_width,
+        frame_height,
+):
 
     num_nodes = len(history.last_ids_list)
 
     tracked_ids, tracked_positions = history.get_last_update_arrays()
     # (N,) array and (N,2)=(x,y) array
 
-    if strategy == "radius":
-        edge_index = create_knn_graph(tracked_positions, k=strategy_value)
-    elif strategy == "knn":
-        edge_index = create_radius_graph(tracked_positions, r=strategy_value)
-    else:
-        edge_index = create_fully_connected_graph(num_nodes)
+    edge_index = create_pyg_graph(
+        num_nodes,
+        tracked_positions,
+        input_args,
+        flight_data_file,
+        frame_id,
+        frame_width,
+        frame_height,
+    )
 
     pos, valid = history.get_and_aggregate_ids_history(history.last_ids_list)
 
@@ -251,12 +292,18 @@ def create_pyg_dataset(history, strategy, strategy_value=None):
     return data
 
 
-def perform_anomaly_detection(anomaly_detector, history: HistoryTracker, anomaly_detection_args):
-
-    dataset = create_pyg_dataset(history, strategy, strategy_value)
-
+def perform_anomaly_detection(
+        anomaly_detector,
+        anomaly_detection_args,
+        history: HistoryTracker,
+        input_args,
+        flight_data_file,
+        frame_id,
+        frame_width,
+        frame_height,
+):
+    dataset = create_pyg_dataset(history, input_args, flight_data_file, frame_id, frame_width, frame_height)
     status = anomaly_detector(dataset)
-
     return status
 
 

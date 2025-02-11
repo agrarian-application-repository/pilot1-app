@@ -35,6 +35,11 @@ def perform_health_monitoring_analysis(
     tracker = YOLO(detection_model_checkpoint, task="detect")  # Animal detection & tracking model
 
     anomaly_detector = torch.load(anomaly_detection_args.pop("model_path"))
+    # ============== LOAD FLIGHT INFO ===================================
+
+    # Open drone flight data
+    flight_data_file_path = Path(input_args["flight_data"])
+    flight_data_file = open(flight_data_file_path, "r")
 
     # ============== LOAD VIDEO INFO ===================================
 
@@ -127,7 +132,6 @@ def perform_health_monitoring_analysis(
         positions_list = [] if len(ids_list) == 0 else scalenorm_boxes_centers.tolist()
         history_tracker.update(ids_list, positions_list)
 
-
         """ 
         STEP2 2:
         Perform anomaly detection
@@ -136,8 +140,13 @@ def perform_health_monitoring_analysis(
         # TODO implement
         are_anomalous = perform_anomaly_detection(
             anomaly_detector=anomaly_detector,
+            anomaly_detection_args=anomaly_detection_args,
             history=history_tracker,
-            anomaly_detection_args=anomaly_detection_args
+            input_args=input_args,
+            flight_data_file=flight_data_file,
+            frame_id=frame_id,
+            frame_width=frame_width,
+            frame_height=frame_height,
         )
 
         """
@@ -187,6 +196,7 @@ def perform_health_monitoring_analysis(
     print(f"Apparent processing rate: {apparent_processing_rate:.1f} fps. Real time: {apparent_processing_rate >= fps}")
 
     alerts_file.close()
+    flight_data_file.close()
 
     cap.release()
 
