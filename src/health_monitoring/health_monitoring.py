@@ -108,13 +108,25 @@ def perform_health_monitoring_analysis(
         Perform object tracking
         """
         # Track animals in frame
-        classes, boxes_centers, normalized_boxes_centers, boxes_corner1, boxes_corner2 = perform_tracking(
-            detector=tracker,
-            history=history_tracker,
-            frame=frame,
-            tracking_args=tracking_args,
-            aspect_ratio=aspect_ratio,
+        (
+            ids_list,
+            classes,
+            boxes_centers,
+            norm_boxes_centers,
+            scalenorm_boxes_centers,
+            boxes_corner1,
+            boxes_corner2,
+        ) = perform_tracking(
+                detector=tracker,
+                frame=frame,
+                tracking_args=tracking_args,
+                aspect_ratio=aspect_ratio,
         )
+
+        # Update the history of movements based on tracking results
+        positions_list = [] if len(ids_list) == 0 else scalenorm_boxes_centers.tolist()
+        history_tracker.update(ids_list, positions_list)
+
 
         """ 
         STEP2 2:
