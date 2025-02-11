@@ -473,9 +473,9 @@ if __name__ == "__main__":
     """ PREPROCCESSING """
 
     # Inputs
-    binary_mask_path = 'xxx_output_plots/a6_centered_15x15.tif'  # Binary mask file (TIFF)
+    binary_mask_path = 'xxx2_output_plots/a6_centered_15x15.tif'  # Binary mask file (TIFF)
     drone_image_path = 'experiments/test_in_danger_v2/danger_frame_1_annotated.png'  # Drone image file (JPEG)
-    output_overlay_path = 'xxx_output_plots/overlayed_image.jpg'   # Output overlay path
+    output_overlay_path = 'xxx2_output_plots/overlayed_image.jpg'   # Output overlay path
 
     # Load the drone image
     drone_image = cv2.imread(drone_image_path)
@@ -551,7 +551,7 @@ if __name__ == "__main__":
 
     print("min:", np.min(reprojected_mask))
     print("max:", np.max(reprojected_mask))
-    cv2.imwrite(f"xxx_output_plots/reprojected_mask{yaw}.jpg", (reprojected_mask[0]*255).astype(np.uint8))
+    cv2.imwrite(f"xxx2_output_plots/reprojected_mask{yaw}.jpg", (reprojected_mask[0]*255).astype(np.uint8))
 
     print(f"Overlayed image saved to {output_overlay_path}")
 
@@ -570,10 +570,10 @@ if __name__ == "__main__":
 
     for i, a in enumerate(a_list, 1):
         # Path to save the new smaller 15x15 TIFF
-        output_tif_path = f"xxx_output_plots/a{i}_centered_15x15.tif"
+        output_tif_path = f"xxx2_output_plots/a{i}_centered_15x15.tif"
         # Create the 15x15 TIFF
         create_centered_tif_with_snapping(original_tif_path, output_tif_path, center_point, a)
-        plot_tif(output_tif_path, f"xxx_output_plots/a{i}_centered_15x15.png")
+        plot_tif(output_tif_path, f"xxx2_output_plots/a{i}_centered_15x15.png")
     """
 
 

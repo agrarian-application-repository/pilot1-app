@@ -261,7 +261,7 @@ def extract_and_plot_area(tif_file, lat_min, lat_max, lon_min, lon_max, polygon,
     print(data.shape)
 
     with rasterio.open(
-            "xxx_output_plots/reduced_tif.tif",
+            "xxx2_output_plots/reduced_tif.tif",
             'w',
             driver='GTiff',
             height=data.shape[1],
@@ -277,7 +277,7 @@ def extract_and_plot_area(tif_file, lat_min, lat_max, lon_min, lon_max, polygon,
 
     src.close()
 
-    src = rasterio.open("xxx_output_plots/reduced_tif.tif", "r")
+    src = rasterio.open("xxx2_output_plots/reduced_tif.tif", "r")
     data = src.read()
     print(data.shape)
 
@@ -336,7 +336,7 @@ def extract_and_plot_area(tif_file, lat_min, lat_max, lon_min, lon_max, polygon,
 if __name__ == "__main__":
     # Example usage
     tif_file = "experiments/test_in_danger_v2/combined_dem_masks.tif"  # Path to your GeoTIFF file
-    output_dir = "xxx_output_plots"
+    output_dir = "xxx2_output_plots"
 
     # lat_min = 35.426892831177796
     # lat_max = 35.427257168725454
