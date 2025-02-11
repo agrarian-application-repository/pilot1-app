@@ -4,6 +4,7 @@ from torch_geometric.data import Data
 from torch_geometric.nn import radius_graph, knn_graph
 from scipy.spatial.distance import cdist
 import numpy as np
+from pathlib import Path
 
 RED = (255, 0, 0)
 GREEN = (0, 255, 0)
@@ -290,9 +291,9 @@ def perform_tracking(detector, history: HistoryTracker, frame, tracking_args, as
     return classes, boxes_centers, normalized_boxes_centers, boxes_corner1, boxes_corner2
 
 
-def send_alert(alerts_file, frame_id: int):
+def send_alert(alerts_file, frame_id: int, num_anomalies: int):
     # Write alert to file
-    alerts_file.write(f"Alert: Frame {frame_id} - Anomalous behaviour detected.\n")
+    alerts_file.write(f"Alert: Frame {frame_id} - {num_anomalies} instances of anomalous behaviour detected.\n")
 
 
 def draw_detections(
@@ -310,3 +311,24 @@ def draw_detections(
         cv2.rectangle(annotated_frame, box_corner1, box_corner2, color, 2)
 
 
+def annotate_video(
+        output_dir,
+        annotated_writer,
+        frame,
+        frame_id,
+        cooldown_has_passed,
+        anomaly_exists,
+        classes,
+        are_anomalous,
+        boxes_corner1,
+        boxes_corner2,
+):
+    annotated_frame = frame.copy()  # copy of the original frame on which to draw
+    draw_detections(annotated_frame, classes, are_anomalous, boxes_corner1, boxes_corner2)
+
+    # save the annotated frame to the video
+    annotated_writer.write(annotated_frame)
+    if cooldown_has_passed and anomaly_exists:
+        # save also independent frame for improved insight
+        annotated_img_path = Path(output_dir, f"anomaly_frame_{frame_id}_annotated.png")
+        cv2.imwrite(annotated_img_path, annotated_frame)
