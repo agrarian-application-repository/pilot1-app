@@ -1,13 +1,6 @@
-from pathlib import Path
-from time import time
 from typing import Any
-import rasterio
-
-import cv2
-import numpy as np
 from ultralytics import YOLO
-from scipy.ndimage import rotate as rotate_array
-
+from shapely import Polygon
 
 from src.in_danger.in_danger_v2_utils import *
 
@@ -269,7 +262,7 @@ def perform_in_danger_analysis(
             send_alert(alerts_file, frame_id, danger_type_str)
             last_alert_frame_id = frame_id
 
-        # annoatte the frame and save it into the video
+        # annotate the frame and save it into the video
         # provide standalone image if danger is present and cooldown has passed to complement textual alert
         annotate_and_save_frame(
             annotated_writer,

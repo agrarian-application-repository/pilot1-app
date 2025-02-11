@@ -12,7 +12,6 @@ from rasterio.features import rasterize
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
-
 import geopy
 from geopy.distance import geodesic
 
@@ -26,6 +25,33 @@ BLACK = (0, 0, 0)
 PURPLE = (128, 0, 128)
 
 CLASS_COLOR = [BLUE, PURPLE]
+
+__all__ = [
+    RED,
+    GREEN,
+    BLUE,
+    YELLOW,
+    WHITE,
+    BLACK,
+    PURPLE,
+    "get_dem",
+    "get_dem_mask",
+    "perform_detection",
+    "perform_segmentation",
+    "parse_drone_frame",
+    "get_meters_per_pixel",
+    "get_objects_coordinates",
+    "extract_dem_window",
+    "get_window_size_m",
+    "compute_slope_mask_runtime",
+    "create_geofencing_mask_runtime",
+    "is_polygon_within_bounds",
+    "map_window_onto_drone_frame",
+    "create_dangerous_intersections_masks",
+    "send_alert",
+    "create_safety_mask",
+    "annotate_and_save_frame",
+]
 
 
 def plot_2d_array(array, png_path, title="2D Array Plot", cmap="viridis", colorbar=True):
@@ -96,12 +122,6 @@ def get_dem_mask(dem_mask_path):
     return dem_mask_tif
 
 
-def terminate_if_no_valid_pixels(array):
-    if np.all(array == 1):
-        print("No valid/safe pixels found in the DEM: TERMINATING")
-        exit()
-
-
 def perform_detection(detector, frame, detection_args):
     # Detect animals in frame
     detection_results = detector.predict(source=frame, **detection_args)
@@ -143,7 +163,7 @@ def merge_3d_mask(mask_3d):
     return np.logical_or.reduce(mask_3d, axis=0).astype(np.uint8)
 
 
-def parse_line_to_dict(line):
+def _parse_line_to_dict(line):
     # Regex to capture key-value pairs
     pattern = r'(\w+)\s*:\s*([\w\.\-/]+)'
 
@@ -189,7 +209,7 @@ def parse_drone_frame(file, frame_id):
     # rewind to file beginning to avoid error on next readlines()
     file.seek(0)
 
-    return parse_line_to_dict(useful_line)
+    return _parse_line_to_dict(useful_line)
 
 
 # TODO check formula, fix downsampling cator depeding on which sensor dimension is the largest
@@ -321,7 +341,7 @@ def extract_dem_window(dem_tif, dem_mask_tif, center_lonlat, rectangle_lonlat):
     max_dist = int(np.max(pixel_dists))  # Maximum pixel distance
 
     # --- Step 3: Compute square window size (odd number with buffer) ---
-    buffer = int(np.ceil(max_dist * 0.5))  # Extra space for rotation
+    buffer = int(np.ceil(max_dist * 0.75))  # Extra space for rotation
     half_size = max_dist + buffer
     window_size = 2 * half_size + 1  # Ensure window is odd
 
