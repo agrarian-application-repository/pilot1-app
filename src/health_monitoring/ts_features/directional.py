@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def compute_heading(velocity: np.ndarray) -> np.ndarray:
+def compute_heading(vel_xy: np.ndarray) -> np.ndarray:
     """
     Compute the heading (orientation) angle from velocity vectors.
 
@@ -11,7 +11,7 @@ def compute_heading(velocity: np.ndarray) -> np.ndarray:
 
     Parameters
     ----------
-    velocity : np.ndarray
+    vel_xy : np.ndarray
         Array of shape (N, 2, T) representing velocity vectors for N objects over T time steps.
         The first channel (index 0) is the x-component and the second (index 1) is the y-component.
 
@@ -20,8 +20,7 @@ def compute_heading(velocity: np.ndarray) -> np.ndarray:
     heading : np.ndarray
         Array of shape (N, T) containing heading angles (in radians) for each object at each time step.
     """
-    # Compute heading angle for each object at each time step
-    heading = np.arctan2(velocity[:, 1, :], velocity[:, 0, :])
+    heading = np.arctan2(vel_xy[:, 1, :], vel_xy[:, 0, :])
     return heading
 
 
@@ -52,7 +51,7 @@ def compute_angular_velocity(heading: np.ndarray, dt: float = 1.0) -> np.ndarray
     return angular_velocity
 
 
-def compute_turning_angle(positions: np.ndarray) -> np.ndarray:
+def compute_turning_angle(ds_xy: np.ndarray) -> np.ndarray:
     """
     Compute the turning angle between consecutive displacement vectors for each object.
 
@@ -71,8 +70,9 @@ def compute_turning_angle(positions: np.ndarray) -> np.ndarray:
 
     Parameters
     ----------
-    positions : np.ndarray
-        Array of shape (N, 2, T) representing the [x, y] positions of N objects over T time steps.
+    ds_xy : np.ndarray
+        Array of shape (N, 2, T-1) representing the displacement vectors between
+        consecutive time steps for each object.
 
     Returns
     -------
@@ -80,15 +80,12 @@ def compute_turning_angle(positions: np.ndarray) -> np.ndarray:
         Array of shape (N, T-2) representing the turning angle (in radians) between consecutive displacement vectors.
         For each object, the turning angle is computed for each triple of consecutive positions.
     """
-    # Compute displacement vectors between consecutive positions.
-    # Resulting shape is (N, 2, T-1)
-    displacement = np.diff(positions, axis=2)
-
     # For consecutive displacement vectors, define:
     # v1 = displacement from time t to t+1 (shape: (N, 2, T-2))
     # v2 = displacement from time t+1 to t+2 (shape: (N, 2, T-2))
-    v1 = displacement[:, :, :-1]
-    v2 = displacement[:, :, 1:]
+    # i.e., at the same index, v2 contains the displacement at the successive timestep w.r.t. v1
+    v1 = ds_xy[:, :, :-1]
+    v2 = ds_xy[:, :, 1:]
 
     # Compute the dot product and cross product (2D cross product returns a scalar)
     dot_product = v1[:, 0, :] * v2[:, 0, :] + v1[:, 1, :] * v2[:, 1, :]
@@ -99,48 +96,43 @@ def compute_turning_angle(positions: np.ndarray) -> np.ndarray:
     return turning_angle
 
 
-# Example usage:
 if __name__ == "__main__":
+    from istantaneous_kinematic import compute_deltaS_xy, compute_vel_xy
     # Create a dummy dataset:
-    # Assume we have 3 objects, 2D positions (normalized between 0 and 1), and 10 time steps.
-    N = 3  # number of objects
-    T = 10  # number of time steps
+    # Let's assume we have 3 objects, positions in 2D space, and 10 time steps.
+    N = 3
+    T = 10
+    dt = 2.0
+    # For reproducibility, generate random positions between 0 and 1.
     positions = np.random.rand(N, 2, T)
+    print("positions:", positions)
 
+    # To test directional metrics, first compute the velocity vectors from positions.
+    # Displacement vectors (deltaS_xy) have shape (N, 2, T-1)
+    ds_xy = compute_deltaS_xy(positions)
+    # Velocity is computed by scaling displacement with dt: shape (N, 2, T-1)
+    vel_xy = compute_vel_xy(ds_xy, dt)
 
-    # For directional features, we first need velocity vectors.
-    # Here’s a helper function to compute velocity from positions:
-    def compute_velocity(positions: np.ndarray, dt: float = 1.0) -> np.ndarray:
-        """
-        Compute velocity vectors by differencing positions over time.
+    # -----------------------------
+    # 1. Compute Heading
+    # -----------------------------
+    heading = compute_heading(vel_xy)
+    print("\nheading:", heading)
+    # Expected shape: (N, T-1)
+    assert heading.shape == (N, T - 1), f"Expected heading shape {(N, T - 1)}, got {heading.shape}"
 
-        Parameters
-        ----------
-        positions : np.ndarray
-            Array of shape (N, 2, T) representing positions.
-        dt : float, optional
-            Time interval between measurements (default is 1.0).
+    # -----------------------------
+    # 2. Compute Angular Velocity
+    # -----------------------------
+    ang_vel = compute_angular_velocity(heading, dt)
+    print("\nangular velocity:", ang_vel)
+    # Expected shape: (N, (T-1)-1) i.e., (N, T-2)
+    assert ang_vel.shape == (N, T - 2), f"Expected angular velocity shape {(N, T - 2)}, got {ang_vel.shape}"
 
-        Returns
-        -------
-        velocity : np.ndarray
-            Array of shape (N, 2, T-1) representing velocity vectors.
-        """
-        displacement = np.diff(positions, axis=2)
-        velocity = displacement / dt
-        return velocity
-
-
-    # Compute velocity from positions.
-    velocity = compute_velocity(positions, dt=1.0)  # shape: (N, 2, T-1)
-
-    # Compute directional features.
-    heading = compute_heading(velocity)  # shape: (N, T-1)
-    angular_velocity = compute_angular_velocity(heading)  # shape: (N, T-2)
-    turning_angle = compute_turning_angle(positions)  # shape: (N, T-2)
-
-    # Display the shapes of the computed features.
-    print("Velocity shape:", velocity.shape)  # Expected: (N, 2, T-1)
-    print("Heading shape:", heading.shape)  # Expected: (N, T-1)
-    print("Angular Velocity shape:", angular_velocity.shape)  # Expected: (N, T-2)
-    print("Turning Angle shape:", turning_angle.shape)  # Expected: (N, T-2)
+    # -----------------------------
+    # 3. Compute Turning Angle
+    # -----------------------------
+    turning_angle = compute_turning_angle(positions)
+    print("\nturning angle:", turning_angle)
+    # Expected shape: (N, T-2)
+    assert turning_angle.shape == (N, T - 2), f"Expected turning angle shape {(N, T - 2)}, got {turning_angle.shape}"

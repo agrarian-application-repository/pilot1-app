@@ -1,9 +1,10 @@
 import numpy as np
-
+import pywt  # PyWavelets library
 
 # =====================================================
 # Frequency Domain Features: FFT-Based Features
 # =====================================================
+
 
 def compute_fft_features(time_series: np.ndarray, dt: float = 1.0) -> dict:
     """
@@ -32,6 +33,8 @@ def compute_fft_features(time_series: np.ndarray, dt: float = 1.0) -> dict:
           'spectral_bandwidth': np.ndarray of shape (N,)
           'spectral_energy':    np.ndarray of shape (N,)
     """
+    assert len(time_series.shape) == 2, f"expected timeseries with shape (N,T). Got shape {time_series.shape}"
+
     N, T = time_series.shape
     # Compute FFT along the time axis (using rfft for real-valued signals)
     fft_coeffs = np.fft.rfft(time_series, axis=1)
@@ -99,7 +102,8 @@ def compute_wavelet_energy_features(time_series: np.ndarray, wavelet: str = 'db4
           'level_2': np.ndarray of shape (N,) (energy of detail coefficients at level 2)
           ... (one key per detail level)
     """
-    import pywt  # PyWavelets library
+    assert len(time_series.shape) == 2, f"expected timeseries with shape (N,T). Got shape {time_series.shape}"
+
     N, T = time_series.shape
     approx_energy_list = []
     detail_energy_lists = []  # This will be a list of lists; each inner list holds energies for all levels for one object

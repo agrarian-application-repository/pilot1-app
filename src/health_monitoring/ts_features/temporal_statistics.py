@@ -34,6 +34,8 @@ def compute_temporal_statistics(time_series: np.ndarray) -> dict:
         '25th_percentile', and '75th_percentile'. Each value is an array of shape (N,)
         representing the statistic computed over the time axis for each object.
     """
+    assert len(time_series.shape) == 2, f"expected timeseries with shape (N,T). Got shape {time_series.shape}"
+
     stats = {
         'mean': np.mean(time_series, axis=1),
         'median': np.median(time_series, axis=1),
@@ -65,7 +67,7 @@ def compute_sliding_window_statistics(time_series: np.ndarray, window_size: int,
     Parameters
     ----------
     time_series : np.ndarray
-        Array of shape (N, T) representing the time series data for N objects.
+        Array of shape (N, T) representing the time series array for N objects.
     window_size : int
         The number of time steps to include in each sliding window.
     step : int, optional
@@ -77,6 +79,9 @@ def compute_sliding_window_statistics(time_series: np.ndarray, window_size: int,
         Dictionary with keys corresponding to each statistic. Each value is an array of
         shape (N, number_of_windows) representing the statistic computed over each window.
     """
+
+    assert len(time_series.shape) == 2, f"expected timeseries with shape (N,T). Got shape {time_series.shape}"
+
     # Create sliding windows along the time axis.
     # windows shape will be (N, T - window_size + 1, window_size)
     windows = sliding_window_view(time_series, window_shape=window_size, axis=1)
@@ -100,12 +105,8 @@ def compute_sliding_window_statistics(time_series: np.ndarray, window_size: int,
 # Example Usage
 # ==============================
 if __name__ == "__main__":
-    # Assume we have 3 objects, positions in 2D space (normalized between 0 and 1), and 10 time steps.
     N = 3
     T = 10
-    positions = np.random.rand(N, 2, T)
-
-    # ----- Temporal Statistical Features -----
     # For demonstration, create a dummy time series (e.g., speed or any other metric)
     dummy_time_series = np.random.rand(N, T)  # shape (N, T)
 

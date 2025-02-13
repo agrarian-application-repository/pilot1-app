@@ -52,11 +52,13 @@ def compute_distance_to_reference(positions: np.ndarray, reference_point: np.nda
     return distances
 
 
-def compute_zone_indicators(positions: np.ndarray, n_rows: int = 2, n_cols: int = 2) -> np.ndarray:
+def compute_zone_indicators(positions: np.ndarray, x_max: float = 1.0, y_max: float = 1.0, n_rows: int = 2, n_cols: int = 2) -> np.ndarray:
     """
     Compute zone indicators for each object by assigning a zone label based on its position in the space.
 
-    The 2D space is assumed to be normalized in [0, 1] and is partitioned into a grid of n_rows x n_cols.
+    The 2D space is partitioned into a grid of n_rows x n_cols,
+    and bounded in [0,x_max] along the columns, and bounded in [0,y_max] along the rows
+
     Each object's zone is determined by its (x, y) coordinates. The zone label is computed as:
 
         zone = row_index * n_cols + col_index
@@ -65,6 +67,10 @@ def compute_zone_indicators(positions: np.ndarray, n_rows: int = 2, n_cols: int 
     ----------
     positions : np.ndarray
         Array of shape (N, 2, T) representing the positions (x, y) of N objects over T time steps.
+    x_max : float
+        Maximum value for the x-axis, used to normalize x coordinates.
+    y_max : float
+        Maximum value for the y-axis, used to normalize y coordinates.
     n_rows : int, optional
         Number of rows to divide the space into (default is 2).
     n_cols : int, optional
@@ -76,16 +82,14 @@ def compute_zone_indicators(positions: np.ndarray, n_rows: int = 2, n_cols: int 
         Array of shape (N, T) containing an integer zone label for each object at each time step.
     """
     N, _, T = positions.shape
-    # Extract x and y coordinates (each of shape: (N, T))
     x = positions[:, 0, :]
     y = positions[:, 1, :]
 
-    # Compute column indices: scale x to [0, n_cols) and convert to int
-    col_index = np.clip((x * n_cols).astype(int), 0, n_cols - 1)
-    # Compute row indices: scale y to [0, n_rows) and convert to int
-    row_index = np.clip((y * n_rows).astype(int), 0, n_rows - 1)
+    # Scale x and y according to the provided max values
+    col_index = np.clip((x / x_max * n_cols).astype(int), 0, n_cols - 1)
+    row_index = np.clip((y / y_max * n_rows).astype(int), 0, n_rows - 1)
 
-    # Compute zone indicator as: zone = row_index * n_cols + col_index
+    # Compute zone indicator: zone = row_index * n_cols + col_index
     zones = row_index * n_cols + col_index
     return zones
 
@@ -112,6 +116,8 @@ def compute_lagged_features(time_series: np.ndarray, lags: list) -> dict:
         Dictionary where each key is a lag value (int) and each value is an array of shape (N, T)
         representing the time series shifted by that lag.
     """
+    assert len(time_series.shape) == 2, f"expected timeseries with shape (N,T). Got shape {time_series.shape}"
+
     N, T = time_series.shape
     lagged_features = {}
 

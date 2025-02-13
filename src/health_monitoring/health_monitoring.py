@@ -63,8 +63,6 @@ def perform_health_monitoring_analysis(
 
     # ============== LOAD VIDEO WRITERS ===================================
 
-    annotated_writer = None
-
     annotated_video_path = (output_dir / output_args["annotated_video_name"]).with_suffix(".mp4")
     annotated_writer = cv2.VideoWriter(
         filename=annotated_video_path,
