@@ -44,6 +44,7 @@ def check_train_args(args: dict[str, Any]) -> dict[str, Any]:
     assert (isinstance(args['device'], int) and args['device'] >= 0) or \
            (isinstance(args['device'], str) and args['device'] in ['cpu', 'mps']) or \
            (isinstance(args['device'], list) and
+                len(args['device']) > 0 and  # not empty
                 sum([isinstance(device, int) for device in args['device']]) == len(args['device']) and  # all integers
                 sum([device >= 0 for device in args['device']]) == len(args['device']) and # all non-negatives
                 len(args['device']) == len(set(args['device']))  # no duplicates
@@ -80,6 +81,7 @@ def check_train_args(args: dict[str, Any]) -> dict[str, Any]:
 
     assert args['classes'] is None or \
            (isinstance(args['classes'], list) and
+                len(args['classes']) > 0 and  # not empty
                 sum([isinstance(c, int) for c in args['classes']]) == len(args['classes']) and  # all integers
                 sum([c >= 0 for c in args['classes']]) == len(args['classes']) and  # all non-negative
                 len(args['classes']) == len(set(args['classes']))  # no duplicates

@@ -77,6 +77,7 @@ def check_tracking_args(args: dict[str, Any]) -> dict[str, Any]:
 
     assert args['classes'] is None or \
            (isinstance(args['classes'], list) and
+            len(args['classes']) > 0 and
             sum([isinstance(c, int) for c in args['classes']]) == len(args['classes']) and  # all integers
             sum([c >= 0 for c in args['classes']]) == len(args['classes']) and  # all positives
             len(args['classes']) == len(set(args['classes']))  # no duplicates
