@@ -50,7 +50,10 @@ BASE_CHECKPOINTS_SEGMENT = [
     "yolo11x-seg.pt",
 ]
 
-BASE_TRACKERS = ["botsort.yaml", "bytetrack.yaml"]
+BASE_TRACKERS = [
+    "botsort.yaml",
+    "bytetrack.yaml",
+]
 
 
 def parse_config_file() -> str:
@@ -95,7 +98,7 @@ def is_valid_pt_file(pt_file: Path) -> bool:
     Returns:
         bool: True if the file exists and has a `.pt` extension, otherwise False.
     """
-    return pt_file.exists() and pt_file.is_file() and pt_file.suffix == ".pt"
+    return pt_file.is_file() and pt_file.suffix == ".pt"
 
 
 def is_valid_yaml_conf(conf_file: Path) -> bool:
@@ -108,12 +111,15 @@ def is_valid_yaml_conf(conf_file: Path) -> bool:
     Returns:
         bool: True if the file exists and has a `.yaml` extension, otherwise False.
     """
-    return conf_file.exists() and conf_file.is_file() and conf_file.suffix == ".yaml"
+    return conf_file.is_file() and conf_file.suffix == ".yaml"
 
 
 def is_valid_checkpoint(checkpoint: Path, task: str) -> bool:
     """
     Check if the given file path is a valid checkpoint file, i.e. if it exists and is a .pt file.
+    WARNING: this function only check that the path is a valid custom .pt file that exists.
+    If the custom path does not exist, it checks if the path refers to one of the default YOLO config files.
+    It CANNOT stop the user , for example, from passing a custom valid .pt file for a segmentation model into a detection task
 
     Args:
         checkpoint (Path): The file path to be checked.
@@ -136,25 +142,35 @@ def is_valid_tracker(conf_file: Path) -> bool:
 
 def is_valid_youtube_link(url: str) -> bool:
     """
-    Check if the given URL is a valid YouTube link.
+    Validates whether a given URL is a valid YouTube link.
+
+    A valid YouTube URL must match common YouTube URL patterns and have a valid YouTube domain.
+    For example:
+      - https://www.youtube.com/watch?v=VIDEO_ID
+      - https://youtu.be/VIDEO_ID
+      - https://www.youtube.com/embed/VIDEO_ID
 
     Args:
-        url (str): The URL string to be checked.
+        url (str): The URL to be validated.
 
     Returns:
-        bool: True if the URL is a valid YouTube link, otherwise False.
+        bool: True if the URL is a valid YouTube video link, False otherwise.
     """
-    # Regular expression pattern for YouTube URLs
-    youtube_regex = re.compile(
-        r"^(https?://)?(www\.)?(youtube|youtu|youtube-nocookie)\.(com|be)/"
-        r"(watch\?v=|embed/|v/|.+\?v=)?([^&=%\?]{11})"
+    if not isinstance(url, str) or not url.strip():
+        return False
+
+    # Updated regex: Require the URL to start with (optional) scheme, optional www,
+    # and a domain that is either youtube.com or youtu.be.
+    # Then match one of the common URL path patterns and capture a video ID of exactly 11 characters.
+    reg_exp = (
+        r"^(https?\:\/\/)?"                   # Optional http:// or https://
+        r"(www\.)?"                           # Optional www.
+        r"(youtube\.com|youtu\.be)\/"          # Domain must be youtube.com or youtu.be
+        r".*(watch\?v=|embed\/|v\/)?"          # Optional path patterns (not strictly needed for youtu.be)
+        r"([^#\&\?]{11})"                     # Capture 11-character video ID
     )
-
-    # Match the URL against the pattern
-    match = youtube_regex.match(url)
-
+    match = re.match(reg_exp, url)
     return bool(match)
-
 
 def is_valid_image(img_path: Path) -> bool:
     """
@@ -166,7 +182,7 @@ def is_valid_image(img_path: Path) -> bool:
     Returns:
         bool: True if the path corresponds to a valid image, otherwise False.
     """
-    return img_path.exists() and img_path.is_file() and img_path.suffix.lower() in ALLOWED_IMAGE_FORMATS
+    return img_path.is_file() and img_path.suffix.lower() in ALLOWED_IMAGE_FORMATS
 
 
 def is_valid_images_dir(dir_path: Path) -> bool:
@@ -180,7 +196,7 @@ def is_valid_images_dir(dir_path: Path) -> bool:
         bool: True if the provided path corresponds to a directory containing only valid images, otherwise False.
     """
 
-    if not dir_path.exists() or not dir_path.is_dir():
+    if not dir_path.is_dir():
         return False
 
     for item in dir_path.iterdir():
@@ -200,7 +216,7 @@ def is_valid_video(video_path: Path) -> bool:
     Returns:
         bool: True if the path corresponds to a valid video, otherwise False.
     """
-    return video_path.exists() and video_path.is_file() and video_path.suffix.lower() in ALLOWED_VIDEO_FORMATS
+    return video_path.is_file() and video_path.suffix.lower() in ALLOWED_VIDEO_FORMATS
 
 
 def is_valid_videos_dir(dir_path: Path) -> bool:
@@ -214,7 +230,7 @@ def is_valid_videos_dir(dir_path: Path) -> bool:
         bool: True if the provided path corresponds to a directory containing only valid videos, otherwise False.
     """
 
-    if not dir_path.exists() or not dir_path.is_dir():
+    if not dir_path.is_dir():
         return False
 
     for item in dir_path.iterdir():

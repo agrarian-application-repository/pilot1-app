@@ -2,7 +2,6 @@ from pathlib import Path
 
 import pytest
 
-# Import the functions and constants from your module.
 from src.configs.utils import (
     parse_config_file,
     read_yaml_config,
@@ -110,22 +109,24 @@ def test_is_valid_yaml_conf(tmp_path):
 # Tests for is_valid_checkpoint
 # ---------------------------------------------------------------------------
 
-def test_is_valid_checkpoint_detect_base():
+@pytest.mark.parametrize("base_cp", BASE_CHECKPOINTS_DETECT)
+def test_is_valid_checkpoint_detect_base(base_cp: str):
     """
     For task 'detect', if the checkpoint string is in BASE_CHECKPOINTS_DETECT,
     the function returns True even if the file does not exist.
     """
-    cp = Path("yolo11n.pt")
+    cp = Path(base_cp)
     assert cp.as_posix() in BASE_CHECKPOINTS_DETECT
     assert is_valid_checkpoint(cp, "detect")
 
 
-def test_is_valid_checkpoint_segment_base():
+@pytest.mark.parametrize("base_cp", BASE_CHECKPOINTS_SEGMENT)
+def test_is_valid_checkpoint_segment_base(base_cp: str):
     """
     For task 'segment', if the checkpoint string is in BASE_CHECKPOINTS_SEGMENT,
     the function returns True even if the file does not exist.
     """
-    cp = Path("yolo11n-seg.pt")
+    cp = Path(base_cp)
     assert cp.as_posix() in BASE_CHECKPOINTS_SEGMENT
     assert is_valid_checkpoint(cp, "segment")
 
@@ -163,12 +164,13 @@ def test_is_valid_tracker_with_yaml(tmp_path):
     assert is_valid_tracker(tracker_yaml)
 
 
-def test_is_valid_tracker_with_base_name():
+@pytest.mark.parametrize("base_tracker", BASE_TRACKERS)
+def test_is_valid_tracker_with_base_name(base_tracker: str):
     """
     Even if a file does not exist, if its string is in BASE_TRACKERS,
     is_valid_tracker should return True.
     """
-    tracker_name = Path("botsort.yaml")
+    tracker_name = Path(base_tracker)
     assert tracker_name.as_posix() in BASE_TRACKERS
     assert is_valid_tracker(tracker_name)
 
@@ -185,100 +187,171 @@ def test_is_valid_tracker_invalid(tmp_path):
 # ---------------------------------------------------------------------------
 # Tests for is_valid_youtube_link
 # ---------------------------------------------------------------------------
-
-def test_is_valid_youtube_link_valid():
-    valid_url = "https://www.youtube.com/watch?v=ABCDEFGHIJK"  # VIDEO ID of 11 characters
-    assert is_valid_youtube_link(valid_url)
-
-
-def test_is_valid_youtube_link_invalid():
-    invalid_url = "https://www.notyoutube.com/watch?v=ABCDEFGHIJK"
-    assert not is_valid_youtube_link(invalid_url)
-
-
-# ---------------------------------------------------------------------------
-# Tests for is_valid_image and is_valid_images_dir
-# ---------------------------------------------------------------------------
-
-def test_is_valid_image(tmp_path):
-    valid_image = tmp_path / "image.jpg"
-    valid_image.write_text("dummy")
-    invalid_image = tmp_path / "image.txt"
-    invalid_image.write_text("dummy")
-    non_existing = tmp_path / "nonexistent.png"
-
-    assert is_valid_image(valid_image)
-    assert not is_valid_image(invalid_image)
-    assert not is_valid_image(non_existing)
+@pytest.mark.parametrize("url, expected", [
+    # Valid YouTube URLs
+    ("https://www.youtube.com/watch?v=dQw4w9WgXcQ", True),
+    ("https://youtu.be/dQw4w9WgXcQ", True),
+    ("https://www.youtube.com/embed/dQw4w9WgXcQ", True),
+    ("https://www.youtube.com/v/dQw4w9WgXcQ", True),
+    ("https://www.youtube.com/watch?v=dQw4w9WgXcQ&feature=youtu.be", True),
+    ("https://youtube.com/watch?v=dQw4w9WgXcQ", True),
+    # Invalid URLs
+    ("https://www.example.com/watch?v=dQw4w9WgXcQ", False),  # Wrong domain
+    ("https://www.youtube.com/", False),  # No video ID
+    ("https://youtu.be/", False),  # No video ID
+    ("https://www.youtube.com/watch?v=", False),  # Empty video ID
+    ("https://www.youtube.com/watch", False),  # Missing "v=" parameter
+    ("https://www.youtube.com/embed/", False),  # No video ID
+    ("dQw4w9WgXcQ", False),  # Just a video ID, not a URL
+    ("", False),  # Empty string
+    (None, False),  # None value
+])
+def test_is_valid_youtube_link(url, expected):
+    assert is_valid_youtube_link(url) == expected
 
 
-def test_is_valid_images_dir_valid(tmp_path):
-    """
-    Create a directory containing only valid image files.
-    """
-    img_dir = tmp_path / "images"
-    img_dir.mkdir()
-    (img_dir / "a.jpg").write_text("dummy")
-    (img_dir / "b.png").write_text("dummy")
-    assert is_valid_images_dir(img_dir)
+# -------------------------------------------------------
+# Tests for is_valid_image
+# -------------------------------------------------------
+
+def test_is_valid_image_with_valid_extension(tmp_path: Path):
+    # Create a temporary file with a valid image extension.
+    valid_file = tmp_path / "test.jpg"
+    valid_file.write_text("dummy content")
+    assert is_valid_image(valid_file) is True
 
 
-def test_is_valid_images_dir_with_invalid_file(tmp_path):
-    """
-    If any file in the directory is not a valid image, the function should return False.
-    """
-    img_dir = tmp_path / "images"
-    img_dir.mkdir()
-    (img_dir / "a.jpg").write_text("dummy")
-    (img_dir / "not_image.txt").write_text("dummy")
-    assert not is_valid_images_dir(img_dir)
+@pytest.mark.parametrize("ext", ALLOWED_IMAGE_FORMATS)
+def test_is_valid_image_all_allowed_extensions(tmp_path: Path, ext: str):
+    # Test every allowed extension (using uppercase to verify case-insensitivity)
+    valid_file = tmp_path / f"image{ext.upper()}"
+    valid_file.write_text("dummy")
+    assert is_valid_image(valid_file) is True
 
 
-def test_is_valid_images_dir_not_directory(tmp_path):
-    not_a_dir = tmp_path / "file.jpg"
-    not_a_dir.write_text("dummy")
-    assert not is_valid_images_dir(not_a_dir)
+def test_is_valid_image_with_invalid_extension(tmp_path: Path):
+    # Create a file with an extension not in the allowed list.
+    invalid_file = tmp_path / "test.txt"
+    invalid_file.write_text("dummy content")
+    assert is_valid_image(invalid_file) is False
 
 
-# ---------------------------------------------------------------------------
-# Tests for is_valid_video and is_valid_videos_dir
-# ---------------------------------------------------------------------------
-
-def test_is_valid_video(tmp_path):
-    valid_video = tmp_path / "video.mp4"
-    valid_video.write_text("dummy")
-    invalid_video = tmp_path / "video.txt"
-    invalid_video.write_text("dummy")
-    non_existing = tmp_path / "nonexistent.mp4"
-
-    assert is_valid_video(valid_video)
-    assert not is_valid_video(invalid_video)
-    assert not is_valid_video(non_existing)
+def test_is_valid_image_nonexistent(tmp_path: Path):
+    # Reference a file that does not exist.
+    nonexistent = tmp_path / "nonexistent.jpg"
+    assert is_valid_image(nonexistent) is False
 
 
-def test_is_valid_videos_dir_valid(tmp_path):
-    """
-    Create a directory containing only valid video files.
-    """
-    vid_dir = tmp_path / "videos"
-    vid_dir.mkdir()
-    (vid_dir / "a.mp4").write_text("dummy")
-    (vid_dir / "b.mkv").write_text("dummy")
-    assert is_valid_videos_dir(vid_dir)
+def test_is_valid_image_when_given_directory(tmp_path: Path):
+    # Passing a directory instead of a file should return False.
+    directory = tmp_path / "subdir"
+    directory.mkdir()
+    assert is_valid_image(directory) is False
 
 
-def test_is_valid_videos_dir_with_invalid_file(tmp_path):
-    """
-    If any file in the directory is not a valid video, the function should return False.
-    """
-    vid_dir = tmp_path / "videos"
-    vid_dir.mkdir()
-    (vid_dir / "a.mp4").write_text("dummy")
-    (vid_dir / "not_video.txt").write_text("dummy")
-    assert not is_valid_videos_dir(vid_dir)
+# -------------------------------------------------------
+# Tests for is_valid_video
+# -------------------------------------------------------
+
+def test_is_valid_video_with_valid_extension(tmp_path: Path):
+    valid_file = tmp_path / "video.mp4"
+    valid_file.write_text("dummy content")
+    assert is_valid_video(valid_file) is True
 
 
-def test_is_valid_videos_dir_not_directory(tmp_path):
-    not_a_dir = tmp_path / "video.mp4"
-    not_a_dir.write_text("dummy")
-    assert not is_valid_videos_dir(not_a_dir)
+@pytest.mark.parametrize("ext", ALLOWED_VIDEO_FORMATS)
+def test_is_valid_video_all_allowed_extensions(tmp_path: Path, ext: str):
+    valid_file = tmp_path / f"video{ext.upper()}"
+    valid_file.write_text("dummy")
+    assert is_valid_video(valid_file) is True
+
+
+def test_is_valid_video_with_invalid_extension(tmp_path: Path):
+    invalid_file = tmp_path / "video.txt"
+    invalid_file.write_text("dummy content")
+    assert is_valid_video(invalid_file) is False
+
+
+def test_is_valid_video_nonexistent(tmp_path: Path):
+    nonexistent = tmp_path / "nonexistent.mp4"
+    assert is_valid_video(nonexistent) is False
+
+
+def test_is_valid_video_when_given_directory(tmp_path: Path):
+    directory = tmp_path / "subdir"
+    directory.mkdir()
+    assert is_valid_video(directory) is False
+
+
+# -------------------------------------------------------
+# Tests for is_valid_images_dir
+# -------------------------------------------------------
+
+def test_is_valid_images_dir_all_valid(tmp_path: Path):
+    # Create a directory with files that all have allowed image extensions.
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    for ext in ALLOWED_IMAGE_FORMATS:
+        f = images_dir / f"image{ext}"
+        f.write_text("dummy")
+    assert is_valid_images_dir(images_dir) is True
+
+
+def test_is_valid_images_dir_with_invalid_file(tmp_path: Path):
+    # Create a directory with one valid image and one invalid file.
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    # Valid image file.
+    (images_dir / "image.jpg").write_text("dummy")
+    # Invalid file.
+    (images_dir / "doc.txt").write_text("dummy")
+    assert is_valid_images_dir(images_dir) is False
+
+
+def test_is_valid_images_dir_empty(tmp_path: Path):
+    # An empty directory should return True (since it doesn't contain any invalid files).
+    empty_dir = tmp_path / "empty_images"
+    empty_dir.mkdir()
+    assert is_valid_images_dir(empty_dir) is True
+
+
+def test_is_valid_images_dir_when_given_file(tmp_path: Path):
+    # Passing a file instead of a directory should return False.
+    file_path = tmp_path / "image.jpg"
+    file_path.write_text("dummy")
+    assert is_valid_images_dir(file_path) is False
+
+
+# -------------------------------------------------------
+# Tests for is_valid_videos_dir
+# -------------------------------------------------------
+
+def test_is_valid_videos_dir_all_valid(tmp_path: Path):
+    # Create a directory with files that all have allowed video extensions.
+    videos_dir = tmp_path / "videos"
+    videos_dir.mkdir()
+    for ext in ALLOWED_VIDEO_FORMATS:
+        f = videos_dir / f"video{ext}"
+        f.write_text("dummy")
+    assert is_valid_videos_dir(videos_dir) is True
+
+
+def test_is_valid_videos_dir_with_invalid_file(tmp_path: Path):
+    # Create a directory with one valid video file and one invalid file.
+    videos_dir = tmp_path / "videos"
+    videos_dir.mkdir()
+    (videos_dir / "video.mp4").write_text("dummy")
+    (videos_dir / "doc.txt").write_text("dummy")
+    assert is_valid_videos_dir(videos_dir) is False
+
+
+def test_is_valid_videos_dir_empty(tmp_path: Path):
+    empty_dir = tmp_path / "empty_videos"
+    empty_dir.mkdir()
+    assert is_valid_videos_dir(empty_dir) is True
+
+
+def test_is_valid_videos_dir_when_given_file(tmp_path: Path):
+    file_path = tmp_path / "video.mp4"
+    file_path.write_text("dummy")
+    assert is_valid_videos_dir(file_path) is False
