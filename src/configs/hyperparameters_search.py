@@ -60,6 +60,7 @@ def check_hs_args(args: dict[str, Any]) -> dict[str, Any]:
     assert (isinstance(args['device'], int) and args['device'] >= 0) or \
            (isinstance(args['device'], str) and args['device'] in ['cpu', 'mps']) or \
            (isinstance(args['device'], list) and
+                len(args['device']) > 0 and
                 sum([isinstance(device, int) for device in args['device']]) == len(args['device']) and  # all integers
                 sum([device >= 0 for device in args['device']]) == len(args['device']) and # all positives
                 len(args['device']) == len(set(args['device']))  # no duplicates
@@ -96,6 +97,7 @@ def check_hs_args(args: dict[str, Any]) -> dict[str, Any]:
 
     assert args['classes'] is None or \
            (isinstance(args['classes'], list) and
+                len(args['classes']) > 0 and
                 sum([isinstance(c, int) for c in args['classes']]) == len(args['classes']) and  # all integers
                 sum([c >= 0 for c in args['classes']]) == len(args['classes']) and  # all positives
                 len(args['classes']) == len(set(args['classes']))  # no duplicates
@@ -225,7 +227,7 @@ def check_hs_args(args: dict[str, Any]) -> dict[str, Any]:
     assert isinstance(args['space']['warmup_bias_lr']['max'], float) and args['space']['warmup_bias_lr']['max'] > 0, \
         f"'warmup_bias_lr_max' must be a positive float. Got {args['space']['warmup_bias_lr']['max']}"
     assert args['space']['warmup_bias_lr']['min'] < args['space']['warmup_bias_lr']['max'], \
-        f"'warmup_bias_lr_max_min' must be lower than 'warmup_bias_lr_max'. Got {args['space']['warmup_bias_lr']['min']} and {args['space']['warmup_bias_lr']['max']}"
+        f"'warmup_bias_lr_min' must be lower than 'warmup_bias_lr_max'. Got {args['space']['warmup_bias_lr']['min']} and {args['space']['warmup_bias_lr']['max']}"
 
     args['space']['warmup_bias_lr'] = tune.uniform(args['space']['warmup_bias_lr']['min'], args['space']['warmup_bias_lr']['max'])
 

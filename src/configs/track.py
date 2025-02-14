@@ -27,7 +27,7 @@ def check_tracking_args(args: dict[str, Any]) -> dict[str, Any]:
     assert is_valid_video(Path(args['source'])) or \
            is_valid_videos_dir(Path(args['source'])) or \
            is_valid_youtube_link(args['source']), \
-        f"'source' must be an image, a video, a directory of images, a directory of video, or a youtube link. Got {args['source']}"
+        f"'source' must be a video, a directory of videos, or a youtube link. Got {args['source']}"
 
     # ---------- other YOLO args ---------------
 
@@ -77,6 +77,7 @@ def check_tracking_args(args: dict[str, Any]) -> dict[str, Any]:
 
     assert args['classes'] is None or \
            (isinstance(args['classes'], list) and
+            len(args['classes']) > 0 and
             sum([isinstance(c, int) for c in args['classes']]) == len(args['classes']) and  # all integers
             sum([c >= 0 for c in args['classes']]) == len(args['classes']) and  # all positives
             len(args['classes']) == len(set(args['classes']))  # no duplicates
@@ -88,6 +89,7 @@ def check_tracking_args(args: dict[str, Any]) -> dict[str, Any]:
 
     assert args['embed'] is None or \
            (isinstance(args['embed'], list) and
+            len(args['embed']) > 0 and
             sum([isinstance(layer, int) for layer in args['embed']]) == len(args['embed']) and  # all integers
             sum([layer >= 0 for layer in args['embed']]) == len(args['embed']) and  # all non-negatives
             len(args['embed']) == len(set(args['embed']))  # no duplicates
