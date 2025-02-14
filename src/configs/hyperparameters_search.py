@@ -227,7 +227,7 @@ def check_hs_args(args: dict[str, Any]) -> dict[str, Any]:
     assert isinstance(args['space']['warmup_bias_lr']['max'], float) and args['space']['warmup_bias_lr']['max'] > 0, \
         f"'warmup_bias_lr_max' must be a positive float. Got {args['space']['warmup_bias_lr']['max']}"
     assert args['space']['warmup_bias_lr']['min'] < args['space']['warmup_bias_lr']['max'], \
-        f"'warmup_bias_lr_max_min' must be lower than 'warmup_bias_lr_max'. Got {args['space']['warmup_bias_lr']['min']} and {args['space']['warmup_bias_lr']['max']}"
+        f"'warmup_bias_lr_min' must be lower than 'warmup_bias_lr_max'. Got {args['space']['warmup_bias_lr']['min']} and {args['space']['warmup_bias_lr']['max']}"
 
     args['space']['warmup_bias_lr'] = tune.uniform(args['space']['warmup_bias_lr']['min'], args['space']['warmup_bias_lr']['max'])
 
