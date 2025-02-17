@@ -199,7 +199,6 @@ def perform_in_danger_analysis(
 
         # find the distance between two points on opposite side of the window at the drone latitude
         dem_window_size_m = get_window_size_m(flight_frame_data["latitude"], dem_window_bounds)
-
         dem_pixel_size_m = dem_window_size_m / dem_window_size
 
         slope_mask_window = compute_slope_mask_runtime(
@@ -213,15 +212,11 @@ def perform_in_danger_analysis(
         combined_dem_mask_over_frame = map_window_onto_drone_frame(
             window=masks_window,
             window_transform=dem_window_transform,
-            window_crs=dem_tif.crs,
-            center_coords=center_coords,
-            corners_coords=corners_coordinates,
-            angle_wrt_north=flight_frame_data["gb_yaw"],
-            frame_width=frame_width,
-            frame_height=frame_height,
-            window_size_pixels=dem_window_size,
-            window_size_m=dem_window_size_m,
-            frame_pixel_size_m=meters_per_pixel,
+            drone_ul=tuple(corners_coordinates[0]),  # (lon, lat) for upper-left
+            drone_ur=tuple(corners_coordinates[1]),  # (lon, lat) for upper-right
+            drone_bl=tuple(corners_coordinates[3]),  # (lon, lat) for bottom-left
+            output_shape=(frame_height, frame_width),
+            crs=dem_tif.crs
         )
 
         dem_nodata_danger_mask = combined_dem_mask_over_frame[0]

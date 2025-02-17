@@ -514,65 +514,50 @@ def is_polygon_within_bounds(bounds, polygon):
 
 
 def map_window_onto_drone_frame(
-    window,
-    window_transform,
-    window_crs,
-    center_coords,
-    corners_coords,
-    angle_wrt_north,
-    frame_width,
-    frame_height,
-    window_size_pixels,
-    window_size_m,
-    frame_pixel_size_m,
+        window,
+        window_transform,
+        drone_ul,  # (lon, lat) for upper-left
+        drone_ur,  # (lon, lat) for upper-right
+        drone_bl,  # (lon, lat) for bottom-left
+        output_shape=(1080, 1920),
+        crs='EPSG:4326'
 ):
+    """
+    Map the DEM window to the drone frame using the output transform T_out,
+    which is built from the provided drone frame corner coordinates.
+    """
+    height, width = output_shape
 
-    center_lon = center_coords[0]
-    center_lat = center_coords[1]
-    new_upper_left_lon = corners_coords[0, 0]
-    new_upper_left_lat = corners_coords[0, 1]
+    # Build T_out using the known drone frame corners.
+    # Here, we assume:
+    #  (0, 0)             --> drone_ul
+    #  (width-1, 0)        --> drone_ur
+    #  (0, height-1)       --> drone_bl
+    #
+    # The affine transform T_out is defined as:
+    #     x = a * col + b * row + c
+    #     y = d * col + e * row + f
+    c, f = drone_ul
+    a = (drone_ur[0] - drone_ul[0]) / (width - 1)
+    d = (drone_ur[1] - drone_ul[1]) / (width - 1)
+    b = (drone_bl[0] - drone_ul[0]) / (height - 1)
+    e = (drone_bl[1] - drone_ul[1]) / (height - 1)
 
-    # divide the lenght of the window by the meters/pixels in the frame to get how many frame pixels the window would be
-    # then divide the number frame-equivalent window pixels by the actual number of pixels in the window
-    # to get the upscaling factor
-    scaling_ratio = (window_size_m / frame_pixel_size_m) / window_size_pixels
+    T_out = Affine(a, b, c, d, e, f)
 
-    # --- 1. SCALE: Adjust pixel size to match target frame ---
-    scaling = Affine.scale(scaling_ratio)
+    # Reproject DEM into the output frame using T_out directly.
+    out_array = np.empty(output_shape, dtype=window.dtype)
+    reproject(
+        source=window,
+        destination=out_array,
+        src_transform=window_transform,
+        src_crs=crs,
+        dst_transform=T_out,
+        dst_crs=crs,
+        resampling=Resampling.nearest
+    )
 
-    # --- 2. TRANSLATE: Move rotation center point (the drone position) to (0,0) = upper left corner ---
-    to_origin = Affine.translation(-center_lon, -center_lat)
-
-    # --- 3. ROTATE: Apply rotation around the upper left corner ---
-    rotation = Affine.rotation(angle_wrt_north)
-
-    # rotation_angle = math.radians(angle_wrt_north)
-    # cos_theta = math.cos(rotation_angle)
-    # sin_theta = math.sin(rotation_angle)
-    # rotation = Affine(
-    #    cos_theta, -sin_theta, 0,
-    #    sin_theta, cos_theta, 0
-    # )
-
-    # --- 4. TRANSLATE so that the upper left corner of the frame is the new (0,0) ---
-    to_upper_left = Affine.translation(new_upper_left_lon, new_upper_left_lat)
-
-    # Final combined transform: 4 <- 3 <- 2 <- 1
-    rotated_rescaled_transform = to_upper_left * rotation * to_origin * scaling
-
-    reprojected_mask = np.zeros((window.shape[0], frame_height, frame_width), dtype=np.uint8)
-    with rasterio.Env():
-        reproject(
-            source=window,
-            destination=reprojected_mask,
-            src_transform=window_transform,
-            src_crs=window_crs,
-            dst_transform=rotated_rescaled_transform,
-            dst_crs=window_crs,  # Assume the drone uses the same CRS as the binary mask (?)
-            resampling=Resampling.nearest
-        )
-
-    return reprojected_mask
+    return out_array
 
 
 def create_dangerous_intersections_masks(

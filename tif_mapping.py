@@ -267,81 +267,6 @@ def plot_tif(tif_path, output_path, band=1, cmap="viridis"):
         plt.close()
 
 
-def map_window_onto_drone_frame(
-    window,
-    window_transform,
-    window_crs,
-    center_coords,
-    corners_coords,
-    angle_wrt_north,
-    frame_width,
-    frame_height,
-    window_size_pixels,
-    window_size_m,
-    frame_pixel_size_m,
-):
-
-    center_lon = center_coords[0]
-    center_lat = center_coords[1]
-    new_upper_left_lon = corners_coords[0, 0]
-    new_upper_left_lat = corners_coords[0, 1]
-
-    # divide the lenght of the window by the meters/pixels in the frame to get how many frame pixels the window would be
-    # then divide the number frame-equivalent window pixels by the actual number of pixels in the window to get the upscaling factor
-
-    # --- 1. TRANSLATE: Move so that the frame center is set to (0,0) ---
-    to_center = Affine.translation(center_lon, center_lat)
-    my_transform = to_center
-    print("moving center to (0,0)")
-    print(my_transform, "\n")
-
-    # --- 2. SCALE: Adjust pixel size to match target frame ---
-    scaling_ratio = (window_size_m / frame_pixel_size_m) / window_size_pixels
-    print("scaling_ratio: ", scaling_ratio)
-    scaling = Affine.scale(scaling_ratio)
-
-    my_transform = scaling * my_transform
-    print("rescaling transform")
-    print(my_transform, "\n")
-
-    # --- 3. ROTATE: Apply rotation around the center point of the frame ---
-    rotation = Affine.rotation(angle_wrt_north)
-    my_transform = rotation * my_transform
-    print("base rotation transform")
-    print(my_transform, "\n")
-
-    # --- 4. TRANSLATE so that the upper left corner of the frame is the new (0,0) ---
-    (new_upper_left_lon, new_upper_left_lat) = my_transform * (new_upper_left_lon, new_upper_left_lat)
-    to_upper_left = Affine.translation(-new_upper_left_lon, -new_upper_left_lat)
-
-    my_transform = to_upper_left * my_transform
-    print("base to_upper_left transform")
-    print(my_transform, "\n")
-
-    reprojected_mask = np.zeros((window.shape[0], frame_height, frame_width), dtype=np.uint8)
-    with rasterio.Env():
-        reproject(
-            source=window,
-            destination=reprojected_mask,
-            src_transform=window_transform,
-            src_crs=window_crs,
-            dst_transform=my_transform,
-            dst_crs=window_crs,  # Assume the drone uses the same CRS as the binary mask (?)
-            resampling=Resampling.nearest
-        )
-
-    top_left_coords = my_transform * (0, 0)
-    top_right_coords = my_transform * (frame_width, 0)
-    bottom_right_coords = my_transform * (frame_width, frame_height)
-    bottom_left_coords = my_transform * (0, frame_height)
-    print(f"Frame geographic bounds. top-left: {top_left_coords}")
-    print(f"Frame geographic bounds. top right: {top_right_coords}")
-    print(f"Frame geographic bounds. bottom right: {bottom_right_coords}")
-    print(f"Frame geographic bounds. bottom left: {bottom_left_coords}")
-
-    return reprojected_mask
-
-
 def map_dem_to_drone_frame(
     dem_array,
     dem_transform,
@@ -468,20 +393,305 @@ def map_dem_to_drone_frame(
     return out_array
 
 
+def simplified_map_dem_to_drone_frame(
+        dem_array,
+        dem_transform,
+        drone_ul,  # (lon, lat) for upper-left
+        drone_ur,  # (lon, lat) for upper-right
+        drone_bl,  # (lon, lat) for bottom-left
+        output_shape=(1080, 1920),
+        crs='EPSG:4326'
+):
+    """
+    Map the DEM window to the drone frame using only the output transform T_out,
+    which is built from the provided drone frame corner coordinates.
+
+    Note: This does not apply any additional rotation/scale correction via T_rot.
+    """
+    height, width = output_shape
+
+    # Build T_out using the known drone frame corners.
+    # Here, we assume:
+    #  (0, 0)             --> drone_ul
+    #  (width-1, 0)        --> drone_ur
+    #  (0, height-1)       --> drone_bl
+    #
+    # The affine transform T_out is defined as:
+    #     x = a * col + b * row + c
+    #     y = d * col + e * row + f
+    c, f = drone_ul
+    a = (drone_ur[0] - drone_ul[0]) / (width - 1)
+    d = (drone_ur[1] - drone_ul[1]) / (width - 1)
+    b = (drone_bl[0] - drone_ul[0]) / (height - 1)
+    e = (drone_bl[1] - drone_ul[1]) / (height - 1)
+
+    T_out = Affine(a, b, c, d, e, f)
+
+    # For debugging: print T_out mappings
+    sample_center = (width / 2, height / 2)
+    sample_ul = (0, 0)
+    sample_ur = (width - 1, 0)
+    sample_br = (width - 1, height - 1)
+    sample_bl = (0, height - 1)
+    print("Sample center coordinate:", T_out * sample_center)
+    print("Sample UL coordinate:", T_out * sample_ul)
+    print("Sample UR coordinate:", T_out * sample_ur)
+    print("Sample BR coordinate:", T_out * sample_br)
+    print("Sample BL coordinate:", T_out * sample_bl)
+
+    # Reproject DEM into the output frame using T_out directly.
+    out_array = np.empty(output_shape, dtype=dem_array.dtype)
+    reproject(
+        source=dem_array,
+        destination=out_array,
+        src_transform=dem_transform,
+        src_crs=crs,
+        dst_transform=T_out,
+        dst_crs=crs,
+        resampling=Resampling.nearest
+    )
+
+    return out_array
+
+
+def simplified_map_dem_to_drone_frame_fast(
+        dem_array,
+        dem_transform,
+        drone_ul,  # (lon, lat) for upper-left
+        drone_ur,  # (lon, lat) for upper-right
+        drone_bl,  # (lon, lat) for bottom-left
+        output_shape=(1080, 1920),
+        crs='EPSG:4326',
+        debug=False
+):
+    """
+    Optimized version of simplified DEM to drone frame mapping.
+    """
+    height, width = output_shape
+
+    # Pre-compute width and height differences (avoid repeated subtraction)
+    width_minus_1 = width - 1
+    height_minus_1 = height - 1
+
+    # Pre-compute coordinate differences (avoid repeated subtraction)
+    dx_ur = drone_ur[0] - drone_ul[0]
+    dy_ur = drone_ur[1] - drone_ul[1]
+    dx_bl = drone_bl[0] - drone_ul[0]
+    dy_bl = drone_bl[1] - drone_ul[1]
+
+    # Calculate transform coefficients (single division operations)
+    a = dx_ur / width_minus_1
+    d = dy_ur / width_minus_1
+    b = dx_bl / height_minus_1
+    e = dy_bl / height_minus_1
+
+    # Create transform (stored in memory for reuse)
+    T_out = Affine(a, b, drone_ul[0], d, e, drone_ul[1])
+
+    # Debug output (only if needed)
+    if debug:
+        sample_points = {
+            "Center": (width / 2, height / 2),
+            "UL": (0, 0),
+            "UR": (width_minus_1, 0),
+            "BR": (width_minus_1, height_minus_1),
+            "BL": (0, height_minus_1)
+        }
+        for name, point in sample_points.items():
+            print(f"{name} coordinate: {T_out * point}")
+
+    # Pre-allocate output array with correct data type
+    out_array = np.empty(output_shape, dtype=dem_array.dtype)
+
+    # Perform reprojection with optimized parameters
+    reproject(
+        source=dem_array,
+        destination=out_array,
+        src_transform=dem_transform,
+        src_crs=crs,
+        dst_transform=T_out,
+        dst_crs=crs,
+        resampling=Resampling.nearest,
+        init_dest_nodata=False,  # Skip nodata initialization
+        warp_mem_limit=256  # Reduced memory limit but still efficient
+    )
+
+    return out_array
+
+
+def map_dem_to_drone_frame_v2(
+        dem_array,
+        dem_transform,
+        drone_center,   # (lon, lat) for center of the drone frame (around which to rotate)
+        drone_ul,  # (lon, lat) of the final upper-left corner of drone frame (post rotation and scaling)
+        yaw_angle,  # in degrees; positive means counterclockwise rotation
+        scale_factor,  # e.g., 1.0 means no scaling; >1 enlarges, <1 shrinks
+        output_shape=(1080, 1920),
+        crs='EPSG:4326'
+):
+    """
+    This version builds a transform that rotates and scales the DEM using the drone
+    frame's upper-left corner as the pivot (i.e. that point remains fixed).
+
+    The destination transform is defined solely by T_rot, whose inverse maps
+    output pixel coordinates to the DEM's geographic coordinates.
+
+    Parameters:
+      dem_array: numpy array of the DEM window.
+      dem_transform: affine transform for the DEM window.
+      drone_center: geographic coordinate (lon, lat) of the drone frame's center, around which the tif should be rotated.
+      drone_ul: geographic coordinate (lon, lat) of the drone frame's upper-left corner -> to be mapped onto new array (0,0).
+      yaw_angle: rotation (in degrees) of the drone frame.
+      scale_factor: multiplicative scaling factor.
+      output_shape: (height, width) of output drone frame.
+      crs: coordinate reference system.
+
+    Returns:
+      Reprojected DEM portion as an array with shape output_shape.
+    """
+    height, width = output_shape
+    print(scale_factor)
+
+    # Build a transform that rotates and scales about the UL.
+    T_rot = (
+            Affine.translation(drone_center[0], drone_center[1])  # Move to center
+            * Affine.rotation(yaw_angle)  # Rotate
+            * Affine.scale(scale_factor, scale_factor)  # Scale
+            * Affine.translation(-drone_center[0], -drone_center[1])  # Move back
+            * Affine.translation(drone_ul[0] - drone_center[0], drone_ul[1] - drone_center[1])  # Shift UL to match
+    )
+
+    dst_transform = ~T_rot  # inverse of T_rot
+
+    # Optionally, you can print out what geographic coordinates various output pixels map to:
+    # For debugging: print T_out mappings
+    sample_center = (width / 2, height / 2)
+    sample_ul = (0, 0)
+    sample_ur = (width - 1, 0)
+    sample_br = (width - 1, height - 1)
+    sample_bl = (0, height - 1)
+    print("Sample center coordinate:", dst_transform * sample_center)
+    print("Sample UL coordinate:", dst_transform * sample_ul)
+    print("Sample UR coordinate:", dst_transform * sample_ur)
+    print("Sample BR coordinate:", dst_transform * sample_br)
+    print("Sample BL coordinate:", dst_transform * sample_bl)
+
+    # Reproject the DEM into the output grid using dst_transform.
+    out_array = np.empty(output_shape, dtype=dem_array.dtype)
+    reproject(
+        source=dem_array,
+        destination=out_array,
+        src_transform=dem_transform,
+        src_crs=crs,
+        dst_transform=dst_transform,
+        dst_crs=crs,
+        resampling=Resampling.nearest
+    )
+
+    return out_array
+
+
+def map_dem_to_drone_frame_v3(
+        dem_array,
+        dem_transform,
+        drone_center,  # (lon, lat) for center of the drone frame (around which to rotate)
+        drone_ul,  # (lon, lat) of the final upper-left corner of drone frame (post rotation and scaling)
+        yaw_angle,  # in degrees; positive means counterclockwise rotation
+        scale_factor,  # e.g., 1.0 means no scaling; >1 enlarges, <1 shrinks
+        output_shape=(1080, 1920),
+        crs='EPSG:4326'
+):
+    """
+    Maps DEM data onto a drone frame using center coordinates, rotation, and scaling.
+
+    Parameters:
+        dem_array: numpy array of the DEM window.
+        dem_transform: affine transform for the DEM window.
+        drone_center: geographic coordinate (lon, lat) of the drone frame's center.
+        drone_ul: geographic coordinate (lon, lat) of the drone frame's upper-left corner.
+        yaw_angle: rotation (in degrees) of the drone frame (positive is counterclockwise).
+        scale_factor: multiplicative scaling factor (>1 enlarges, <1 shrinks).
+        output_shape: (height, width) of output drone frame.
+        crs: coordinate reference system.
+
+    Returns:
+        numpy array: Reprojected DEM portion matching the drone frame dimensions.
+    """
+    height, width = output_shape
+
+    # Calculate pixel size based on scale factor and original DEM resolution
+    original_pixel_size = dem_transform.a  # Assuming square pixels
+    target_pixel_size = original_pixel_size / scale_factor
+
+    # Convert yaw angle to radians
+    angle_rad = np.radians(yaw_angle)
+
+    # Build the destination transform in steps:
+    # 1. Start with a basic transform that maps pixel coordinates to geographic coordinates
+    base_transform = Affine.translation(drone_ul[0], drone_ul[1]) * \
+                     Affine.scale(target_pixel_size, -target_pixel_size)
+
+    # 2. Calculate the offset to the rotation center (drone_center)
+    offset_x = drone_center[0] - drone_ul[0]
+    offset_y = drone_ul[1] - drone_center[1]  # Note: y is inverted in geographic coordinates
+
+    # 3. Build the complete transform
+    dst_transform = (
+        # Move to drone_ul
+            Affine.translation(drone_ul[0], drone_ul[1]) *
+            # Move to rotation center
+            Affine.translation(offset_x, offset_y) *
+            # Apply rotation
+            Affine.rotation(yaw_angle) *
+            # Move back from rotation center
+            Affine.translation(-offset_x, -offset_y) *
+            # Apply scaling
+            Affine.scale(target_pixel_size, -target_pixel_size)
+    )
+
+    # Initialize output array
+    out_array = np.empty(output_shape, dtype=dem_array.dtype)
+
+    # For debugging: print transformed coordinates
+    if True:  # Can be turned off in production
+        sample_points = {
+            "Center": (width / 2, height / 2),
+            "Upper Left": (0, 0),
+            "Upper Right": (width - 1, 0),
+            "Bottom Right": (width - 1, height - 1),
+            "Bottom Left": (0, height - 1)
+        }
+        print("\nDebug: Transformed Coordinates:")
+        for name, point in sample_points.items():
+            transformed_point = dst_transform * point
+            print(f"{name}: {transformed_point}")
+
+    # Perform the reprojection
+    reproject(
+        source=dem_array,
+        destination=out_array,
+        src_transform=dem_transform,
+        src_crs=crs,
+        dst_transform=dst_transform,
+        dst_crs=crs,
+        resampling=Resampling.nearest
+    )
+
+    return out_array
+
+
 if __name__ == "__main__":
 
     """ PREPROCCESSING """
+    print("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
 
     # Inputs
-    binary_mask_path = 'xxx2_output_plots/a6_centered_15x15.tif'  # Binary mask file (TIFF)
+    binary_mask_path = 'xxx2_output_plots/a2_centered_15x15.tif'  # Binary mask file (TIFF)
     drone_image_path = 'experiments/test_in_danger_v2/danger_frame_1_annotated.png'  # Drone image file (JPEG)
-    output_overlay_path = 'xxx2_output_plots/overlayed_image.jpg'   # Output overlay path
 
     # Load the drone image
     drone_image = cv2.imread(drone_image_path)
     frame_height, frame_width = drone_image.shape[:2]
-
-    mask_src = rasterio.open(binary_mask_path)
 
     yaw = -35.4
     frame_pixel_size_m = 0.0199
@@ -492,6 +702,8 @@ if __name__ == "__main__":
         [24.174263708181012, 35.42709623587535],
         [24.17391402190279, 35.426892831177796],
     ])
+
+    mask_src = rasterio.open(binary_mask_path)
 
     window, dem_mask_window, window_transform, masks_window_bounds, masks_window_size = extract_dem_window(
         mask_src,
@@ -508,6 +720,13 @@ if __name__ == "__main__":
     print(window_transform.c)
     print(window_transform.f)
 
+    print("\nTARGETS:")
+    print("center_point:")
+    print(center_point)
+    print("corners:")
+    print(corners_coordinates)
+    print("\n")
+
     # find the distance between two points on opposite side of the window at the drone latitude
     window_size_m = get_window_size_m(center_point[1], masks_window_bounds)
     print("\n", window_size_m, "\n")
@@ -516,50 +735,85 @@ if __name__ == "__main__":
     print("scale factor: ", scale_factor)
 
     from time import time
-    start = time()
-    reprojected_mask = map_dem_to_drone_frame(
-        dem_array=window,
-        dem_transform=window_transform,
-        drone_center=center_point,  # (lon, lat) tuple for center
-        drone_ul=tuple(corners_coordinates[0]),      # (lon, lat) for upper-left
-        drone_ur=tuple(corners_coordinates[1]),      # (lon, lat) for upper-right
-        drone_br=tuple(corners_coordinates[2]),      # (lon, lat) for bottom-right (not used below)
-        drone_bl=tuple(corners_coordinates[3]),      # (lon, lat) for bottom-left
-        yaw_angle=yaw,     # in degrees; positive means counterclockwise rotation
-        scale_factor=(window_size_m / 0.0199) / masks_window_size,  # e.g., 1.0 means no scaling; >1 enlarges, <1 shrinks
-        output_shape=(1080, 1920),
-        crs=mask_src.crs
-    )
 
-    print(f"run in {(time()-start)*1000:.2f} ms")
+    for _ in range(2):
+        start = time()
+        reprojected_mask = simplified_map_dem_to_drone_frame(
+            dem_array=window,
+            dem_transform=window_transform,
+            drone_ul=tuple(corners_coordinates[0]),      # (lon, lat) for upper-left
+            drone_ur=tuple(corners_coordinates[1]),      # (lon, lat) for upper-right
+            drone_bl=tuple(corners_coordinates[3]),      # (lon, lat) for bottom-left
+            output_shape=(1080, 1920),
+            crs=mask_src.crs
+        )
+        print(f"run in {(time()-start)*1000:.2f} ms")
+        print("min:", np.min(reprojected_mask))
+        print("max:", np.max(reprojected_mask))
+        print(reprojected_mask.shape)
+        cv2.imwrite(f"xxx2_output_plots/simple_reprojected_mask.jpg", (reprojected_mask*255).astype(np.uint8))
 
-    """
-    reprojected_mask = map_window_onto_drone_frame(
-        window=window,
-        window_transform=window_transform,
-        window_crs=mask_src.crs,
-        center_coords=center_point,
-        corners_coords=corners_coordinates,
-        angle_wrt_north=yaw,
-        frame_width=frame_width,
-        frame_height=frame_height,
-        window_size_pixels=masks_window_size,
-        window_size_m=window_size_m,
-        frame_pixel_size_m=frame_pixel_size_m,
-    )
-    """
+        print(">>>>>>>>>>")
 
-    print("min:", np.min(reprojected_mask))
-    print("max:", np.max(reprojected_mask))
-    cv2.imwrite(f"xxx2_output_plots/reprojected_mask{yaw}.jpg", (reprojected_mask[0]*255).astype(np.uint8))
+        start = time()
+        reprojected_mask = simplified_map_dem_to_drone_frame(
+            dem_array=window,
+            dem_transform=window_transform,
+            drone_ul=tuple(corners_coordinates[0]),      # (lon, lat) for upper-left
+            drone_ur=tuple(corners_coordinates[1]),      # (lon, lat) for upper-right
+            drone_bl=tuple(corners_coordinates[3]),      # (lon, lat) for bottom-left
+            output_shape=(1080, 1920),
+            crs=mask_src.crs
+        )
+        print(f"run in {(time()-start)*1000:.2f} ms")
+        print("min:", np.min(reprojected_mask))
+        print("max:", np.max(reprojected_mask))
+        print(reprojected_mask.shape)
+        cv2.imwrite(f"xxx2_output_plots/fast_simple_reprojected_mask.jpg", (reprojected_mask*255).astype(np.uint8))
 
-    print(f"Overlayed image saved to {output_overlay_path}")
+        print(">>>>>>>>>>")
+
+        start = time()
+        reprojected_mask = map_dem_to_drone_frame_v2(
+            dem_array=window,
+            dem_transform=window_transform,
+            drone_center=center_point,
+            drone_ul=tuple(corners_coordinates[0]),  # (lon, lat) for upper-left
+            yaw_angle=yaw,  # in degrees; positive means counterclockwise rotation
+            scale_factor=scale_factor,  # e.g., 1.0 means no scaling; >1 enlarges, <1 shrinks
+            output_shape=(1080, 1920),
+            crs=mask_src.crs
+        )
+        print(f"run in {(time() - start) * 1000:.2f} ms")
+        print("min:", np.min(reprojected_mask))
+        print("max:", np.max(reprojected_mask))
+        print(reprojected_mask.shape)
+        cv2.imwrite(f"xxx2_output_plots/map_dem_to_drone_frame_v2.jpg", (reprojected_mask * 255).astype(np.uint8))
+
+        print(">>>>>>>>>>")
+
+        start = time()
+        reprojected_mask = map_dem_to_drone_frame_v3(
+            dem_array=window,
+            dem_transform=window_transform,
+            drone_center=center_point,
+            drone_ul=tuple(corners_coordinates[0]),  # (lon, lat) for upper-left
+            yaw_angle=yaw,  # in degrees; positive means counterclockwise rotation
+            scale_factor=scale_factor,  # e.g., 1.0 means no scaling; >1 enlarges, <1 shrinks
+            output_shape=(1080, 1920),
+            crs=mask_src.crs
+        )
+        print(f"run in {(time() - start) * 1000:.2f} ms")
+        print("min:", np.min(reprojected_mask))
+        print("max:", np.max(reprojected_mask))
+        print(reprojected_mask.shape)
+        cv2.imwrite(f"xxx2_output_plots/map_dem_to_drone_frame_v3.jpg", (reprojected_mask * 255).astype(np.uint8))
+
+        print(">>>>>>>>>>")
 
     mask_src.close()
 
-
     """
-
     # Path to the original large TIFF file
     original_tif_path = "data/DEM/Copernicus_DSM_04_N35_00_E024_00_DEM.tif"
     # Center point in (longitude, latitude)
