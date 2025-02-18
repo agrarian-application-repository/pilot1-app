@@ -1,6 +1,10 @@
 from typing import Any
 from ultralytics import YOLO
 from shapely import Polygon
+from pathlib import Path
+import cv2
+from time import time
+import numpy as np
 
 from src.in_danger.in_danger_v2_utils import *
 
@@ -32,6 +36,10 @@ def perform_in_danger_analysis(
     # Load YOLO models
     detector = YOLO(detection_model_checkpoint, task="detect")  # Animal detection model
     segmenter = YOLO(segmentation_model_checkpoint, task="segment")  # Dangerous terrain segmentation model
+
+    # prepare detection classes names and number
+    classes_names = detector.names  # Dictionary of class names
+    num_classes = len(detection_args["classes"]) if detection_args["classes"] is not None else len(classes_names)
 
     # ============== LOAD FLIGHT INFO ===================================
 
@@ -93,7 +101,7 @@ def perform_in_danger_analysis(
     while cap.isOpened():
         iteration_start_time = time()
         success, frame = cap.read()
-        if not success or frame_id > 2: # todo remove limit
+        if not success:
             print("Video processing has been successfully completed.")
             break
 
@@ -113,7 +121,6 @@ def perform_in_danger_analysis(
         # Detect animals in frame, in the form (X,Y) = (COL, ROW) of frame
         classes, boxes_centers, boxes_corner1, boxes_corner2 = perform_detection(detector, frame, detection_args)
         print(f"detection of animals completed in {(time() - crono_start)*1000:.1f} ms")
-
         """ 
         COMPONENT 2:
         Perform segmentation and build segmentation danger mask (15 ms)
@@ -180,14 +187,6 @@ def perform_in_danger_analysis(
 
         crono_start = time()
 
-        frame_polygon = Polygon(corners_coordinates)  # a rectangle (may have any orientation)
-
-        if not is_polygon_within_bounds(dem_tif.bounds, frame_polygon):
-            print(f"ERROR: Cannot monitor the safety of animals when the drones is leaving the DEM area")
-            print(f"DEM bounds: {dem_tif.bounds}")
-            print(f"FRAME bounds: {corners_coordinates}")
-            exit()
-
         center_coords = (flight_frame_data["longitude"], flight_frame_data["latitude"])
 
         dem_window, dem_mask_window, dem_window_transform, dem_window_bounds, dem_window_size = extract_dem_window(
@@ -196,38 +195,54 @@ def perform_in_danger_analysis(
             center_lonlat=center_coords,
             rectangle_lonlat=corners_coordinates,
         )
+        # dem_window and dem_mask_window are (1,dem_window_size,dem_window_size) arrays
 
-        # find the distance between two points on opposite side of the window at the drone latitude
+        # find the distance in meters between two points on opposite side of the window at the drone latitude
         dem_window_size_m = get_window_size_m(flight_frame_data["latitude"], dem_window_bounds)
+        # compute the resolution of each dem pixel in meters
         dem_pixel_size_m = dem_window_size_m / dem_window_size
 
+        # compute the slope mask using the dem window and info about the resolution of each pixel
         slope_mask_window = compute_slope_mask_runtime(
             elev_array=dem_window,
             pixel_size=dem_pixel_size_m,
             slope_threshold_deg=input_args["slope_angle_threshold"]
         )
 
-        masks_window = np.stack((dem_mask_window, slope_mask_window), axis=0)
+        # stack the dem_nodata and dem_slope masks to form a (2, dem_window_size, dem_window_size) mask array
+        masks_window = np.concatenate((dem_mask_window, slope_mask_window), axis=0)
+        assert masks_window.shape == (2, dem_window_size, dem_window_size)
 
+        # compute the Affine transform to extract a portion of the raster corresponding to the area in the frame
+        frame_transform = get_frame_transform(
+            height=frame_height,
+            width=frame_width,
+            drone_ul=tuple(corners_coordinates[0]),  # (lon, lat) for upper-left corner
+            drone_ur=tuple(corners_coordinates[1]),  # (lon, lat) for upper-right corner
+            drone_bl=tuple(corners_coordinates[3]),  # (lon, lat) for bottom-left corner
+        )
+
+        # rotate and resample using the frame coordinates to obtain a (frame_height, frame_width) version of the
+        # previously created mask, that matches the frame data
         combined_dem_mask_over_frame = map_window_onto_drone_frame(
             window=masks_window,
             window_transform=dem_window_transform,
-            drone_ul=tuple(corners_coordinates[0]),  # (lon, lat) for upper-left
-            drone_ur=tuple(corners_coordinates[1]),  # (lon, lat) for upper-right
-            drone_bl=tuple(corners_coordinates[3]),  # (lon, lat) for bottom-left
-            output_shape=(frame_height, frame_width),
+            dst_transform=frame_transform,
+            output_shape=(masks_window.shape[2], frame_height, frame_width),
             crs=dem_tif.crs
         )
 
+        # separate the two masks
         dem_nodata_danger_mask = combined_dem_mask_over_frame[0]
         slope_danger_mask = combined_dem_mask_over_frame[1]
 
         # compute geofencing directly on the full size frame
+        # independently of other two masks for flexibility (slower), as it should not require the dem data
         geofencing_danger_mask = create_geofencing_mask_runtime(
-            frame_width,
-            frame_height,
-            corners_coordinates,
-            Polygon(input_args["geofencing_vertexes"])
+            frame_width=frame_width,
+            frame_height=frame_height,
+            transform=frame_transform,
+            polygon=Polygon(input_args["geofencing_vertexes"])
         )
 
         print(f"Frame-overlapping DEM validity and slope masks computed in {(time() - crono_start)*1000:.1f} ms")
@@ -266,6 +281,8 @@ def perform_in_danger_analysis(
             frame_id,
             cooldown_has_passed,
             danger_exists,
+            num_classes,
+            classes_names,
             classes,
             boxes_centers,
             boxes_corner1,

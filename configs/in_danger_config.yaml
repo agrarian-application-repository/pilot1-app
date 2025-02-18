@@ -24,10 +24,10 @@ input:
 
   # set of tuples (longitude, latitude) defining the points marking the vertexes of the geofencing area
   geofencing_vertexes:
-    - [ 21.2, 33.7 ]
-    - [ 24.7, 35.7 ]
-    - [ 24.7, 35.2 ]
-    - [ 21.2, 33.2 ]
+    - [ 21.200000, 34.0 ]
+    - [ 24.174019, 34.0 ]
+    - [ 24.174019, 36.0 ]
+    - [ 21.200000, 36.0 ]
 
   # float: true focal lenght of the camera in mm
   true_focal_len_mm: 12.29

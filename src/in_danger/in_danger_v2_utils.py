@@ -1,7 +1,6 @@
 from pathlib import Path
 from time import time
 import re
-from shapely.geometry import box
 from rasterio.warp import reproject, Resampling
 from rasterio.transform import rowcol
 from rasterio.windows import bounds
@@ -27,13 +26,13 @@ PURPLE = (128, 0, 128)
 CLASS_COLOR = [BLUE, PURPLE]
 
 __all__ = [
-    RED,
-    GREEN,
-    BLUE,
-    YELLOW,
-    WHITE,
-    BLACK,
-    PURPLE,
+    "RED",
+    "GREEN",
+    "BLUE",
+    "YELLOW",
+    "WHITE",
+    "BLACK",
+    "PURPLE",
     "get_dem",
     "get_dem_mask",
     "perform_detection",
@@ -45,7 +44,7 @@ __all__ = [
     "get_window_size_m",
     "compute_slope_mask_runtime",
     "create_geofencing_mask_runtime",
-    "is_polygon_within_bounds",
+    "get_frame_transform",
     "map_window_onto_drone_frame",
     "create_dangerous_intersections_masks",
     "send_alert",
@@ -212,7 +211,6 @@ def parse_drone_frame(file, frame_id):
     return _parse_line_to_dict(useful_line)
 
 
-# TODO check formula, fix downsampling cator depeding on which sensor dimension is the largest
 def get_meters_per_pixel(
         rel_altitude_m: float,
         focal_length_mm: float,
@@ -325,9 +323,6 @@ def extract_dem_window(dem_tif, dem_mask_tif, center_lonlat, rectangle_lonlat):
         center_lonlat (tuple): (longitude, latitude) of the center point.
         rectangle_lonlat (numpy.ndarray): (4,2) array of (longitude, latitude) rectangle corners.
 
-    Returns:
-        window_array (numpy.ndarray): Extracted raster window as a NumPy array.
-        window_transform (Affine): Georeferencing transform of the extracted window.
     """
     # --- Step 1: Convert center point to pixel coordinates ---
     transform = dem_tif.transform
@@ -341,7 +336,7 @@ def extract_dem_window(dem_tif, dem_mask_tif, center_lonlat, rectangle_lonlat):
     max_dist = int(np.max(pixel_dists))  # Maximum pixel distance
 
     # --- Step 3: Compute square window size (odd number with buffer) ---
-    buffer = int(np.ceil(max_dist * 0.75))  # Extra space for rotation
+    buffer = int(np.ceil(max_dist * 0.5))  # Extra space for rotation
     half_size = max_dist + buffer
     window_size = 2 * half_size + 1  # Ensure window is odd
 
@@ -360,8 +355,8 @@ def extract_dem_window(dem_tif, dem_mask_tif, center_lonlat, rectangle_lonlat):
     if (
             window_col_start < 0 or
             window_row_start < 0 or
-            window_col_end > (dem_tif.width - 1) or
-            window_row_end > (dem_tif.height - 1)
+            window_col_end >= dem_tif.width or
+            window_row_end >= dem_tif.height
     ):
         print(f"ERROR: Cannot monitor the safety of animals when the drones is leaving the DEM area")
         print(f"DEM rows: {dem_tif.height}")
@@ -381,10 +376,10 @@ def extract_dem_window(dem_tif, dem_mask_tif, center_lonlat, rectangle_lonlat):
     if dem_mask_tif is not None:
         dem_mask_window_array = dem_mask_tif.read(window=window)
     else:
-        dem_mask_window_array = np.zeros((window_size, window_size), dtype=np.uint8)
+        dem_mask_window_array = np.zeros((1, window_size, window_size), dtype=np.uint8)
 
     # get the bounds of the window
-    window_bounds = bounds(window, dem_tif.transform)    # TODO original or window transform
+    window_bounds = bounds(window, dem_tif.transform)
 
     return dem_window_array, dem_mask_window_array, window_transform, window_bounds, window_size
 
@@ -408,7 +403,7 @@ def compute_slope_mask_runtime(elev_array, pixel_size, slope_threshold_deg):
     Parameters
     ----------
     elev_array : np.ndarray
-        A square 2D array of elevation values.
+        A square 3D array of elevation values in meters, with first dimension has shape 1.
     pixel_size : float
         The size of each pixel in meters.
     slope_threshold_deg : float
@@ -418,9 +413,14 @@ def compute_slope_mask_runtime(elev_array, pixel_size, slope_threshold_deg):
     Returns
     -------
     np.ndarray
-        A 2D array (of the same shape as elev_array) containing 1 where the slope is
+        A 3D array (of the same shape as elev_array) containing 1 where the slope is
         greater than slope_threshold_deg and 0 elsewhere.
     """
+
+    # If elev_array has a singleton first dimension, remove it to work with a 2D array.
+    assert elev_array.ndim == 3 and elev_array.shape[0] == 1
+    elev_array = elev_array[0]
+
     # Compute the gradient along the y (row) and x (column) directions.
     # Note: np.gradient returns gradients in the order (axis0, axis1) which correspond
     # to (dy, dx) given the array dimensions.
@@ -436,123 +436,77 @@ def compute_slope_mask_runtime(elev_array, pixel_size, slope_threshold_deg):
     # Create a mask where a cell is 1 if the slope exceeds the threshold, 0 otherwise.
     mask = (slope_degrees > slope_threshold_deg).astype(np.uint8)
 
+    # Expand the dimensions to ensure the output is (1, W, H).
+    mask = mask[np.newaxis, :, :]
+
     return mask
 
 
-def create_geofencing_mask_runtime(frame_width, frame_height, corners_coordinates, polygon):
-
-    # Example: suppose your frame is a numpy array with shape (H, W)
-    # (Here H is the number of rows, W is the number of columns)
-
-    # Your 4 corner coordinates (longitude, latitude)
-    # In order: upper-left, upper-right, bottom-right, bottom-left
-    ul = corners_coordinates[0]
-    ur = corners_coordinates[1]
-    br = corners_coordinates[2]
-    bl = corners_coordinates[3]
-
-    # If we assume the mapping is affine we can use three of the points.
-    # Here we assume that the pixel at (0,0) corresponds to ul,
-    # the pixel at (W-1, 0) corresponds to ur, and
-    # the pixel at (0, H-1) corresponds to bl.
-    #
-    # Then the affine transformation parameters are:
-    #    x_geo = c + a * col + b * row
-    #    y_geo = f + d * col + e * row
-    #
-    # So we set:
-    a = (ur[0] - ul[0]) / (frame_width - 1)  # pixel width in x-direction
-    d = (ur[1] - ul[1]) / (frame_width - 1)  # change in y per column
-    b = (bl[0] - ul[0]) / (frame_height - 1)  # change in x per row
-    e = (bl[1] - ul[1]) / (frame_height - 1)  # pixel height (often negative if latitude decreases downward)
-    c = ul[0]
-    f = ul[1]
-
-    # Create the affine transform: it maps from (col, row) to (x, y)
-    transform = Affine(a, b, c, d, e, f)
-
-    # Now, suppose your Shapely polygon is defined as:
-    # (You may have constructed it already in your code.)
-    # polygon = Polygon([...])
+def create_geofencing_mask_runtime(frame_width, frame_height, transform, polygon):
 
     # Use rasterio.features.rasterize to create an array of shape (H, W)
-    # The polygon will be burned with a value of 1 and all other pixels will be 0.
-    mask_inside = rasterize(
-        [(polygon, 1)],  # list of (geometry, value)
+    # The inside of the polygon will be burned with a value of 0
+    # all external pixels will be 1
+    mask = rasterize(
+        [(polygon, 0)],  # list of (geometry, value)
         out_shape=(frame_height, frame_width),
         transform=transform,
-        fill=0,
+        fill=1,
         dtype=np.uint8
     )
 
-    # At this point, mask_inside has value 1 for pixels inside the polygon and 0 outside.
-    # Since you want the mask to be 0 inside and 1 outside, simply invert the mask:
-    mask = 1 - mask_inside
-
-    # 'mask' is now a numpy array of shape (H, W) with 0 inside the polygon and 1 outside.
-
     return mask
 
 
-def is_polygon_within_bounds(bounds, polygon):
-    """
-    Check if the given shapely polygon is completely contained within the bounds of a GeoTIFF image.
-
-    Parameters:
-    - polygon (shapely.geometry.Polygon): The polygon to check.
-    - bounds (tuple): The bounds of the GeoTIFF in the form (minx, miny, maxx, maxy).
-
-    Returns:
-    - bool: True if the polygon is completely within the bounds, False otherwise.
-    """
-
-    # Create a box (polygon) from the bounds
-    raster_bounds = box(*bounds)  # Create a polygon from the bounds tuple
-    # Check if the polygon is completely within the raster bounds
-    is_inside = polygon.within(raster_bounds)
-    return is_inside
-
-
-def map_window_onto_drone_frame(
-        window,
-        window_transform,
+def get_frame_transform(
+        height,
+        width,
         drone_ul,  # (lon, lat) for upper-left
         drone_ur,  # (lon, lat) for upper-right
         drone_bl,  # (lon, lat) for bottom-left
-        output_shape=(1080, 1920),
-        crs='EPSG:4326'
 ):
-    """
-    Map the DEM window to the drone frame using the output transform T_out,
-    which is built from the provided drone frame corner coordinates.
-    """
-    height, width = output_shape
 
-    # Build T_out using the known drone frame corners.
+    # Build dst_transform using the known drone frame corners.
     # Here, we assume:
     #  (0, 0)             --> drone_ul
     #  (width-1, 0)        --> drone_ur
     #  (0, height-1)       --> drone_bl
     #
-    # The affine transform T_out is defined as:
-    #     x = a * col + b * row + c
-    #     y = d * col + e * row + f
-    c, f = drone_ul
-    a = (drone_ur[0] - drone_ul[0]) / (width - 1)
-    d = (drone_ur[1] - drone_ul[1]) / (width - 1)
-    b = (drone_bl[0] - drone_ul[0]) / (height - 1)
-    e = (drone_bl[1] - drone_ul[1]) / (height - 1)
 
-    T_out = Affine(a, b, c, d, e, f)
+    # Build the affine transform.
+    # In Rasterio, the transform maps (col, row) to (x, y) as:
+    #    x = a * col + b * row + c
+    #    y = d * col + e * row + f
 
-    # Reproject DEM into the output frame using T_out directly.
+    c, f = drone_ul  # The translation (c, f) is just the UL coordinate
+    a = (drone_ur[0] - drone_ul[0]) / (width - 1)  # change in x per column
+    d = (drone_ur[1] - drone_ul[1]) / (width - 1)  # change in y per column
+    b = (drone_bl[0] - drone_ul[0]) / (height - 1)  # change in x per row
+    e = (drone_bl[1] - drone_ul[1]) / (height - 1)  # change in y per row
+
+    dst_transform = Affine(a, b, c, d, e, f)
+    return dst_transform
+
+
+def map_window_onto_drone_frame(
+        window,
+        window_transform,
+        dst_transform,
+        output_shape=(2, 1080, 1920),
+        crs='EPSG:4326'
+):
+    """
+    Map the DEM window to the drone frame using the output transform dst_transform,
+    which is built from the provided drone frame corner coordinates.
+    """
+    # Reproject DEM into the output frame using dst_transform directly.
     out_array = np.empty(output_shape, dtype=window.dtype)
     reproject(
         source=window,
         destination=out_array,
         src_transform=window_transform,
         src_crs=crs,
-        dst_transform=T_out,
+        dst_transform=dst_transform,
         dst_crs=crs,
         resampling=Resampling.nearest
     )
@@ -687,6 +641,8 @@ def draw_detections(
 
 def draw_count(
         classes,
+        num_classes,
+        classes_names,
         annotated_frame,
 ):
 
@@ -702,12 +658,11 @@ def draw_count(
     org = (10, frame_height - 10)  # Initial position of the bottom-left corner of the text
 
     # Count classes
-    num_classes = classes.max() + 1
     class_counts = np.zeros(num_classes, dtype=np.int32)
     class_counts[: len(np.bincount(classes))] = np.bincount(classes)
 
     # Generate text lines
-    lines = [f"N. Detected class {idx}: {count}" for idx, count in enumerate(class_counts)]
+    lines = [f"N. {classes_names[idx]}: {count}" for idx, count in enumerate(class_counts)]
 
     # Measure text dimensions for all lines
     max_line_width = 0
@@ -755,6 +710,8 @@ def annotate_and_save_frame(
         frame_id,
         cooldown_has_passed,
         danger_exists,
+        num_classes,
+        classes_names,
         classes,
         boxes_centers,
         boxes_corner1,
@@ -801,14 +758,14 @@ def annotate_and_save_frame(
 
     # draw animal count
     inter = time()
-    draw_count(classes, annotated_frame)
+    draw_count(classes, num_classes, classes_names, annotated_frame)
     print(f"\tAnimal Count drawn in {(time() - inter) * 1000:.1f} ms")
 
     inter = time()
     # save the annotated frame
     annotated_writer.write(annotated_frame)
     if cooldown_has_passed and danger_exists:  # save also an image for better identify the exact frame
-        annotated_img_path = Path(output_dir, f"danger_frame_{frame_id}_annotated.png")
+        annotated_img_path = Path(output_dir, f"danger_frame_{frame_id}_annotated.jpg")
         cv2.imwrite(annotated_img_path, annotated_frame)
     print(f"\tFrame saving completed in {(time() - inter) * 1000:.1f} ms")
 
