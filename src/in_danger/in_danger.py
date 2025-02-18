@@ -6,7 +6,7 @@ import cv2
 from time import time
 import numpy as np
 
-from src.in_danger.in_danger_v2_utils import *
+from src.in_danger.in_danger_utils import *
 
 
 def perform_in_danger_analysis(

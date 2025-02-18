@@ -1,6 +1,6 @@
 from rasterio.transform import from_origin
 import cv2
-from src.in_danger.in_danger_v2_utils import get_window_size_m, extract_dem_window
+from src.in_danger.in_danger_utils import get_window_size_m, extract_dem_window
 import matplotlib.pyplot as plt
 import numpy as np
 from affine import Affine
@@ -687,7 +687,7 @@ if __name__ == "__main__":
 
     # Inputs
     binary_mask_path = 'xxx2_output_plots/a2_centered_15x15.tif'  # Binary mask file (TIFF)
-    drone_image_path = 'experiments/test_in_danger_v2/danger_frame_1_annotated.png'  # Drone image file (JPEG)
+    drone_image_path = 'experiments/test_in_danger/danger_frame_1_annotated.png'  # Drone image file (JPEG)
 
     # Load the drone image
     drone_image = cv2.imread(drone_image_path)

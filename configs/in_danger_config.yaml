@@ -62,7 +62,7 @@ input:
 output:
 
   # str: Name of the directory where the results of the analysis will be saved
-  output_dir: 'experiments/test_in_danger_v2'
+  output_dir: 'experiments/test_in_danger'
 
   # str: Name of the files on which alerts will be saved
   alert_file_name: 'alerts'
