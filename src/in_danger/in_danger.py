@@ -16,10 +16,12 @@ def perform_in_danger_analysis(
         segmentation_args: dict[str:Any],
 ) -> None:
 
+    # ============== CREATE OUTPUT DIRECTORY ===================================
+
     output_dir = Path(output_args["output_dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # ============== LOAD THE DEM ===================================
+    # ============== LOAD DEM (+ MASK) ===================================
 
     # Open the DEM
     dem_tif = get_dem(dem_path=input_args["dem"])
@@ -37,6 +39,8 @@ def perform_in_danger_analysis(
     detector = YOLO(detection_model_checkpoint, task="detect")  # Animal detection model
     segmenter = YOLO(segmentation_model_checkpoint, task="segment")  # Dangerous terrain segmentation model
 
+    # ============== LOAD DETECTION CLASSES INFO ===================================
+
     # prepare detection classes names and number
     classes_names = detector.names  # Dictionary of class names
     num_classes = len(detection_args["classes"]) if detection_args["classes"] is not None else len(classes_names)
@@ -47,7 +51,7 @@ def perform_in_danger_analysis(
     flight_data_file_path = Path(input_args["flight_data"])
     flight_data_file = open(flight_data_file_path, "r")
 
-    # ============== LOAD VIDEO INFO ===================================
+    # ============== LOAD INPUT VIDEO INFO ===================================
 
     # Open video and get properties
     cap = cv2.VideoCapture(input_args["source"])
@@ -74,7 +78,7 @@ def perform_in_danger_analysis(
     alerts_file_path = (output_dir / output_args["alert_file_name"]).with_suffix(".txt")
     alerts_file = open(alerts_file_path, "w")
 
-    # ============== LOAD VIDEO WRITERS ===================================
+    # ============== LOAD OUTPUT VIDEO WRITER ===================================
 
     annotated_video_path = (output_dir / output_args["annotated_video_name"]).with_suffix(".mp4")
     annotated_writer = cv2.VideoWriter(
@@ -113,29 +117,20 @@ def perform_in_danger_analysis(
         frame_id += 1  # Update frame ID
         print(f"\n------------- Processing frame {frame_id}/{total_frames}-----------")
 
-        """ 
-        COMPONENT 1:
-        Perform detection and get bounding boxes (13 ms)
-        """
+        # ============== PERFORM DETECTION ===================================
         crono_start = time()
         # Detect animals in frame, in the form (X,Y) = (COL, ROW) of frame
         classes, boxes_centers, boxes_corner1, boxes_corner2 = perform_detection(detector, frame, detection_args)
         print(f"detection of animals completed in {(time() - crono_start)*1000:.1f} ms")
-        """ 
-        COMPONENT 2:
-        Perform segmentation and build segmentation danger mask (15 ms)
-        """
+
+        # ============== PERFORM SEGMENTATION ===================================
+
         crono_start = time()
         # Highlight dangerous objects
         segment_danger_mask = perform_segmentation(segmenter, frame, segmentation_args)
         print(f"Segmentation and danger mask creation completed in {(time() - crono_start)*1000:.1f} ms")
 
-        """ 
-        COMPONENT 3:
-        extract coordinates of frame (and animals) from drone position and flight height (0.2 ms)
-        create DEM validity/geofencing/slope masks overlapping with frame given the frame corner cooridnates (5 ms)
-        """
-
+        # ============== COMPUTE FRAME GROUND RESOLUTION IN METERS/PIXEL  ===================================
         crono_start = time()
 
         # load frame flight data
@@ -153,16 +148,19 @@ def perform_in_danger_analysis(
             image_height_pixels=frame_height,
         )
 
+        # ============== COMPUTE FRAME SIZE IN METERS  ===================================
         frame_width_m = frame_width * meters_per_pixel
         frame_height_m = frame_height * meters_per_pixel
         print(f"Frame dimensions: {frame_width_m:.2f}x{frame_height_m:.2f} meters")
 
+        # ============== COMPUTE SAFETY AREA RADIUS SIZE IN PIXELS  ===================================
         safety_radius_pixels = int(input_args["safety_radius_m"] / meters_per_pixel)
 
+        # ============== COMPUTE LOCATION (LNG,LAT) OF FRAME CORNERS  ===================================
         # get the coordinates of the 4 corners of the frame.
         # The rectangle may be oriented in any direction wrt North
         corners_coordinates = get_objects_coordinates(
-            objects_coords=frame_corners,   # (X,Y)
+            objects_coords=frame_corners,   # (X,Y) expected input
             center_lat=flight_frame_data["latitude"],
             center_lon=flight_frame_data["longitude"],
             frame_width_pixels=frame_width,
@@ -171,6 +169,7 @@ def perform_in_danger_analysis(
             angle_wrt_north=flight_frame_data["gb_yaw"],
         )
 
+        # ============== COMPUTE LOCATION (LNG,LAT) OF ANIMALS  ===================================
         """
         animals_coordinates, _ = get_objects_coordinates(
             objects_coords=boxes_centers,   # (X,Y)
@@ -184,6 +183,8 @@ def perform_in_danger_analysis(
         """
 
         print(f"Frame location computed in {(time() - crono_start)*1000:.1f} ms. (Animals position not computed)")
+
+        # ============== COMPUTE DEM (+MASK) WINDOW ENCOMPASSING THE FRAME  ===================================
 
         crono_start = time()
 
@@ -202,12 +203,16 @@ def perform_in_danger_analysis(
         # compute the resolution of each dem pixel in meters
         dem_pixel_size_m = dem_window_size_m / dem_window_size
 
+        # ============== COMPUTE SLOPE MASK FROM DEM WINDOW ===================================
+
         # compute the slope mask using the dem window and info about the resolution of each pixel
         slope_mask_window = compute_slope_mask_runtime(
             elev_array=dem_window,
             pixel_size=dem_pixel_size_m,
             slope_threshold_deg=input_args["slope_angle_threshold"]
         )
+
+        # ============== CREATE TRANSFORM TO EXTRACT THE FRAME AREA FROM THE RASTER ========================
 
         # stack the dem_nodata and dem_slope masks to form a (2, dem_window_size, dem_window_size) mask array
         masks_window = np.concatenate((dem_mask_window, slope_mask_window), axis=0)
@@ -222,6 +227,7 @@ def perform_in_danger_analysis(
             drone_bl=tuple(corners_coordinates[3]),  # (lon, lat) for bottom-left corner
         )
 
+        # ============== ROTATE & UPSCALE MASKS USING FRAME TRANSFORM ========================
         # rotate and resample using the frame coordinates to obtain a (frame_height, frame_width) version of the
         # previously created mask, that matches the frame data
         combined_dem_mask_over_frame = map_window_onto_drone_frame(
@@ -236,6 +242,8 @@ def perform_in_danger_analysis(
         dem_nodata_danger_mask = combined_dem_mask_over_frame[0]
         slope_danger_mask = combined_dem_mask_over_frame[1]
 
+        # ============== CREATE GEOFENCING MASK ========================
+
         # compute geofencing directly on the full size frame
         # independently of other two masks for flexibility (slower), as it should not require the dem data
         geofencing_danger_mask = create_geofencing_mask_runtime(
@@ -247,6 +255,7 @@ def perform_in_danger_analysis(
 
         print(f"Frame-overlapping DEM validity and slope masks computed in {(time() - crono_start)*1000:.1f} ms")
 
+        # ============== CHECK DANGER TYPES AND CREATE DANGER/INTERSECTION MASKS ================
         """ 
         COMPONENT 4:
         Compute safety areas around each animal, and check for intersections with danger masks. 
@@ -264,6 +273,8 @@ def perform_in_danger_analysis(
             slope_danger_mask,
         )
 
+        # ============== RAISE ALERTS IF NEEDED ================
+
         # if cooldown has passed, check if dangers exist and report them with the appropriate string(s)
         cooldown_has_passed = (frame_id - last_alert_frame_id) >= alerts_frames_cooldown
         danger_exists = len(danger_types) > 0
@@ -271,6 +282,8 @@ def perform_in_danger_analysis(
             danger_type_str = " & ".join(danger_types)
             send_alert(alerts_file, frame_id, danger_type_str)
             last_alert_frame_id = frame_id
+
+        # ============== ANNOTATE FRAME ==================================
 
         # annotate the frame and save it into the video
         # provide standalone image if danger is present and cooldown has passed to complement textual alert
