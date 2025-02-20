@@ -47,6 +47,7 @@ __all__ = [
     "create_geofencing_mask_runtime",
     "get_frame_transform",
     "map_window_onto_drone_frame",
+    "get_danger_intersect_colored_frames",
     "create_dangerous_intersections_masks",
     "send_alert",
     "create_safety_mask",
@@ -622,22 +623,40 @@ def draw_safety_areas(
         cv2.circle(annotated_frame, box_center, safety_radius, GREEN, 2)
 
 
-def draw_dangerous_area2(annotated_frame, dangerous_mask_no_intersection, intersection):
-    # Create full-color images for the two overlays.
-    red_img = np.full(annotated_frame.shape, RED, dtype=np.uint8)
-    yellow_img = np.full(annotated_frame.shape, YELLOW, dtype=np.uint8)
+# Cache the constant images based on the frame shape and color
+def get_danger_intersect_colored_frames(shape, color_danger, color_intersect):
+    color_danger_frame = np.full(shape, color_danger, dtype=np.uint8)
+    color_intersect_frame = np.full(shape, color_intersect, dtype=np.uint8)
+    return color_danger_frame, color_intersect_frame
 
+
+def draw_dangerous_area(
+        annotated_frame, 
+        dangerous_mask_no_intersection, 
+        intersection, 
+        color_danger_frame, 
+        color_intersect_frame,
+):
+    # colored frames are precomputed to save time, color is always the same
+    
     # Use cv2.bitwise_and with the masks directly.
-    red_overlay = cv2.bitwise_and(red_img, red_img, mask=dangerous_mask_no_intersection)
-    yellow_overlay = cv2.bitwise_and(yellow_img, yellow_img, mask=intersection)
+    inter = time()
+    danger_overlay = cv2.bitwise_and(color_danger_frame, color_danger_frame, mask=dangerous_mask_no_intersection)
+    intersect_overlay = cv2.bitwise_and(color_intersect_frame, color_intersect_frame, mask=intersection)
+    print(f"\t\tbitwise ands in {(time() - inter) * 1000:.1f} ms")
 
     # Combine the overlays (if regions overlap, the colors will add).
-    overlay = cv2.add(red_overlay, yellow_overlay)
+    inter = time()
+    overlay = cv2.add(danger_overlay, intersect_overlay)
+    print(f"\t\toverlay add in {(time() - inter) * 1000:.1f} ms")
 
     # Blend the overlay with the original frame.
+    inter = time()
     cv2.addWeighted(annotated_frame, 0.75, overlay, 0.25, 0, annotated_frame)
+    print(f"\t\taddweighted {(time() - inter) * 1000:.1f} ms")
 
-def draw_dangerous_area(annotated_frame, dangerous_mask_no_intersection, intersection):
+
+def draw_dangerous_area2(annotated_frame, dangerous_mask_no_intersection, intersection):
     # Create a single overlay image
     overlay = annotated_frame.copy()
 
@@ -752,6 +771,8 @@ def annotate_and_save_frame(
         safety_radius_pixels,
         danger_mask,
         intersection_mask,
+        color_danger_frame,
+        color_intersect_frame,
 ):
     """ Additional annotations if videos are to be saved, or for frames where danger exist (74 ms)
     Optimization Opportunities:
@@ -780,8 +801,9 @@ def annotate_and_save_frame(
     print(f"\tsafety areas generated in {(time() - inter) * 1000:.1f} ms")
 
     # Overlay dangerous areas (in red) and intersections (in yellow) on the annotated frame
+
     inter = time()
-    draw_dangerous_area(annotated_frame, danger_mask, intersection_mask)
+    draw_dangerous_area(annotated_frame, danger_mask, intersection_mask, color_danger_frame, color_intersect_frame)
     print(f"\tDangerous areas AND danger INTERSECTION drawn in {(time() - inter) * 1000:.1f} ms")
 
     # draw detection boxes

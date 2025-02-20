@@ -90,6 +90,13 @@ def perform_in_danger_analysis(
         frameSize=(frame_width, frame_height)
     )
 
+    frame_shape = (frame_height, frame_width, 3)
+    color_danger_frame, color_intersect_frame = get_danger_intersect_colored_frames(
+        shape=frame_shape,
+        color_danger=RED,
+        color_intersect=YELLOW,
+    )
+
     # ============== BEGIN VIDEO PROCESSING ===================================
 
     # Frame counter
@@ -306,6 +313,8 @@ def perform_in_danger_analysis(
             safety_radius_pixels,
             danger_mask,
             intersection_mask,
+            color_danger_frame,
+            color_intersect_frame,
         )
 
         iteration_time = time() - iteration_start_time
