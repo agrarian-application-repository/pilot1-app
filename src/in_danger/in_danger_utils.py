@@ -35,9 +35,10 @@ __all__ = [
     "PURPLE",
     "get_dem",
     "get_dem_mask",
+    "close_tifs",
     "perform_detection",
     "perform_segmentation",
-    "parse_drone_frame",
+    "parse_drone_flight_data",
     "get_meters_per_pixel",
     "get_objects_coordinates",
     "extract_dem_window",
@@ -121,6 +122,18 @@ def get_dem_mask(dem_mask_path):
     return dem_mask_tif
 
 
+def close_tifs(tif_files):
+    """
+    Closes all non-None open TIFF files in the given list.
+
+    Args:
+        tif_files (list): A list of file objects or None values.
+    """
+    for tif in tif_files:
+        if tif is not None and not tif.closed:
+            tif.close()
+
+
 def perform_detection(detector, frame, detection_args):
     # Detect animals in frame
     detection_results = detector.predict(source=frame, **detection_args)
@@ -149,7 +162,7 @@ def perform_segmentation(segmenter, frame, segmentation_args):
 
     if segment_results[0].masks is not None:  # danger found in the frame
         masks = segment_results[0].masks.data.int().cpu().numpy()
-        segment_danger_mask = np.any(masks, axis=0).astype(np.uint8)
+        segment_danger_mask = np.any(masks, axis=0).astype(np.uint8)    # merge the masks into one
         segment_danger_mask = cv2.resize(segment_danger_mask, dsize=(frame_width, frame_height), interpolation=cv2.INTER_NEAREST)
 
     else:  # mask not found in frame
@@ -189,7 +202,7 @@ def _convert_value(value):
             return value
 
 
-def parse_drone_frame(file, frame_id):
+def parse_drone_flight_data(file, frame_id):
     # Read all lines from the file
     lines = file.readlines()
 
@@ -247,7 +260,7 @@ def get_meters_per_pixel(
 
     ground_resolution = (rel_altitude_m / focal_length_mm) * (sensor_width_mm / sensor_width_pixels)
 
-    # 4:3 is more square than 16:9
+    # sensor 4:3 is more square than frame 16:9
     # while the mapping from 5280 to 1920 still covers the whole sensor,
     # applying the same scaling factor to the height results in a picture longer than 1080 vertically (1440).
     # The excess pixels are cut off, but the pixels to meters relationship for height remains that of 1440
@@ -277,7 +290,7 @@ def get_objects_coordinates(
            and len(objects_coords.shape) == 2 \
            and objects_coords.shape[1] == 2
 
-    # get the (x,y) position of the center of the frame
+    # get the (x,y) position of the center of the frame (UL corner is 0,0)
     center_point_pixel_x = (frame_width_pixels - 1) / 2
     center_point_pixel_y = ((frame_height_pixels - 1) / 2) * (-1)
 
@@ -609,22 +622,42 @@ def draw_safety_areas(
         cv2.circle(annotated_frame, box_center, safety_radius, GREEN, 2)
 
 
-def draw_dangerous_area(
-        annotated_frame,
-        dangerous_mask_no_intersersection,
-        intersection
-):
-    red_overlay = np.zeros_like(annotated_frame)
-    yellow_overlay = np.zeros_like(annotated_frame)
+def draw_dangerous_area2(annotated_frame, dangerous_mask_no_intersection, intersection):
+    # Create full-color images for the two overlays.
+    red_img = np.full(annotated_frame.shape, RED, dtype=np.uint8)
+    yellow_img = np.full(annotated_frame.shape, YELLOW, dtype=np.uint8)
 
-    #red_overlay[dangerous_mask_no_intersersection == 1] = RED  # Red color channel only
-    #yellow_overlay[intersection == 1] = YELLOW  # Red color channel only
+    # Use cv2.bitwise_and with the masks directly.
+    red_overlay = cv2.bitwise_and(red_img, red_img, mask=dangerous_mask_no_intersection)
+    yellow_overlay = cv2.bitwise_and(yellow_img, yellow_img, mask=intersection)
 
-    red_overlay[dangerous_mask_no_intersersection.astype(bool)] = RED  # Red color channel only
-    yellow_overlay[intersection.astype(bool)] = YELLOW  # YELLOW color channel only
+    # Combine the overlays (if regions overlap, the colors will add).
+    overlay = cv2.add(red_overlay, yellow_overlay)
 
-    cv2.addWeighted(red_overlay, 0.25, annotated_frame, 0.75, 0, annotated_frame)
-    cv2.addWeighted(yellow_overlay, 0.25, annotated_frame, 0.75, 0, annotated_frame)
+    # Blend the overlay with the original frame.
+    cv2.addWeighted(annotated_frame, 0.75, overlay, 0.25, 0, annotated_frame)
+
+def draw_dangerous_area(annotated_frame, dangerous_mask_no_intersection, intersection):
+    # Create a single overlay image
+    overlay = annotated_frame.copy()
+
+    # Use faster boolean conversion
+    dangerous_mask = dangerous_mask_no_intersection > 0
+    intersection_mask = intersection > 0
+
+    # Apply the color overlays in one go
+    inter = time()
+    overlay[dangerous_mask] = RED
+    print(f"\t\tDetections drawn in {(time() - inter) * 1000:.1f} ms")
+    inter = time()
+    overlay[intersection_mask] = YELLOW
+    print(f"\t\tDetections drawn in {(time() - inter) * 1000:.1f} ms")
+
+    # Blend once using cv2.addWeighted (which is optimized in C)
+
+    inter = time()
+    cv2.addWeighted(annotated_frame, 0.75, overlay, 0.25, 0, annotated_frame)
+    print(f"\t\tDetections drawn in {(time() - inter) * 1000:.1f} ms")
 
 
 def draw_detections(
@@ -756,17 +789,21 @@ def annotate_and_save_frame(
     draw_detections(annotated_frame, classes, boxes_corner1, boxes_corner2)
     print(f"\tDetections drawn in {(time() - inter) * 1000:.1f} ms")
 
+    # save single image for better identify the exact frame if danger exists
+    inter = time()
+    if cooldown_has_passed and danger_exists:
+        annotated_img_path = Path(output_dir, f"danger_frame_{frame_id}_annotated.jpg")
+        cv2.imwrite(annotated_img_path, annotated_frame)
+    print(f"\tImg saving completed in {(time() - inter) * 1000:.1f} ms")
+
     # draw animal count
     inter = time()
     draw_count(classes, num_classes, classes_names, annotated_frame)
     print(f"\tAnimal Count drawn in {(time() - inter) * 1000:.1f} ms")
 
+    # save the annotated frame into video
     inter = time()
-    # save the annotated frame
     annotated_writer.write(annotated_frame)
-    if cooldown_has_passed and danger_exists:  # save also an image for better identify the exact frame
-        annotated_img_path = Path(output_dir, f"danger_frame_{frame_id}_annotated.jpg")
-        cv2.imwrite(annotated_img_path, annotated_frame)
     print(f"\tFrame saving completed in {(time() - inter) * 1000:.1f} ms")
 
     print(f"Video annotations completed in {(time() - crono_start) * 1000:.1f} ms")

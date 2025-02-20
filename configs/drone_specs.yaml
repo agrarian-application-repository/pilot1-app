@@ -1,0 +1,16 @@
+# https://sdk-forum.dji.net/hc/en-us/articles/12325496609689-What-is-the-custom-camera-parameters-for-Mavic-3-Enterprise-series-and-Mavic-3M
+
+# float: true focal lenght of the camera in mm
+true_focal_len_mm: 12.29
+
+# float: width of the camera sensor in millimeters
+sensor_width_mm: 17.4 # standard for 4/3 CMOS ensor
+
+# float: height of the camera sensor in millimeters
+sensor_height_mm: 13.0  # standard for 4/3 CMOS sensor
+
+# int: width of the camera sensor in pixels
+sensor_width_pixels: 5280 # standard Effective 20MP f29r 4/3 CMOS sensor
+
+# int: height of the camera sensor in pixels
+sensor_height_pixels: 3956  # standard Effective 20MP for 4/3 CMOS sensor

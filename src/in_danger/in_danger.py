@@ -14,6 +14,7 @@ def perform_in_danger_analysis(
         output_args: dict[str:Any],
         detection_args: dict[str:Any],
         segmentation_args: dict[str:Any],
+        drone_args: dict[str:Any],
 ) -> None:
 
     # ============== CREATE OUTPUT DIRECTORY ===================================
@@ -43,7 +44,7 @@ def perform_in_danger_analysis(
 
     # prepare detection classes names and number
     classes_names = detector.names  # Dictionary of class names
-    num_classes = len(detection_args["classes"]) if detection_args["classes"] is not None else len(classes_names)
+    num_classes = len(classes_names)
 
     # ============== LOAD FLIGHT INFO ===================================
 
@@ -64,6 +65,7 @@ def perform_in_danger_analysis(
 
     # avoids unreasonable video strides
     input_args["vid_stride"] = max(1, min(input_args["vid_stride"], total_frames))
+    print(f"Processing 1 frame every {input_args['vid_stride']}")
 
     # set the col/row identifier of the frame corners (x,y)
     frame_corners = np.array([
@@ -95,7 +97,7 @@ def perform_in_danger_analysis(
     processed_frames_counter = 0
 
     # Alert cooldown initialization
-    alerts_frames_cooldown = output_args["alerts_cooldown_seconds"] * fps   # convert cooldown from seconds to frames
+    alerts_frames_cooldown = input_args["alerts_cooldown_seconds"] * fps   # convert cooldown from seconds to frames
     last_alert_frame_id = - fps  # to avoid dealing with initial None value, at frame 0 alert is allowed
 
     # Time keeper
@@ -111,7 +113,7 @@ def perform_in_danger_analysis(
 
         if frame_id % input_args["vid_stride"] != 0:
             frame_id += 1  # Update frame ID
-            continue  # go to next frame directly (processes 1 frame every 'vid_stride' frames)
+            continue  # skip to next frame directly (processes 1 frame every 'vid_stride' frames)
 
         processed_frames_counter += 1  # update the actual number of frames processed
         frame_id += 1  # Update frame ID
@@ -134,25 +136,26 @@ def perform_in_danger_analysis(
         crono_start = time()
 
         # load frame flight data
-        flight_frame_data = parse_drone_frame(flight_data_file, frame_id)
+        frame_flight_data = parse_drone_flight_data(flight_data_file, frame_id)
 
         # Perform the pixels to meters conversion using the sensor resolution
         meters_per_pixel = get_meters_per_pixel(
-            rel_altitude_m=flight_frame_data["rel_alt"],
-            focal_length_mm=input_args["true_focal_len_mm"],
-            sensor_width_mm=input_args["drone_sensor_width_mm"],
-            sensor_height_mm=input_args["drone_sensor_height_mm"],
-            sensor_width_pixels=input_args["drone_sensor_width_pixels"],
-            sensor_height_pixels=input_args["drone_sensor_height_pixels"],
+            rel_altitude_m=frame_flight_data["rel_alt"],
+            focal_length_mm=drone_args["true_focal_len_mm"],
+            sensor_width_mm=drone_args["sensor_width_mm"],
+            sensor_height_mm=drone_args["sensor_height_mm"],
+            sensor_width_pixels=drone_args["sensor_width_pixels"],
+            sensor_height_pixels=drone_args["sensor_height_pixels"],
             image_width_pixels=frame_width,
             image_height_pixels=frame_height,
         )
 
         # ============== COMPUTE FRAME SIZE IN METERS  ===================================
+        """
         frame_width_m = frame_width * meters_per_pixel
         frame_height_m = frame_height * meters_per_pixel
         print(f"Frame dimensions: {frame_width_m:.2f}x{frame_height_m:.2f} meters")
-
+        """
         # ============== COMPUTE SAFETY AREA RADIUS SIZE IN PIXELS  ===================================
         safety_radius_pixels = int(input_args["safety_radius_m"] / meters_per_pixel)
 
@@ -161,24 +164,24 @@ def perform_in_danger_analysis(
         # The rectangle may be oriented in any direction wrt North
         corners_coordinates = get_objects_coordinates(
             objects_coords=frame_corners,   # (X,Y) expected input
-            center_lat=flight_frame_data["latitude"],
-            center_lon=flight_frame_data["longitude"],
+            center_lat=frame_flight_data["latitude"],
+            center_lon=frame_flight_data["longitude"],
             frame_width_pixels=frame_width,
             frame_height_pixels=frame_height,
             meters_per_pixel=meters_per_pixel,
-            angle_wrt_north=flight_frame_data["gb_yaw"],
+            angle_wrt_north=frame_flight_data["gb_yaw"],
         )
 
         # ============== COMPUTE LOCATION (LNG,LAT) OF ANIMALS  ===================================
         """
-        animals_coordinates, _ = get_objects_coordinates(
+        animals_coordinates = get_objects_coordinates(
             objects_coords=boxes_centers,   # (X,Y)
-            center_lat=flight_frame_data["latitude"],
-            center_lon=flight_frame_data["longitude"],
+            center_lat=frame_flight_data["latitude"],
+            center_lon=frame_flight_data["longitude"],
             frame_width_pixels=frame_width,
             frame_height_pixels=frame_height,
             meters_per_pixel=meters_per_pixel,
-            angle_wrt_north=flight_frame_data["gb_yaw"],
+            angle_wrt_north=frame_flight_data["gb_yaw"],
          )
         """
 
@@ -188,7 +191,7 @@ def perform_in_danger_analysis(
 
         crono_start = time()
 
-        center_coords = (flight_frame_data["longitude"], flight_frame_data["latitude"])
+        center_coords = (frame_flight_data["longitude"], frame_flight_data["latitude"])
 
         dem_window, dem_mask_window, dem_window_transform, dem_window_bounds, dem_window_size = extract_dem_window(
             dem_tif=dem_tif,
@@ -199,7 +202,7 @@ def perform_in_danger_analysis(
         # dem_window and dem_mask_window are (1,dem_window_size,dem_window_size) arrays
 
         # find the distance in meters between two points on opposite side of the window at the drone latitude
-        dem_window_size_m = get_window_size_m(flight_frame_data["latitude"], dem_window_bounds)
+        dem_window_size_m = get_window_size_m(frame_flight_data["latitude"], dem_window_bounds)
         # compute the resolution of each dem pixel in meters
         dem_pixel_size_m = dem_window_size_m / dem_window_size
 
@@ -318,9 +321,7 @@ def perform_in_danger_analysis(
     print(f"Apparent processing rate: {apparent_processing_rate:.1f} fps. Real time: {apparent_processing_rate >= fps}")
 
     # close tifs
-    dem_tif.close()
-    if dem_mask_tif is not None:
-        dem_mask_tif.close()
+    close_tifs([dem_tif, dem_mask_tif])
 
     # close files
     flight_data_file.close()
