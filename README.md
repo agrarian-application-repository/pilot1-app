@@ -11,25 +11,25 @@
     ```
     cd AGRARIAN
     ```
-3. Create a copy of file `.env_placeholder` called `.env` with
+3. Create a file `.env` with the following content:
     ```
-    cp .env_placeholder .env
-    ```   
-4. Fill the  `.env ` file with your personal tokens
+    DOCKER_USERNAME="$oauthtoken"
+    DOCKER_PASSWORD="<your-ncvr-io-token>"
+    ```
 
 
 ## Developing with virtual environments (conda)
-5. Move to the `dev` folder with
+4. Move to the `dev` folder with
     ```
     cd dev
    ``` 
    
-6. Create the conda environment with
+5. Create the conda environment with
     ```
     bash create_conda_env.sh
     ``` 
 
-7. Run experiments with:
+6. Run experiments with:
     ```
    bash run_script.sh <script.py> [--arg1 arg1val ... --argN argNval]
     ```  
