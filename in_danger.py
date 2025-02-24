@@ -1,9 +1,12 @@
 from src.configs.in_danger import check_in_danger_args, preprocess_in_danger_args
 from src.configs.utils import parse_config_file, read_yaml_config
 from src.in_danger.in_danger import perform_in_danger_analysis
+import cProfile
+import pstats
 
 
 def main():
+
     # Parse the config files from command line
     input_config_file = parse_config_file()
 
@@ -49,4 +52,6 @@ def main():
 
 
 if __name__ == "__main__":
+
+    # cProfile.run('main()', './profile_output.prof')
     main()

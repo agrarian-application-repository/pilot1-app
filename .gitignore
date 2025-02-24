@@ -3,7 +3,6 @@ data/
 experiments/
 runs/
 wandb/
-xxx2_output_plots/
 
 # to do
 TODO.md
