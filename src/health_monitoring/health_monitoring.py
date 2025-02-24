@@ -35,6 +35,11 @@ def perform_health_monitoring_analysis(
     tracker = YOLO(detection_model_checkpoint, task="detect")  # Animal detection & tracking model
 
     anomaly_detector = torch.load(anomaly_detection_args.pop("model_path"))
+    # ============== LOAD FLIGHT INFO ===================================
+
+    # Open drone flight data
+    flight_data_file_path = Path(input_args["flight_data"])
+    flight_data_file = open(flight_data_file_path, "r")
 
     # ============== LOAD VIDEO INFO ===================================
 
@@ -58,16 +63,13 @@ def perform_health_monitoring_analysis(
 
     # ============== LOAD VIDEO WRITERS ===================================
 
-    annotated_writer = None
-
-    if output_args["save_videos"]:
-        annotated_video_path = (output_dir / output_args["annotated_video_name"]).with_suffix(".mp4")
-        annotated_writer = cv2.VideoWriter(
-            filename=annotated_video_path,
-            fourcc=cv2.VideoWriter_fourcc(*"mp4v"),
-            fps=fps,
-            frameSize=(frame_width, frame_height)
-        )
+    annotated_video_path = (output_dir / output_args["annotated_video_name"]).with_suffix(".mp4")
+    annotated_writer = cv2.VideoWriter(
+        filename=annotated_video_path,
+        fourcc=cv2.VideoWriter_fourcc(*"mp4v"),
+        fps=fps,
+        frameSize=(frame_width, frame_height)
+    )
 
     # ============== INITIALIZE HISTORY TRACKER ===================================
 
@@ -79,9 +81,11 @@ def perform_health_monitoring_analysis(
     frame_id = 0
     processed_frames_counter = 0
 
-    # Alert cooldown initialization
-    alerts_frames_cooldown = output_args["alerts_cooldown_seconds"] * fps   # convert cooldown from seconds to frames
-    last_alert_frame_id = - fps  # to avoid dealing with initial None value, at frame 0 alert is allowed
+    # Alert cooldown initialization:
+    # - convert cooldown from seconds to frames
+    alerts_frames_cooldown = output_args["alerts_cooldown_seconds"] * fps
+    # - initialize 'last_alert_frame_id' so that at frame 0 alert is allowed, avoids dealing with None value
+    last_alert_frame_id = - fps
 
     # Time keeper
     processing_start_time = time()
@@ -102,39 +106,80 @@ def perform_health_monitoring_analysis(
         frame_id += 1  # Update frame ID
         print(f"\n------------- Processing frame {frame_id}/{total_frames}-----------")
 
-        """ Perform object tracking"""
-
+        """ 
+        STEP 1:
+        Perform object tracking
+        """
         # Track animals in frame
-        classes, boxes_centers, normalized_boxes_centers, boxes_corner1, boxes_corner2 = perform_tracking(tracker, history_tracker, frame, tracking_args, aspect_ratio)
+        (
+            ids_list,
+            classes,
+            boxes_centers,
+            norm_boxes_centers,
+            scalenorm_boxes_centers,
+            boxes_corner1,
+            boxes_corner2,
+        ) = perform_tracking(
+                detector=tracker,
+                frame=frame,
+                tracking_args=tracking_args,
+                aspect_ratio=aspect_ratio,
+        )
 
-        """ Perform anomaly detection"""
+        # Update the history of movements based on tracking results
+        positions_list = [] if len(ids_list) == 0 else scalenorm_boxes_centers.tolist()
+        history_tracker.update(ids_list, positions_list)
+
+        """ 
+        STEP2 2:
+        Perform anomaly detection
+        """
 
         # TODO implement
-        are_anomalous = perform_anomaly_detection(anomaly_detector, history_tracker, anomaly_detection_args)
+        are_anomalous = perform_anomaly_detection(
+            anomaly_detector=anomaly_detector,
+            anomaly_detection_args=anomaly_detection_args,
+            history=history_tracker,
+            input_args=input_args,
+            flight_data_file=flight_data_file,
+            frame_id=frame_id,
+            frame_width=frame_width,
+            frame_height=frame_height,
+        )
+
+        """
+        STEP 3:
+        Raise alert if anomaly is detected
+        """
+
+        # verify whether the cooldown has passed
+        cooldown_has_passed = (frame_id - last_alert_frame_id) >= alerts_frames_cooldown
+        # verify whether anomalies are detected
         anomaly_exists = np.any(are_anomalous)
 
-        """ Raise alert if anomaly is detected"""
-
-        # if cooldown has passed and an animal is behaving abnormally, report them with the appropriate string
-        cooldown_has_passed = (frame_id - last_alert_frame_id) >= alerts_frames_cooldown
+        # if cooldown has passed and animal(s) are behaving abnormally, report with the appropriate string
         if cooldown_has_passed and anomaly_exists:
-                send_alert(alerts_file, frame_id)
-                last_alert_frame_id = frame_id
+            num_anomalies = np.count_nonzero(are_anomalous)  # count the number of anomalies
+            send_alert(alerts_file, frame_id, num_anomalies)    # raise textual alert
+            last_alert_frame_id = frame_id  # update for cooldown
 
-        """ Annotate video if it has to be saved"""
-
-        # annotations can be skipped if videos are not be saved and no animal is in behaving abnormally
-        if output_args["save_videos"] or (anomaly_exists and cooldown_has_passed):
-
-            annotated_frame = frame.copy()  # copy of the original frame on which to draw
-            draw_detections(annotated_frame, classes, are_anomalous, boxes_corner1, boxes_corner2)
-
-            if output_args["save_videos"]:  # if the annotation code has been entered because saving the videos ...
-                # save the annotated rgb mask and annotated frame
-                annotated_writer.write(annotated_frame)
-            if anomaly_exists:  # if annotation code has been entered because an animal behaviour is anomalous after cooldown ...
-                annotated_img_path = Path(output_dir, f"anomaly_frame_{frame_id}_annotated.png")
-                cv2.imwrite(annotated_img_path, annotated_frame)
+        """
+        STEP 4: 
+        Annotate video
+        Note (todo?): can be done asynchronously given input from step 3, to not block iteration to next frame
+        """
+        annotate_video(
+            output_dir=output_dir,
+            annotated_writer=annotated_writer,
+            frame=frame,
+            frame_id=frame_id,
+            cooldown_has_passed=cooldown_has_passed,
+            anomaly_exists=anomaly_exists,
+            classes=classes,
+            are_anomalous=are_anomalous,
+            boxes_corner1=boxes_corner1,
+            boxes_corner2=boxes_corner2,
+        )
 
         iteration_time = (time() - iteration_start_time) * 1000
         print(f"Iteration completed in {iteration_time:.1f} ms. Equivalent fps = {1/iteration_time:.1f}")
@@ -149,10 +194,10 @@ def perform_health_monitoring_analysis(
     print(f"Apparent processing rate: {apparent_processing_rate:.1f} fps. Real time: {apparent_processing_rate >= fps}")
 
     alerts_file.close()
+    flight_data_file.close()
 
     cap.release()
 
-    if annotated_writer is not None:
-        annotated_writer.release()
+    annotated_writer.release()
 
     print(f"Videos and alerts log have been saved at {output_dir}")
