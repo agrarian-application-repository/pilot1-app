@@ -18,31 +18,44 @@
 4. Fill the  `.env ` file with your personal tokens
 
 
-## Working with virtual environments (conda)
-5. Create the conda environment with
+## Developing with virtual environments (conda)
+5. Move to the `dev` folder with
+    ```
+    cd dev
+   ``` 
+   
+6. Create the conda environment with
     ```
     bash create_conda_env.sh
     ``` 
 
-6. Run experiments with:
+7. Run experiments with:
     ```
    bash run_script.sh <script.py> [--arg1 arg1val ... --argN argNval]
     ```  
 
+# Docker
 
-## Working with Singularity Containers
-5. Build the Singularity Image with
+## Health monitoring
+1. Enter the project with
     ```
-    bash singularity_build.sh <absolute/path/to/project>
-    ``` 
+    cd AGRARIAN
+    ```
    
-6. Run experiments interactively with
-    ```
-    bash singularity_run.sh <script>.py [--arg1 arg1val ... --argN argNval]
-    ```  
+2. Build the Docker image with
+    ```bash
+   docker build -t health_monitoring -f docker/health_monitoring/Dockerfile .
+   ```
    
-7. Run experiments through the PBS scheduler with
-    ```
-    qsub -v 'ARGS="<script.py> [--arg1 arg1val ... --argN argNval]"' singularity_run.sh
-    ```  
+3. Verify the docker image was built succesfully
+   ```
+   docker images | grep health_monitoring
+   ```
 
+4. Run the containerized application with
+    ```
+   docker run --rm \
+   -e <http://ip:port/video>
+   -v </your/path/to/config_file.yaml>:/app/config.yaml \
+   health_monitoring config.yaml
+   ```

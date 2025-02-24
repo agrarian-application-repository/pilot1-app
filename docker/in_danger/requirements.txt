@@ -1,0 +1,10 @@
+numpy
+opencv-python
+pyYAML
+python-dotenv
+numpy
+requests
+scikit-image
+scipy
+shapely
+ultralytics
