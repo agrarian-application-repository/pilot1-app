@@ -1,21 +1,18 @@
-from pathlib import Path
 from time import time
 from typing import Any
-
-import cv2
+from pathlib import Path
 import numpy as np
 from ultralytics import YOLO
 import torch
+import cv2
 
-from utils import *
+from tracking.detection import perform_tracking
+from tracking.history import HistoryTracker
 
+from anomaly_detection.anomaly_detection import perform_anomaly_detection
 
-RED = (0, 0, 255)
-GREEN = (0, 255, 0)
-BLUE = (255, 0, 0)
-PURPLE = (128, 0, 128)
-
-CLASS_COLOR = [BLUE, PURPLE]
+from output.frames import annotate_video
+from output.alerts import send_alert
 
 
 def perform_health_monitoring_analysis(
@@ -23,7 +20,10 @@ def perform_health_monitoring_analysis(
         output_args: dict[str:Any],
         tracking_args: dict[str:Any],
         anomaly_detection_args: dict[str:Any],
+        drone_args: dict[str:Any],
 ) -> None:
+
+    # ============== CREATE OUTPUT DIRECTORY ===================================
 
     output_dir = Path(output_args["output_dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -34,14 +34,16 @@ def perform_health_monitoring_analysis(
     detection_model_checkpoint = tracking_args.pop("model_checkpoint")
     tracker = YOLO(detection_model_checkpoint, task="detect")  # Animal detection & tracking model
 
-    anomaly_detector = torch.load(anomaly_detection_args.pop("model_path"))
+    # Load anomaly detection model
+    anomaly_detection_model = torch.load(anomaly_detection_args.pop("model_checkpoint"))
+
     # ============== LOAD FLIGHT INFO ===================================
 
     # Open drone flight data
     flight_data_file_path = Path(input_args["flight_data"])
     flight_data_file = open(flight_data_file_path, "r")
 
-    # ============== LOAD VIDEO INFO ===================================
+    # ============== LOAD INPUT VIDEO INFO ===================================
 
     # Open video and get properties
     cap = cv2.VideoCapture(input_args["source"])
@@ -51,10 +53,14 @@ def perform_health_monitoring_analysis(
     frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = int(cap.get(cv2.CAP_PROP_FPS))
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    # compute the aspect ratio of the video frame
+    # used to update normalized yolo detections
     aspect_ratio = frame_width / frame_height
 
     # avoids unreasonable video strides
     input_args["vid_stride"] = max(1, min(input_args["vid_stride"], total_frames))
+    print(f"Processing 1 frame every {input_args['vid_stride']}")
 
     # ============== LOAD ALERTS FILE ===================================
 
@@ -81,11 +87,9 @@ def perform_health_monitoring_analysis(
     frame_id = 0
     processed_frames_counter = 0
 
-    # Alert cooldown initialization:
-    # - convert cooldown from seconds to frames
-    alerts_frames_cooldown = output_args["alerts_cooldown_seconds"] * fps
-    # - initialize 'last_alert_frame_id' so that at frame 0 alert is allowed, avoids dealing with None value
-    last_alert_frame_id = - fps
+    # Alert cooldown initialization
+    alerts_frames_cooldown = input_args["alerts_cooldown_seconds"] * fps   # convert cooldown from seconds to frames
+    last_alert_frame_id = - fps  # to avoid dealing with initial None value, at frame 0 alert is allowed
 
     # Time keeper
     processing_start_time = time()
@@ -135,12 +139,12 @@ def perform_health_monitoring_analysis(
         Perform anomaly detection
         """
 
-        # TODO implement
         are_anomalous = perform_anomaly_detection(
-            anomaly_detector=anomaly_detector,
+            anomaly_detector=anomaly_detection_model,
             anomaly_detection_args=anomaly_detection_args,
             history=history_tracker,
             input_args=input_args,
+            drone_args=drone_args,
             flight_data_file=flight_data_file,
             frame_id=frame_id,
             frame_width=frame_width,
@@ -166,7 +170,6 @@ def perform_health_monitoring_analysis(
         """
         STEP 4: 
         Annotate video
-        Note (todo?): can be done asynchronously given input from step 3, to not block iteration to next frame
         """
         annotate_video(
             output_dir=output_dir,
@@ -193,11 +196,12 @@ def perform_health_monitoring_analysis(
     apparent_processing_rate = total_frames / total_time
     print(f"Apparent processing rate: {apparent_processing_rate:.1f} fps. Real time: {apparent_processing_rate >= fps}")
 
+    # close files
     alerts_file.close()
     flight_data_file.close()
 
+    # close videos
     cap.release()
-
     annotated_writer.release()
 
     print(f"Videos and alerts log have been saved at {output_dir}")

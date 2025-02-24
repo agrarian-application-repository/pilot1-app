@@ -4,6 +4,11 @@
 # Specifies the .pt file for the model to be used during inference.
 model_checkpoint: 'experiments/for_maich/weights/best.pt'
 
+
+# str: Path to the tracker configuration file.
+# Specifies the .yaml file containing the tracker configuration.
+tracker: 'configs/health_monitoring/botsort.yaml'
+
 # float: Confidence threshold for detection filtering.
 # Detections with a confidence score below this value will be discarded.
 # Range: (0.0, 1.0]

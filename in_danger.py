@@ -20,9 +20,9 @@ def main():
 
     drone_args = read_yaml_config("configs/drone_specs.yaml")
     # TODO Check arguments validity
-    # drone_args = check_in_danger_drone_args(drone_args)
+    # drone_args = check_drone_args(drone_args)
     # TODO Preprocess arguments based on input data format
-    # drone_args = preprocess_in_danger_drone_args(drone_args)
+    # drone_args = preprocess_drone_args(drone_args)
     # TODO ASSERT sensor_width_mm/sensor_height_mm == sensor_width_pixels/sensor_height_pixels
 
     output_args = read_yaml_config("configs/in_danger/output.yaml")

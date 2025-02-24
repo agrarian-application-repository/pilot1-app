@@ -8,6 +8,15 @@ import numpy as np
 
 from src.in_danger.in_danger_utils import *
 
+from src.in_danger.detection.detection import perform_detection
+from src.in_danger.segmentation.segmentation import perform_segmentation
+from src.in_danger.output.alerts import send_alert
+from src.in_danger.output.frames import get_danger_intersect_colored_frames, annotate_and_save_frame
+
+from src.drone_utils.flight_logs import parse_drone_flight_data
+from src.drone_utils.gsd import get_meters_per_pixel
+from src.drone_utils.localization import get_objects_coordinates
+
 
 def perform_in_danger_analysis(
         input_args: dict[str:Any],
@@ -91,11 +100,7 @@ def perform_in_danger_analysis(
     )
 
     frame_shape = (frame_height, frame_width, 3)
-    color_danger_frame, color_intersect_frame = get_danger_intersect_colored_frames(
-        shape=frame_shape,
-        color_danger=RED,
-        color_intersect=YELLOW,
-    )
+    color_danger_frame, color_intersect_frame = get_danger_intersect_colored_frames(shape=frame_shape)
 
     # ============== BEGIN VIDEO PROCESSING ===================================
 
