@@ -1,23 +1,12 @@
-from collections import defaultdict
-from pathlib import Path
-from time import time
 from typing import Any
-
+from ultralytics import YOLO
+from shapely import Polygon
+from pathlib import Path
 import cv2
+from time import time
 import numpy as np
-from skimage import transform as skt
-from ultralytics import YOLO, solutions
 
-
-RED = (255, 0, 0)
-GREEN = (0, 255, 0)
-BLUE = (0, 0, 255)
-YELLOW = (255, 255, 0)
-WHITE = (255, 255, 255)
-BLACK = (255, 0, 0)
-GRAY = (230, 230, 230)
-PURPLE = (128, 0, 128)
-CLASS_COLOR = [BLUE, PURPLE]
+from src.in_danger.in_danger_utils import *
 
 
 def perform_in_danger_analysis(
@@ -25,8 +14,25 @@ def perform_in_danger_analysis(
         output_args: dict[str:Any],
         detection_args: dict[str:Any],
         segmentation_args: dict[str:Any],
+        drone_args: dict[str:Any],
 ) -> None:
 
+    # ============== CREATE OUTPUT DIRECTORY ===================================
+
+    output_dir = Path(output_args["output_dir"])
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # ============== LOAD DEM (+ MASK) ===================================
+
+    # Open the DEM
+    dem_tif = get_dem(dem_path=input_args["dem"])
+
+    # Open the DEM mask, if provided
+    dem_mask_tif = get_dem_mask(dem_mask_path=input_args["dem_mask"])
+
+    # ============== LOAD AI MODELS ===================================
+
+    # Load AI models
     detection_model_checkpoint = detection_args.pop("model_checkpoint")
     segmentation_model_checkpoint = segmentation_args.pop("model_checkpoint")
 
@@ -34,409 +40,304 @@ def perform_in_danger_analysis(
     detector = YOLO(detection_model_checkpoint, task="detect")  # Animal detection model
     segmenter = YOLO(segmentation_model_checkpoint, task="segment")  # Dangerous terrain segmentation model
 
+    # ============== LOAD DETECTION CLASSES INFO ===================================
+
+    # prepare detection classes names and number
+    classes_names = detector.names  # Dictionary of class names
+    num_classes = len(classes_names)
+
+    # ============== LOAD FLIGHT INFO ===================================
+
+    # Open drone flight data
+    flight_data_file_path = Path(input_args["flight_data"])
+    flight_data_file = open(flight_data_file_path, "r")
+
+    # ============== LOAD INPUT VIDEO INFO ===================================
+
     # Open video and get properties
     cap = cv2.VideoCapture(input_args["source"])
     assert cap.isOpened(), "Error reading video file"
 
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = int(cap.get(cv2.CAP_PROP_FPS))
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-    input_args["vid_stride"] = min(input_args["vid_stride"], total_frames)
+    # avoids unreasonable video strides
+    input_args["vid_stride"] = max(1, min(input_args["vid_stride"], total_frames))
+    print(f"Processing 1 frame every {input_args['vid_stride']}")
 
-    output_dir = Path(output_args["output_dir"])
-    output_dir.mkdir(parents=True, exist_ok=True)
+    # set the col/row identifier of the frame corners (x,y)
+    frame_corners = np.array([
+        [0                  , 0               ],    # upper left  (0,   0   )
+        [frame_width - 1    , 0               ],    # upper right (C-1, 0   )
+        [frame_width - 1    , frame_height - 1],    # lower right (C-1, R-1 )
+        [0                  , frame_height - 1],    # lower left  (0,   R-1 )
+    ])
+
+    # ============== LOAD ALERTS FILE ===================================
 
     alerts_file_path = (output_dir / output_args["alert_file_name"]).with_suffix(".txt")
     alerts_file = open(alerts_file_path, "w")
-    drone_movement_compensation_file = open(output_dir / "compensation.txt", "w")
 
-    heatmap_solution = None
+    # ============== LOAD OUTPUT VIDEO WRITER ===================================
 
-    annotated_writer = None
-    mask_writer = None
-    heatmap_writer = None
+    annotated_video_path = (output_dir / output_args["annotated_video_name"]).with_suffix(".mp4")
+    annotated_writer = cv2.VideoWriter(
+        filename=annotated_video_path,
+        fourcc=cv2.VideoWriter_fourcc(*"mp4v"),
+        fps=fps,
+        frameSize=(frame_width, frame_height)
+    )
 
-    if output_args["save_videos"]:
+    frame_shape = (frame_height, frame_width, 3)
+    color_danger_frame, color_intersect_frame = get_danger_intersect_colored_frames(
+        shape=frame_shape,
+        color_danger=RED,
+        color_intersect=YELLOW,
+    )
 
-        annotated_video_path = (output_dir / output_args["annotated_video_name"]).with_suffix(".mp4")
-        annotated_writer = cv2.VideoWriter(
-            filename=annotated_video_path,
-            fourcc=cv2.VideoWriter_fourcc(*"mp4v"),
-            fps=fps,
-            frameSize=(width, height)
-        )
-
-        mask_video_path = (output_dir / output_args["mask_video_name"]).with_suffix(".mp4")
-        mask_writer = cv2.VideoWriter(
-            filename=mask_video_path,
-            fourcc=cv2.VideoWriter_fourcc(*"mp4v"),
-            fps=fps,
-            frameSize=(width, height)
-        )
-
-        if output_args["draw_heatmap"]:
-            heatmap_video_path = (output_dir / output_args["heatmap_video_name"]).with_suffix(".mp4")
-            heatmap_writer = cv2.VideoWriter(
-                filename=heatmap_video_path,
-                fourcc=cv2.VideoWriter_fourcc(*"mp4v"),
-                fps=fps,
-                frameSize=(width, height)
-            )
-            heatmap_solution = solutions.Heatmap(
-                model=detection_model_checkpoint,
-                classes=detection_args["classes"],
-                colormap=cv2.COLORMAP_INFERNO,
-                show=False,
-                show_in=False,
-                show_out=False,
-            )
-
-    # Store the track history
-    track_history = {}
+    # ============== BEGIN VIDEO PROCESSING ===================================
 
     # Frame counter
-    previous_frame = None
-    true_frame_id = 0
     frame_id = 0
-    start_time = time()
+    processed_frames_counter = 0
 
+    # Alert cooldown initialization
+    alerts_frames_cooldown = input_args["alerts_cooldown_seconds"] * fps   # convert cooldown from seconds to frames
+    last_alert_frame_id = - fps  # to avoid dealing with initial None value, at frame 0 alert is allowed
+
+    # Time keeper
+    processing_start_time = time()
+
+    # Video processing loop
     while cap.isOpened():
+        iteration_start_time = time()
         success, frame = cap.read()
         if not success:
             print("Video processing has been successfully completed.")
             break
 
-        true_frame_id += 1  # Update frame ID for logging
-        if true_frame_id % input_args["vid_stride"] != 1:
-            continue    # skip vid_stride frames
+        if frame_id % input_args["vid_stride"] != 0:
+            frame_id += 1  # Update frame ID
+            continue  # skip to next frame directly (processes 1 frame every 'vid_stride' frames)
 
-        print(f"\n------------- Processing frame {true_frame_id}/{total_frames}-----------")
+        processed_frames_counter += 1  # update the actual number of frames processed
+        frame_id += 1  # Update frame ID
+        print(f"\n------------- Processing frame {frame_id}/{total_frames}-----------")
 
-        frame_id += 1
+        # ============== PERFORM DETECTION ===================================
+        crono_start = time()
+        # Detect animals in frame, in the form (X,Y) = (COL, ROW) of frame
+        classes, boxes_centers, boxes_corner1, boxes_corner2 = perform_detection(detector, frame, detection_args)
+        print(f"detection of animals completed in {(time() - crono_start)*1000:.1f} ms")
 
-        # if frame_id < 2400 or frame_id > 2500:
-        #    continue
+        # ============== PERFORM SEGMENTATION ===================================
 
-        """ Perform detection and get bounding boxes"""
+        crono_start = time()
+        # Highlight dangerous objects
+        segment_danger_mask = perform_segmentation(segmenter, frame, segmentation_args)
+        print(f"Segmentation and danger mask creation completed in {(time() - crono_start)*1000:.1f} ms")
 
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        # ============== COMPUTE FRAME GROUND RESOLUTION IN METERS/PIXEL  ===================================
+        crono_start = time()
 
-        # Detect animals in frame
-        tracking_results = detector.track(source=frame, persist=True, **detection_args)
+        # load frame flight data
+        frame_flight_data = parse_drone_flight_data(flight_data_file, frame_id)
 
-        # Parse detection results to get bounding boxes
-        classes = tracking_results[0].boxes.cls.cpu().numpy()
-        xywh_boxes = tracking_results[0].boxes.xywh.cpu().numpy().astype(int)
-        xyxy_boxes = tracking_results[0].boxes.xyxy.cpu().numpy().astype(int)
+        # Perform the pixels to meters conversion using the sensor resolution
+        meters_per_pixel = get_meters_per_pixel(
+            rel_altitude_m=frame_flight_data["rel_alt"],
+            focal_length_mm=drone_args["true_focal_len_mm"],
+            sensor_width_mm=drone_args["sensor_width_mm"],
+            sensor_height_mm=drone_args["sensor_height_mm"],
+            sensor_width_pixels=drone_args["sensor_width_pixels"],
+            sensor_height_pixels=drone_args["sensor_height_pixels"],
+            image_width_pixels=frame_width,
+            image_height_pixels=frame_height,
+        )
 
-        # Parse tracking ID
-        if tracking_results[0].boxes.id is not None:
-            track_ids = tracking_results[0].boxes.id.int().cpu().tolist()
-        else:
-            track_ids = None
+        # ============== COMPUTE FRAME SIZE IN METERS  ===================================
+        """
+        frame_width_m = frame_width * meters_per_pixel
+        frame_height_m = frame_height * meters_per_pixel
+        print(f"Frame dimensions: {frame_width_m:.2f}x{frame_height_m:.2f} meters")
+        """
+        # ============== COMPUTE SAFETY AREA RADIUS SIZE IN PIXELS  ===================================
+        safety_radius_pixels = int(input_args["safety_radius_m"] / meters_per_pixel)
 
-        # Compute useful data from detections
-        num_detections = xywh_boxes.shape[0]
-        boxes_centers = xywh_boxes[:, :2]
-        boxes_wh = xywh_boxes[:, 2:]
-        boxes_corner1 = xyxy_boxes[:, :2]
-        boxes_corner2 = xyxy_boxes[:, 2:]
-        safety_radiuses = (1.5 * np.max(boxes_wh, axis=0)).astype(int)
+        # ============== COMPUTE LOCATION (LNG,LAT) OF FRAME CORNERS  ===================================
+        # get the coordinates of the 4 corners of the frame.
+        # The rectangle may be oriented in any direction wrt North
+        corners_coordinates = get_objects_coordinates(
+            objects_coords=frame_corners,   # (X,Y) expected input
+            center_lat=frame_flight_data["latitude"],
+            center_lon=frame_flight_data["longitude"],
+            frame_width_pixels=frame_width,
+            frame_height_pixels=frame_height,
+            meters_per_pixel=meters_per_pixel,
+            angle_wrt_north=frame_flight_data["gb_yaw"],
+        )
 
-        """ Perform segmentation and build dangerous-mask"""
+        # ============== COMPUTE LOCATION (LNG,LAT) OF ANIMALS  ===================================
+        """
+        animals_coordinates = get_objects_coordinates(
+            objects_coords=boxes_centers,   # (X,Y)
+            center_lat=frame_flight_data["latitude"],
+            center_lon=frame_flight_data["longitude"],
+            frame_width_pixels=frame_width,
+            frame_height_pixels=frame_height,
+            meters_per_pixel=meters_per_pixel,
+            angle_wrt_north=frame_flight_data["gb_yaw"],
+         )
+        """
 
-        segment_results = segmenter.predict(source=frame, **segmentation_args)
+        print(f"Frame location computed in {(time() - crono_start)*1000:.1f} ms. (Animals position not computed)")
 
-        if segment_results[0].masks is not None:
-            masks = segment_results[0].masks.data.int().cpu().numpy()
-            dangerous_mask = np.any(masks, axis=0).astype(np.uint8)
-            dangerous_mask = skt.resize(dangerous_mask, (height, width), order=0, anti_aliasing=False)
-            # dangerous_mask = cv2.resize(dangerous_mask, dsize=(width, height), interpolation=cv2.INTER_NEAREST)
-        else:
-            dangerous_mask = np.zeros((height, width), dtype=np.uint8)
+        # ============== COMPUTE DEM (+MASK) WINDOW ENCOMPASSING THE FRAME  ===================================
 
-        """ Draw safety areas on rgb-mask to determine safety-danger intersection areas"""
+        crono_start = time()
 
-        # Initialize frames for annotated and mask videos
-        rgb_mask_frame = np.zeros((height, width, 3), dtype=np.uint8)  # empty rgb mask to color
+        center_coords = (frame_flight_data["longitude"], frame_flight_data["latitude"])
 
-        # Process each detection to draw bounding boxes and safety circles
-        for box_center, safety_radius in zip(boxes_centers, safety_radiuses):
-            # Draw safety circle on rgb mask around bounding box (green - fill)
-            cv2.circle(rgb_mask_frame, box_center, safety_radius, GREEN, cv2.FILLED)
+        dem_window, dem_mask_window, dem_window_transform, dem_window_bounds, dem_window_size = extract_dem_window(
+            dem_tif=dem_tif,
+            dem_mask_tif=dem_mask_tif,
+            center_lonlat=center_coords,
+            rectangle_lonlat=corners_coordinates,
+        )
+        # dem_window and dem_mask_window are (1,dem_window_size,dem_window_size) arrays
 
-        # Create a safety mask from the green channel (circles) of the rgb_mask frame. shape = (H;W;C)
-        safety_mask = np.copy(rgb_mask_frame[:, :, 1] // 255).astype(np.uint8)
+        # find the distance in meters between two points on opposite side of the window at the drone latitude
+        dem_window_size_m = get_window_size_m(frame_flight_data["latitude"], dem_window_bounds)
+        # compute the resolution of each dem pixel in meters
+        dem_pixel_size_m = dem_window_size_m / dem_window_size
 
-        # Check for intersection between safety area and dangerous areas
-        intersection = np.logical_and(safety_mask, dangerous_mask)
-        if np.any(intersection > 0):  # Non-zero intersection indicates overlap
-            # Write alert to file
-            alerts_file.write(f"Alert: Frame {frame_id} - Animal(s) near or in dangerous area\n")
-            # Highlight intersection area in yellow on the mask frame if video to be saved, skip otherwise
-            if output_args["save_videos"]:
-                rgb_mask_frame[np.where(intersection > 0)] = YELLOW
+        # ============== COMPUTE SLOPE MASK FROM DEM WINDOW ===================================
 
-        """ Additional annotations if videos are to be saved"""
+        # compute the slope mask using the dem window and info about the resolution of each pixel
+        slope_mask_window = compute_slope_mask_runtime(
+            elev_array=dem_window,
+            pixel_size=dem_pixel_size_m,
+            slope_threshold_deg=input_args["slope_angle_threshold"]
+        )
 
-        # This other annotations can be skipped if videos are not saved
-        if output_args["save_videos"]:
+        # ============== CREATE TRANSFORM TO EXTRACT THE FRAME AREA FROM THE RASTER ========================
 
-            annotated_frame = frame.copy()  # copy of the original frame on which to draw
+        # stack the dem_nodata and dem_slope masks to form a (2, dem_window_size, dem_window_size) mask array
+        masks_window = np.concatenate((dem_mask_window, slope_mask_window), axis=0)
+        assert masks_window.shape == (2, dem_window_size, dem_window_size)
 
-            # drawing safety circles & detection boxes
-            draw_detections_and_safety_areas(
-                annotated_frame,
-                rgb_mask_frame,
-                classes,
-                boxes_centers,
-                safety_radiuses,
-                boxes_corner1,
-                boxes_corner2,
-            )
+        # compute the Affine transform to extract a portion of the raster corresponding to the area in the frame
+        frame_transform = get_frame_transform(
+            height=frame_height,
+            width=frame_width,
+            drone_ul=tuple(corners_coordinates[0]),  # (lon, lat) for upper-left corner
+            drone_ur=tuple(corners_coordinates[1]),  # (lon, lat) for upper-right corner
+            drone_bl=tuple(corners_coordinates[3]),  # (lon, lat) for bottom-left corner
+        )
 
-            # Overlay dangerous areas in red on the annotated frame
-            annotated_frame = draw_dangerous_area(
-                annotated_frame,
-                rgb_mask_frame,
-                dangerous_mask,
-                intersection
-            )
+        # ============== ROTATE & UPSCALE MASKS USING FRAME TRANSFORM ========================
+        # rotate and resample using the frame coordinates to obtain a (frame_height, frame_width) version of the
+        # previously created mask, that matches the frame data
+        combined_dem_mask_over_frame = map_window_onto_drone_frame(
+            window=masks_window,
+            window_transform=dem_window_transform,
+            dst_transform=frame_transform,
+            output_shape=(masks_window.shape[2], frame_height, frame_width),
+            crs=dem_tif.crs
+        )
 
-            if output_args["draw_count"]:
-                draw_count(num_detections, annotated_frame, height)
+        # separate the two masks
+        dem_nodata_danger_mask = combined_dem_mask_over_frame[0]
+        slope_danger_mask = combined_dem_mask_over_frame[1]
 
-            if output_args["draw_tracks"]:
-                draw_tracks(
-                    frame,
-                    previous_frame,
-                    annotated_frame,
-                    rgb_mask_frame,
-                    boxes_centers,
-                    track_history,
-                    track_ids,
-                    drone_movement_compensation_file,
-                )
-                # Update previous_frame within the loop for the next iteration
-                previous_frame = frame.copy()
+        # ============== CREATE GEOFENCING MASK ========================
 
-            # save the annotated rgb and annotated frame
-            mask_writer.write(rgb_mask_frame)
-            annotated_writer.write(annotated_frame)
+        # compute geofencing directly on the full size frame
+        # independently of other two masks for flexibility (slower), as it should not require the dem data
+        geofencing_danger_mask = create_geofencing_mask_runtime(
+            frame_width=frame_width,
+            frame_height=frame_height,
+            transform=frame_transform,
+            polygon=Polygon(input_args["geofencing_vertexes"])
+        )
 
-            # create and save the heatmap
-            if output_args["draw_heatmap"]:     # todo invarianza movimento drone
-                heatmap_frame = heatmap_solution.generate_heatmap(frame)
-                heatmap_writer.write(heatmap_frame)
+        print(f"Frame-overlapping DEM validity and slope masks computed in {(time() - crono_start)*1000:.1f} ms")
 
-    total_time = time() - start_time
-    processing_speed = total_frames / total_time
-    print(f"Detection and segmentation for  {total_frames} completed in end {total_time:.1f} seconds")
-    print(f"Processing rate: {processing_speed:.2f} fps")
-    print(f"Input video fps: {fps}")
-    print(f"Processing is real time: {processing_speed >= fps}")
+        # ============== CHECK DANGER TYPES AND CREATE DANGER/INTERSECTION MASKS ================
+        """ 
+        COMPONENT 4:
+        Compute safety areas around each animal, and check for intersections with danger masks. 
+        If intersection exists, send alert (12 ms).
+        """
 
-    """Release resources"""
+        danger_mask, intersection_mask, danger_types = create_dangerous_intersections_masks(
+            frame_height,
+            frame_width,
+            boxes_centers,
+            safety_radius_pixels,
+            segment_danger_mask,
+            dem_nodata_danger_mask,
+            geofencing_danger_mask,
+            slope_danger_mask,
+        )
 
+        # ============== RAISE ALERTS IF NEEDED ================
+
+        # if cooldown has passed, check if dangers exist and report them with the appropriate string(s)
+        cooldown_has_passed = (frame_id - last_alert_frame_id) >= alerts_frames_cooldown
+        danger_exists = len(danger_types) > 0
+        if cooldown_has_passed and danger_exists:
+            danger_type_str = " & ".join(danger_types)
+            send_alert(alerts_file, frame_id, danger_type_str)
+            last_alert_frame_id = frame_id
+
+        # ============== ANNOTATE FRAME ==================================
+
+        # annotate the frame and save it into the video
+        # provide standalone image if danger is present and cooldown has passed to complement textual alert
+        annotate_and_save_frame(
+            annotated_writer,
+            output_dir,
+            frame,
+            frame_id,
+            cooldown_has_passed,
+            danger_exists,
+            num_classes,
+            classes_names,
+            classes,
+            boxes_centers,
+            boxes_corner1,
+            boxes_corner2,
+            safety_radius_pixels,
+            danger_mask,
+            intersection_mask,
+            color_danger_frame,
+            color_intersect_frame,
+        )
+
+        iteration_time = time() - iteration_start_time
+        print(f"Iteration completed in {iteration_time*1000:.1f} ms. Equivalent fps = {1/iteration_time:.2f}")
+
+    """ Processing completed, print stats and release resources"""
+
+    total_time = time() - processing_start_time
+    print(f"Danger Analysis for {processed_frames_counter} frames (out of {total_frames}) completed in {total_time:.1f} seconds")
+    real_processing_rate = processed_frames_counter / total_time
+    print(f"Real processing rate: {real_processing_rate:.1f} fps. Real time: {real_processing_rate >= fps}")
+    apparent_processing_rate = total_frames / total_time
+    print(f"Apparent processing rate: {apparent_processing_rate:.1f} fps. Real time: {apparent_processing_rate >= fps}")
+
+    # close tifs
+    close_tifs([dem_tif, dem_mask_tif])
+
+    # close files
+    flight_data_file.close()
     alerts_file.close()
-    drone_movement_compensation_file.close()
 
+    # close videos
     cap.release()
-
-    if annotated_writer is not None:
-        annotated_writer.release()
-    if mask_writer is not None:
-        mask_writer.release()
-    if heatmap_writer is not None:
-        heatmap_writer.release()
+    annotated_writer.release()
 
     print(f"Videos and alerts log have been saved at {output_dir}")
-
-
-def draw_detections_and_safety_areas(
-    annotated_frame,
-    rgb_mask_frame,
-    classes,
-    boxes_centers,
-    safety_radiuses,
-    boxes_corner1,
-    boxes_corner2,
-):
-    # drawing safety circles & detection boxes
-    for obj_class, box_center, safety_radius, box_corner1, box_corner2 \
-            in zip(classes, boxes_centers, safety_radiuses, boxes_corner1, boxes_corner2):
-        #  Draw safety circle on annotated frame (green)
-        cv2.circle(annotated_frame, box_center, safety_radius, GREEN, 2)
-        # Draw bounding box on annotated frame (blue sheep, purple goat), on top of safety circles
-        cv2.rectangle(annotated_frame, box_corner1, box_corner2, CLASS_COLOR[obj_class], 2)
-        # Draw bounding box on rgb mask frame (fill / blue sheep, purple goat), on top of the safety circles
-        cv2.rectangle(rgb_mask_frame, box_corner1, box_corner2, CLASS_COLOR[obj_class], cv2.FILLED)
-
-
-def draw_dangerous_area(
-    annotated_frame,
-    rgb_mask_frame,
-    dangerous_mask,
-    intersection
-):
-    alpha = 0.5
-    red_overlay = np.zeros_like(annotated_frame)
-    red_overlay[dangerous_mask == 1] = RED  # Red color channel only
-    annotated_frame = cv2.addWeighted(red_overlay, alpha, annotated_frame, 1 - alpha, 0, annotated_frame)
-
-    # Dangerous areas in red on mask frame
-    rgb_mask_frame[np.where((dangerous_mask - intersection) > 0)] = RED
-
-    return annotated_frame
-
-
-def draw_count(
-    num_detections,
-    annotated_frame,
-    frame_height,
-):
-    # Overlay the count text on the annotated frame
-    text = f"N. Detected: {num_detections}"
-    font_face = cv2.FONT_HERSHEY_SIMPLEX
-    font_scale = 0.5
-    text_color = BLACK
-    fill_color = WHITE
-    thickness = 1
-    line_type = cv2.LINE_AA
-    org = (10, frame_height - 10)  # text position in image
-
-    (text_width, text_height), _ = cv2.getTextSize(
-        text=text,
-        fontFace=font_face,
-        fontScale=font_scale,
-        thickness=thickness
-    )
-    textbox_coord_ul = (org[0] - 5, org[1] - text_height - 5)
-    textbox_coord_br = (org[0] + text_width + 5, org[1] + 5)
-
-    # Draw white rectangle as background
-    cv2.rectangle(annotated_frame, textbox_coord_ul, textbox_coord_br, fill_color, cv2.FILLED)
-
-    cv2.putText(
-        img=annotated_frame,
-        text=text,
-        org=org,
-        fontFace=font_face,
-        fontScale=font_scale,
-        color=text_color,
-        thickness=thickness,
-        lineType=line_type,
-    )
-
-
-def compensate_tracks_history_for_drone_movement(
-    frame,
-    previous_frame,
-    track_history,
-    drone_movement_compensation_file,
-
-):
-
-    # Initialize ORB detector
-    orb = cv2.ORB_create()
-
-    prev_gray = cv2.cvtColor(previous_frame, cv2.COLOR_RGB2GRAY)
-    curr_gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
-
-    # Detect keypoints and descriptors
-    kp1, des1 = orb.detectAndCompute(prev_gray, None)
-    kp2, des2 = orb.detectAndCompute(curr_gray, None)
-
-    # Match features using Hamming distance
-    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
-    matches = bf.match(des1, des2)
-    matches = sorted(matches, key=lambda x: x.distance)
-
-    # Estimate the affine transformation matrix from matches
-    src_pts = np.float32([kp1[m.queryIdx].pt for m in matches]).reshape(-1, 1, 2)
-    dst_pts = np.float32([kp2[m.trainIdx].pt for m in matches]).reshape(-1, 1, 2)
-    M, _ = cv2.estimateAffinePartial2D(src_pts, dst_pts)
-
-    if M is not None:  # Ensure M was successfully computed
-        # Decompose the matrix for translation and rotation
-        tx, ty = M[0, 2], M[1, 2]
-        a, b, c, d = M[0, 0], M[0, 1], M[1, 0], M[1, 1]
-
-        # Write shift to file for debugging purposes
-        drone_movement_compensation_file.write(f"tx: {tx:.2f}, ty: {ty:.2f}\n")
-
-        # Apply the affine transformation to each track's (x, y) positions in track_history
-        for k in track_history.keys():
-            track_history[k] = [(a * track_x + b * track_y + tx, c * track_x + d * track_y + ty)
-                                for (track_x, track_y) in track_history[k]]
-            """
-            for i, (track_x, track_y) in enumerate(track_history[k]):
-                # Apply affine transformation
-                corrected_x = a * track_x + b * track_y + tx
-                corrected_y = c * track_x + d * track_y + ty
-                # Update the track history with corrected coordinates
-                track_history[k][i] = (corrected_x, corrected_y)
-            """
-
-    # old:
-    """
-    prev_gray = cv2.cvtColor(previous_frame, cv2.COLOR_RGB2GRAY)
-    curr_gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
-
-    # Calculate shift using phase correlation
-    # alternatives: Template Matching and  Block-Based Optical Flow (Pyramidal Lucas-Kanade)
-    shift, _ = cv2.phaseCorrelate(np.float32(prev_gray), np.float32(curr_gray))
-    shift_x, shift_y = shift  # Displacement in x and y directions
-
-    # Optional: Check if the shift is reasonable
-    max_shift = 50
-    if abs(shift_x) > max_shift or abs(shift_y) > max_shift:
-        drone_movement_compensation_file.write(
-            "Warning: Unusually large shift detected. Resetting shift to zero below."
-        )
-        shift_x, shift_y = 0, 0
-
-    drone_movement_compensation_file.write(f"shift_x: {shift_x:.2f} - shift_y:{shift_y:.2f}\n")
-    # update tracks with drone shift
-    for k in track_history.keys():
-        for i, (track_x, track_y) in enumerate(track_history[k]):
-            track_history[k][i] = (track_x + shift_x, track_y + shift_y)
-    """
-
-
-def draw_tracks(
-    frame,
-    previous_frame,
-    annotated_frame,
-    rgb_mask_frame,
-    boxes_centers,
-    track_history,
-    track_ids,
-    drone_movement_compensation_file
-):
-    # Only perform compensation steps if there's a previous frame, before appending the current tracking points
-    if previous_frame is not None:
-        compensate_tracks_history_for_drone_movement(
-            frame,
-            previous_frame,
-            track_history,
-            drone_movement_compensation_file
-        )
-
-    if track_ids is not None:
-        for (x, y), track_id in zip(boxes_centers, track_ids):
-            track = track_history[track_id]
-            track.append((float(x), float(y)))  # x, y center point
-
-            # Draw the tracking lines
-            points = np.hstack(track).astype(np.int32).reshape((-1, 1, 2))
-            cv2.polylines(annotated_frame, [points], isClosed=False, color=GRAY, thickness=5)
-            cv2.polylines(rgb_mask_frame, [points], isClosed=False, color=GRAY, thickness=5)
-
-    for track_id in track_history.keys():
-        track = track_history[track_id]
-        if len(track) > 100:  # retain 100 frames of track
-            track.pop(0)
-
