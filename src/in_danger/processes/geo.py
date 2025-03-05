@@ -1,0 +1,176 @@
+import multiprocessing as mp
+from pathlib import Path
+
+import numpy as np
+from shapely import Polygon
+from src.drone_utils.flight_logs import parse_drone_flight_data
+from src.drone_utils.gsd import get_meters_per_pixel
+from src.drone_utils.localization import get_objects_coordinates
+from src.in_danger.in_danger_utils import (close_tifs, compute_slope_mask_horn,
+                                           create_geofencing_mask_runtime,
+                                           extract_dem_window, get_dem,
+                                           get_dem_mask, get_frame_transform,
+                                           get_window_size_m,
+                                           map_window_onto_drone_frame)
+from src.in_danger.processes.results import FrameQueueObject, GeoResult
+
+
+class GeoWorker(mp.Process):
+
+    def __init__(self, input_args, drone_args, input_queue, result_queue, shared_dict):
+
+        super().__init__()
+
+        self.shared_dict = shared_dict
+
+        self.input_queue = input_queue
+        self.result_queue = result_queue
+
+        self.input_args = input_args
+        self.drone_args = drone_args
+
+    def run(self):
+        """Main loop of the process: instantiate files and then and processes frames."""
+
+        frame_width = self.shared_dict["frame_width"]
+        frame_height = self.shared_dict["frame_height"]
+
+        # Open the DEM
+        dem_tif = get_dem(dem_path=self.input_args["dem"])
+
+        # Open the DEM mask, if provided
+        dem_mask_tif = get_dem_mask(dem_mask_path=self.input_args["dem_mask"])
+
+        # Open drone flight data
+        flight_data_file_path = Path(self.input_args["flight_data"])
+        flight_data_file = open(flight_data_file_path, "r")
+
+        # set the col/row identifier of the frame corners (x,y)
+        frame_corners = np.array([
+            [0, 0],  # upper left  (0,   0   )
+            [frame_width - 1, 0],  # upper right (C-1, 0   )
+            [frame_width - 1, frame_height - 1],  # lower right (C-1, R-1 )
+            [0, frame_height - 1],  # lower left  (0,   R-1 )
+        ])
+
+        while True:
+            frame_object: FrameQueueObject = self.input_queue.get()
+            if frame_object is None:
+                self.result_queue.put(None)  # Signal end of processing
+                close_tifs([dem_tif, dem_mask_tif])     # close tif files
+                flight_data_file.close()    # close txt files
+                print("Terminating geo data handling process.")
+                break
+
+            # load frame flight data
+            frame_flight_data = parse_drone_flight_data(flight_data_file, frame_object.frame_id)
+
+            # Perform the pixels to meters conversion using the sensor resolution
+            meters_per_pixel = get_meters_per_pixel(
+                rel_altitude_m=frame_flight_data["rel_alt"],
+                focal_length_mm=self.drone_args["true_focal_len_mm"],
+                sensor_width_mm=self.drone_args["sensor_width_mm"],
+                sensor_height_mm=self.drone_args["sensor_height_mm"],
+                sensor_width_pixels=self.drone_args["sensor_width_pixels"],
+                sensor_height_pixels=self.drone_args["sensor_height_pixels"],
+                image_width_pixels=frame_width,
+                image_height_pixels=frame_height,
+            )
+
+            # ============== COMPUTE SAFETY AREA RADIUS SIZE IN PIXELS  ===================================
+            safety_radius_pixels = int(self.input_args["safety_radius_m"] / meters_per_pixel)
+
+            # ============== COMPUTE LOCATION (LNG,LAT) OF FRAME CORNERS  ===================================
+            # get the coordinates of the 4 corners of the frame.
+            # The rectangle may be oriented in any direction wrt North
+            corners_coordinates = get_objects_coordinates(
+                objects_coords=frame_corners,   # (X,Y) expected input
+                center_lat=frame_flight_data["latitude"],
+                center_lon=frame_flight_data["longitude"],
+                frame_width_pixels=frame_width,
+                frame_height_pixels=frame_height,
+                meters_per_pixel=meters_per_pixel,
+                angle_wrt_north=frame_flight_data["gb_yaw"],
+            )
+
+            # ============== COMPUTE DEM (+MASK) WINDOW ENCOMPASSING THE FRAME  ===================================
+
+            center_coords = (frame_flight_data["longitude"], frame_flight_data["latitude"])
+
+            dem_window, dem_mask_window, dem_window_transform, dem_window_bounds, dem_window_size = extract_dem_window(
+                dem_tif=dem_tif,
+                dem_mask_tif=dem_mask_tif,
+                center_lonlat=center_coords,
+                rectangle_lonlat=corners_coordinates,
+            )
+            # dem_window and dem_mask_window are (1,dem_window_size,dem_window_size) arrays
+            assert dem_window.shape == (1, dem_window_size, dem_window_size)
+            assert dem_mask_window.shape == (1, dem_window_size, dem_window_size)
+
+            # find the distance in meters between two points on opposite side of the window at the drone latitude
+            dem_window_size_m = get_window_size_m(frame_flight_data["latitude"], dem_window_bounds)
+            # compute the resolution of each dem pixel in meters
+            dem_pixel_size_m = dem_window_size_m / dem_window_size
+
+            # ============== COMPUTE SLOPE MASK FROM DEM WINDOW ===================================
+
+            # compute the slope mask using the dem window and info about the resolution of each pixel
+            slope_mask_window = compute_slope_mask_horn(
+                elev_array=dem_window,
+                pixel_size=dem_pixel_size_m,
+                slope_threshold_deg=self.input_args["slope_angle_threshold"]
+            )
+
+            # ============== CREATE TRANSFORM TO EXTRACT THE FRAME AREA FROM THE RASTER ========================
+
+            # stack the dem_nodata and dem_slope masks to form a (2, dem_window_size, dem_window_size) mask array
+            masks_window = np.concatenate((dem_mask_window, slope_mask_window), axis=0)
+            assert masks_window.shape == (2, dem_window_size, dem_window_size)
+
+            # compute the Affine transform to extract a portion of the raster corresponding to the area in the frame
+            frame_transform = get_frame_transform(
+                height=frame_height,
+                width=frame_width,
+                drone_ul=tuple(corners_coordinates[0]),  # (lon, lat) for upper-left corner
+                drone_ur=tuple(corners_coordinates[1]),  # (lon, lat) for upper-right corner
+                drone_bl=tuple(corners_coordinates[3]),  # (lon, lat) for bottom-left corner
+            )
+
+            # ============== ROTATE & UPSCALE MASKS USING FRAME TRANSFORM ========================
+            # rotate and resample using the frame coordinates to obtain a (frame_height, frame_width) version of the
+            # previously created mask, that matches the frame data
+            combined_dem_mask_over_frame = map_window_onto_drone_frame(
+                window=masks_window,
+                window_transform=dem_window_transform,
+                dst_transform=frame_transform,
+                output_shape=(masks_window.shape[2], frame_height, frame_width),
+                crs=dem_tif.crs
+            )
+
+            # separate the two masks
+            dem_nodata_danger_mask = combined_dem_mask_over_frame[0]
+            slope_danger_mask = combined_dem_mask_over_frame[1]
+
+            # ============== CREATE GEOFENCING MASK ========================
+
+            # compute geofencing directly on the full size frame
+            # independently of other two masks for flexibility (slower), as it should not require the dem data
+            geofencing_danger_mask = create_geofencing_mask_runtime(
+                frame_width=frame_width,
+                frame_height=frame_height,
+                transform=frame_transform,
+                polygon=Polygon(self.input_args["geofencing_vertexes"])
+            )
+
+            # ============== PUT RESULTS ON QUEUE ========================
+
+            result = GeoResult(
+                frame_id=frame_object.frame_id,
+                safety_radius_pixels=safety_radius_pixels,
+                nodata_dem_mask=dem_nodata_danger_mask,
+                geofencing_mask=geofencing_danger_mask,
+                slope_mask=slope_danger_mask,
+            )
+            self.result_queue.put(result)
+
+
