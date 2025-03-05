@@ -3,13 +3,15 @@ import cv2
 
 
 def perform_segmentation(segmenter, frame, segmentation_args):
-
     # Highlight dangerous objects
     segment_results = segmenter.predict(source=frame, **segmentation_args)
-
     # frame size (H, W, 3)
     frame_height = frame.shape[0]
     frame_width = frame.shape[1]
+    return postprocess_segmentation_results(segment_results, frame_height, frame_width)
+
+
+def postprocess_segmentation_results(segment_results, frame_height, frame_width):
 
     if segment_results[0].masks is not None:  # danger found in the frame
         masks = segment_results[0].masks.data.int().cpu().numpy()

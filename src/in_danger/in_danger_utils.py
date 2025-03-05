@@ -19,6 +19,7 @@ __all__ = [
     "extract_dem_window",
     "get_window_size_m",
     "compute_slope_mask_runtime",
+    "compute_slope_mask_horn",
     "create_geofencing_mask_runtime",
     "get_frame_transform",
     "map_window_onto_drone_frame",
@@ -167,10 +168,16 @@ def compute_slope_mask_runtime(elev_array, pixel_size, slope_threshold_deg):
     assert elev_array.ndim == 3 and elev_array.shape[0] == 1
     elev_array = elev_array[0]
 
-    # Compute the gradient along the y (row) and x (column) directions.
-    # Note: np.gradient returns gradients in the order (axis0, axis1) which correspond
-    # to (dy, dx) given the array dimensions.
-    gy, gx = np.gradient(elev_array, pixel_size)
+    # Pad the DEM with a 1-pixel border using edge replication.
+    elev_padded = np.pad(elev_array, pad_width=1, mode='edge')
+
+    # Compute the gradient on the padded DEM.
+    # np.gradient returns arrays of the same shape as the input.
+    gy_padded, gx_padded = np.gradient(elev_padded, pixel_size)
+
+    # Crop the gradient arrays to remove the padding.
+    gx = gx_padded[1:-1, 1:-1]
+    gy = gy_padded[1:-1, 1:-1]
 
     # Compute the magnitude of the slope (rise over run)
     # The slope in radians is given by arctan(sqrt((dz/dx)^2 + (dz/dy)^2)).
@@ -186,6 +193,61 @@ def compute_slope_mask_runtime(elev_array, pixel_size, slope_threshold_deg):
     mask = mask[np.newaxis, :, :]
 
     return mask
+
+
+# TODO CHECK PADDING
+def compute_slope_mask_horn(elev_array, pixel_size, slope_threshold_deg):
+    """
+    Compute a mask indicating where the terrain slope is steeper than a given threshold
+    using Horn's method with 1-pixel edge padding. The input is a 3D array of elevation values 
+    (shape: (1, H, W)) and the output is a 3D binary mask of the same shape.
+
+    Parameters
+    ----------
+    elev_array : np.ndarray
+        A 3D array (shape (1, H, W)) of elevation values in meters.
+    pixel_size : float
+        The physical size of each pixel in meters.
+    slope_threshold_deg : float
+        The slope threshold in degrees. Cells with a slope greater than this threshold
+        will be marked with a 1 in the output mask.
+
+    Returns
+    -------
+    np.ndarray
+        A 3D binary array (shape (1, H, W)) with 1 where the computed slope exceeds 
+        slope_threshold_deg, and 0 elsewhere.
+    """
+    # Ensure the input has the expected shape and remove the singleton dimension.
+    assert elev_array.ndim == 3 and elev_array.shape[0] == 1, "Input must be of shape (1, H, W)"
+    elev_array = elev_array[0]
+
+    # Pad the DEM with a 1-pixel border using edge replication.
+    elev_padded = np.pad(elev_array, pad_width=1, mode='edge')
+
+    # Compute the horizontal gradient (Gx) using Horn's method.
+    # For each original pixel, the corresponding 3x3 window in elev_padded is used.
+    gx = (
+        elev_padded[:-2,  2:] + 2 * elev_padded[1:-1,  2:] + elev_padded[2:,  2:] -
+        elev_padded[:-2, :-2] - 2 * elev_padded[1:-1, :-2] - elev_padded[2:, :-2]
+    ) / (8 * pixel_size)
+
+    # Compute the vertical gradient (Gy) using Horn's method.
+    gy = (
+        elev_padded[2:,  :-2] + 2 * elev_padded[2:, 1:-1] + elev_padded[2:,  2:] -
+        elev_padded[:-2, :-2] - 2 * elev_padded[:-2, 1:-1] - elev_padded[:-2,  2:]
+    ) / (8 * pixel_size)
+
+    # Compute the slope (in radians) as the arctan of the gradient magnitude.
+    slope_radians = np.arctan(np.sqrt(gx**2 + gy**2))
+    # Convert the slope to degrees.
+    slope_degrees = np.degrees(slope_radians)
+
+    # Create a binary mask: 1 where slope exceeds the threshold, else 0.
+    mask = (slope_degrees > slope_threshold_deg).astype(np.uint8)
+
+    # Return the mask with the original 3D shape (1, H, W).
+    return mask[np.newaxis, :, :]
 
 
 def create_geofencing_mask_runtime(frame_width, frame_height, transform, polygon):
@@ -271,20 +333,15 @@ def create_dangerous_intersections_masks(
     slope_danger_mask,
 
 ):
-    crono_start = time()
 
     # create the safety mask
-    inter = time()
     safety_mask = create_safety_mask(frame_height, frame_width, boxes_centers, safety_radius_pixels)
-    st_time = time() - inter
 
     # create the intersection mask between safety areas and dangerous areas masks
-    inter = time()
     intersection_segment = np.logical_and(safety_mask, segment_danger_mask)
     intersection_nodata = np.logical_and(safety_mask, dem_nodata_danger_mask)
     intersection_geofencing = np.logical_and(safety_mask, geofencing_danger_mask)
     intersection_slope = np.logical_and(safety_mask, slope_danger_mask)
-    ands_time = time() - inter
 
     danger_types = []
     if np.any(intersection_segment > 0):
@@ -296,7 +353,6 @@ def create_dangerous_intersections_masks(
     if np.any(intersection_slope > 0):
         danger_types.append("Steep slope Danger")
 
-    inter = time()
     # compute combined danger mask
     combined_danger_mask = merge_3d_mask(np.stack([
         segment_danger_mask,
@@ -304,26 +360,17 @@ def create_dangerous_intersections_masks(
         geofencing_danger_mask,
         slope_danger_mask,
     ]))
-    dm_time = time() - inter
 
     # compute combined intersection mask
-    inter = time()
     combined_intersections = merge_3d_mask(np.stack([
         intersection_segment,
         intersection_nodata,
         intersection_geofencing,
         intersection_slope
     ]))
-    inter_time = time() - inter
 
     combined_danger_mask_no_intersections = combined_danger_mask - combined_intersections
     assert np.min(combined_danger_mask_no_intersections) >= 0 and np.max(combined_danger_mask_no_intersections) <= 1
-
-    print(f"Danger analysis and reporting completed in {(time() - crono_start) * 1000:.1f} ms")
-    print(f"\tCompute safety mask mask in {st_time * 1000:.1f} ms")
-    print(f"\tCompute single intersections masks in {ands_time * 1000:.1f} ms")
-    print(f"\tCompute combined danger mask in {dm_time * 1000:.1f} ms")
-    print(f"\tCompute combined intersection mask in {inter_time * 1000:.1f} ms")
 
     return combined_danger_mask_no_intersections, combined_intersections, danger_types
 
