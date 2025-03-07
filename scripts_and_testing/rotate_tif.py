@@ -137,7 +137,7 @@ if __name__ == "__main__":
     center_lon = 24.174019
 
     rotate_tif_around_point(
-        input_tif="data/DEM/Copernicus_DSM_04_N35_00_E024_00_DEM.tif",
+        input_tif="/archive/group/ai/datasets/AGRARIAN/DEM/Copernicus_DSM_04_N35_00_E024_00_DEM.tif",
         output_tif=f"xxx2/output_rotated{angle}.tif",
         center_lat=center_lat,
         center_lon=center_lon,

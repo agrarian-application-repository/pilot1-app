@@ -1,15 +1,15 @@
 # str: Data source (a video) for in-danger analysis.
-source: 'data/MAICH_v1/DJI_20241024104935_0008_D.MP4'
+source: '/archive/group/ai/datasets/AGRARIAN/MAICH_v1/DJI_20241024104935_0008_D.MP4'
 
 # str: Drone metadata file (.srt)
-flight_data: 'data/MAICH_v1/DJI_20241024104935_0008_D.SRT'
+flight_data: '/archive/group/ai/datasets/AGRARIAN/MAICH_v1/DJI_20241024104935_0008_D.SRT'
 
 # str: Path to the DEM data
-# dem: 'data/DEM/merged/merged.tif'
-dem: 'data/DEM/Copernicus_DSM_04_N35_00_E024_00_DEM.tif'
+# dem: '/archive/group/ai/datasets/AGRARIAN/DEM/merged/merged.tif'
+dem: '/archive/group/ai/datasets/AGRARIAN/DEM/Copernicus_DSM_04_N35_00_E024_00_DEM.tif'
 
 # str or null: Path to the DEM data mask, if null assumes all pixels are valid
-# dem_mask: 'data/DEM/merged/merged_mask.tif'
+# dem_mask: '/archive/group/ai/datasets/AGRARIAN/DEM/merged/merged_mask.tif'
 dem_mask: null
 
 # int: Frame stride for video inputs.

@@ -36,4 +36,4 @@ def load_dem_and_plot_slope_mask(dem_path, slope_threshold_deg):
 
 
 if __name__ == "__main__":
-    load_dem_and_plot_slope_mask("data/DEM/Copernicus_DSM_04_N35_00_E024_00_DEM.tif", 35)
+    load_dem_and_plot_slope_mask("/archive/group/ai/datasets/AGRARIAN/DEM/Copernicus_DSM_04_N35_00_E024_00_DEM.tif", 35)

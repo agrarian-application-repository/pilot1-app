@@ -815,7 +815,7 @@ if __name__ == "__main__":
 
     """
     # Path to the original large TIFF file
-    original_tif_path = "data/DEM/Copernicus_DSM_04_N35_00_E024_00_DEM.tif"
+    original_tif_path = "/archive/group/ai/datasets/AGRARIAN/DEM/Copernicus_DSM_04_N35_00_E024_00_DEM.tif"
     # Center point in (longitude, latitude)
     center_point = (24.174019, 35.427075)
 

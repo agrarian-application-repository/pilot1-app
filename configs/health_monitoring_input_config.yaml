@@ -1,8 +1,8 @@
 # str: Data source (a video) for in-danger analysis.
-source: 'data/MAICH_v1/DJI_20241024104935_0008_D.MP4'
+source: '/archive/group/ai/datasets/AGRARIAN/MAICH_v1/DJI_20241024104935_0008_D.MP4'
 
 # str: Drone metadata file (.srt)
-flight_data: 'data/MAICH_v1/DJI_20241024104935_0008_D.SRT'
+flight_data: '/archive/group/ai/datasets/AGRARIAN/MAICH_v1/DJI_20241024104935_0008_D.SRT'
 
 # int: Frame stride for video inputs.
 # Allows skipping frames to speed up inference. Higher values skip more frames.
