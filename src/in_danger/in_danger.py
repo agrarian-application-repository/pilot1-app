@@ -186,15 +186,16 @@ def perform_in_danger_analysis(
 
         # ============== COMPUTE LOCATION (LNG,LAT) OF ANIMALS  ===================================
         """
-        animals_coordinates = get_objects_coordinates(
-            objects_coords=boxes_centers,   # (X,Y)
-            center_lat=frame_flight_data["latitude"],
-            center_lon=frame_flight_data["longitude"],
-            frame_width_pixels=frame_width,
-            frame_height_pixels=frame_height,
-            meters_per_pixel=meters_per_pixel,
-            angle_wrt_north=frame_flight_data["gb_yaw"],
-         )
+        if boxes_centers.size > 0:
+            animals_coordinates = get_objects_coordinates(
+                objects_coords=boxes_centers,   # (X,Y)
+                center_lat=frame_flight_data["latitude"],
+                center_lon=frame_flight_data["longitude"],
+                frame_width_pixels=frame_width,
+                frame_height_pixels=frame_height,
+                meters_per_pixel=meters_per_pixel,
+                angle_wrt_north=frame_flight_data["gb_yaw"],
+             )
         """
 
         print(f"Frame location computed in {(time() - crono_start)*1000:.1f} ms. (Animals position not computed)")
@@ -212,6 +213,8 @@ def perform_in_danger_analysis(
             rectangle_lonlat=corners_coordinates,
         )
         # dem_window and dem_mask_window are (1,dem_window_size,dem_window_size) arrays
+        assert dem_window.shape == (1, dem_window_size, dem_window_size)
+        assert dem_mask_window.shape == (1, dem_window_size, dem_window_size)
 
         # find the distance in meters between two points on opposite side of the window at the drone latitude
         dem_window_size_m = get_window_size_m(frame_flight_data["latitude"], dem_window_bounds)
@@ -221,7 +224,7 @@ def perform_in_danger_analysis(
         # ============== COMPUTE SLOPE MASK FROM DEM WINDOW ===================================
 
         # compute the slope mask using the dem window and info about the resolution of each pixel
-        slope_mask_window = compute_slope_mask_runtime(
+        slope_mask_window = compute_slope_mask_horn(
             elev_array=dem_window,
             pixel_size=dem_pixel_size_m,
             slope_threshold_deg=input_args["slope_angle_threshold"]

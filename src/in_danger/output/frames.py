@@ -1,4 +1,3 @@
-from time import time
 import numpy as np
 import cv2
 from pathlib import Path
@@ -33,32 +32,6 @@ def draw_safety_areas(
         cv2.circle(annotated_frame, box_center, safety_radius, GREEN, 2)
 
 
-def draw_dangerous_area(
-        annotated_frame,
-        dangerous_mask_no_intersection,
-        intersection,
-        color_danger_frame,
-        color_intersect_frame,
-):
-    # colored frames are precomputed to save time, color is always the same
-
-    # Use cv2.bitwise_and with the masks directly.
-    inter = time()
-    danger_overlay = cv2.bitwise_and(color_danger_frame, color_danger_frame, mask=dangerous_mask_no_intersection)
-    intersect_overlay = cv2.bitwise_and(color_intersect_frame, color_intersect_frame, mask=intersection)
-    print(f"\t\tbitwise ands in {(time() - inter) * 1000:.1f} ms")
-
-    # Combine the overlays (if regions overlap, the colors will add).
-    inter = time()
-    overlay = cv2.add(danger_overlay, intersect_overlay)
-    print(f"\t\toverlay add in {(time() - inter) * 1000:.1f} ms")
-
-    # Blend the overlay with the original frame.
-    inter = time()
-    cv2.addWeighted(annotated_frame, 0.75, overlay, 0.25, 0, annotated_frame)
-    print(f"\t\taddweighted {(time() - inter) * 1000:.1f} ms")
-
-
 def draw_detections(
         annotated_frame,
         classes,
@@ -69,6 +42,25 @@ def draw_detections(
     for obj_class, box_corner1, box_corner2 in zip(classes, boxes_corner1, boxes_corner2):
         # Draw bounding box on annotated frame (blue sheep, purple goat), on top of safety circles
         cv2.rectangle(annotated_frame, box_corner1, box_corner2, CLASS_COLOR[obj_class], 2)
+
+
+def draw_dangerous_area(
+        annotated_frame,
+        dangerous_mask_no_intersection,
+        intersection,
+        color_danger_frame,
+        color_intersect_frame,
+):
+    # colored frames are precomputed to save time, color is always the same
+    # Use cv2.bitwise_and with the masks directly.
+    danger_overlay = cv2.bitwise_and(color_danger_frame, color_danger_frame, mask=dangerous_mask_no_intersection)
+    intersect_overlay = cv2.bitwise_and(color_intersect_frame, color_intersect_frame, mask=intersection)
+
+    # Combine the overlays (if regions overlap, the colors will add).
+    overlay = cv2.add(danger_overlay, intersect_overlay)
+
+    # Blend the overlay with the original frame.
+    cv2.addWeighted(annotated_frame, 0.75, overlay, 0.25, 0, annotated_frame)
 
 
 def draw_count(
@@ -153,58 +145,25 @@ def annotate_and_save_frame(
         color_danger_frame,
         color_intersect_frame,
 ):
-    """ Additional annotations if videos are to be saved, or for frames where danger exist (74 ms)
-    Optimization Opportunities:
-    1. Batching Disk Writes:
-    Disk I/O is one of the slowest parts of the process. Writing files frame by frame can be inefficient, especially if you’re saving many images.
-    Solution: Buffer the frames (e.g., accumulate them in memory) and write them to disk periodically, or use a background thread/process for I/O.
-    2. Avoid Repeated Path Creation:
-    The Path object creation is relatively lightweight, but it can add up in tight loops.
-    Solution: Pre-compute constant paths or reusable parts of the path.
-    3. Optimize cv2.imwrite:
-    cv2.imwrite is slower because it compresses images before saving.
-    Solution: Use less compression or switch to a faster image format like .bmp if file size isn’t critical.
-    4. Parallelize Save Operations:
-    Writing frames and images can be offloaded to a background thread or separate process to avoid blocking the main execution.
-    """
 
-    crono_start = time()
-
-    inter = time()
     annotated_frame = frame.copy()  # copy of the original frame on which to draw
-    print(f"\tFrame copy generated in {(time() - inter) * 1000:.1f} ms")
 
     # draw safety circles
-    inter = time()
     draw_safety_areas(annotated_frame, boxes_centers, safety_radius_pixels)
-    print(f"\tsafety areas generated in {(time() - inter) * 1000:.1f} ms")
 
     # Overlay dangerous areas (in red) and intersections (in yellow) on the annotated frame
-
-    inter = time()
     draw_dangerous_area(annotated_frame, danger_mask, intersection_mask, color_danger_frame, color_intersect_frame)
-    print(f"\tDangerous areas AND danger INTERSECTION drawn in {(time() - inter) * 1000:.1f} ms")
 
     # draw detection boxes
-    inter = time()
     draw_detections(annotated_frame, classes, boxes_corner1, boxes_corner2)
-    print(f"\tDetections drawn in {(time() - inter) * 1000:.1f} ms")
 
-    # save single image for better identify the exact frame if danger exists
-    inter = time()
+    # save single image to better identify the exact frame if danger exists
     if cooldown_has_passed and danger_exists:
         annotated_img_path = Path(output_dir, f"danger_frame_{frame_id}_annotated.jpg")
         cv2.imwrite(annotated_img_path, annotated_frame)
-    print(f"\tImg saving completed in {(time() - inter) * 1000:.1f} ms")
 
     # draw animal count
-    inter = time()
     draw_count(classes, num_classes, classes_names, annotated_frame)
-    print(f"\tAnimal Count drawn in {(time() - inter) * 1000:.1f} ms")
 
     # save the annotated frame into video
-    inter = time()
     annotated_writer.write(annotated_frame)
-    print(f"\tFrame saving completed in {(time() - inter) * 1000:.1f} ms")
-
-    print(f"Video annotations completed in {(time() - crono_start) * 1000:.1f} ms")
