@@ -52,19 +52,19 @@ def test_postprocess_segmentation_results_with_masks():
     segment_results = [dummy_seg_result]
 
     # Create a dummy frame with larger size (height, width, channels)
-    frame = np.zeros((20, 20, 3), dtype=np.uint8)
+    frame_height, frame_width = 20, 20
 
     # Manually compute the expected merged mask:
     # Step 1: Merge the masks using np.any along axis=0, then convert to uint8.
     merged_mask = np.any(mask_data, axis=0).astype(np.uint8)
     # Step 2: Resize the merged mask to the frame dimensions using nearest-neighbor interpolation.
-    expected_mask = cv2.resize(merged_mask, dsize=(frame.shape[1], frame.shape[0]), interpolation=cv2.INTER_NEAREST)
+    expected_mask = cv2.resize(merged_mask, dsize=(frame_width, frame_height), interpolation=cv2.INTER_NEAREST)
 
     # Call the function under test.
-    result_mask = postprocess_segmentation_results(segment_results, frame)
+    result_mask = postprocess_segmentation_results(segment_results, frame_height, frame_width)
 
     # Check that the output mask has the correct shape and values.
-    assert result_mask.shape == (frame.shape[0], frame.shape[1])
+    assert result_mask.shape == (frame_height, frame_width)
     np.testing.assert_array_equal(result_mask, expected_mask)
 
 
@@ -78,11 +78,9 @@ def test_postprocess_segmentation_results_without_masks():
 
     # Define a frame of arbitrary size.
     frame_height, frame_width = 30, 40
-    frame = np.zeros((frame_height, frame_width, 3), dtype=np.uint8)
-
     expected_mask = np.zeros((frame_height, frame_width), dtype=np.uint8)
 
-    result_mask = postprocess_segmentation_results(segment_results, frame)
+    result_mask = postprocess_segmentation_results(segment_results, frame_height, frame_width)
 
     assert result_mask.shape == (frame_height, frame_width)
     np.testing.assert_array_equal(result_mask, expected_mask)

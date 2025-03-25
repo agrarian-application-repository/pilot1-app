@@ -1,0 +1,15 @@
+# float: radius of the of the safety around each sheep/goats, in meters
+safety_radius_m: 1.5
+
+# float: slope angle after which the portion of terrain is considered dangerous for the animals
+slope_angle_threshold: 30.0
+
+# set of tuples (longitude, latitude) defining the points marking the vertexes of the geofencing area
+geofencing_vertexes:
+  - [ 21.200000, 34.0 ]
+  - [ 24.174019, 34.0 ]
+  - [ 24.174019, 36.0 ]
+  - [ 21.200000, 36.0 ]
+
+# int: Minimum number of seconds between alerts
+alerts_cooldown_seconds: 1

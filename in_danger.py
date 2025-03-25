@@ -1,29 +1,38 @@
-from src.configs.in_danger import check_in_danger_args, preprocess_in_danger_args
+from src.configs.in_danger import check_in_danger_args
+from src.configs.drone import check_drone_args
 from src.configs.utils import parse_config_file, read_yaml_config
 from src.in_danger.in_danger import perform_in_danger_analysis
-import cProfile
-import pstats
 
 
 def main():
 
-    # Parse the config files from command line
-    input_config_file = parse_config_file()
+    # Read input YAML config file and transform it into dict
+    input_args = read_yaml_config("configs/in_danger/input.yaml")
+    # Check validity of arguments
+    input_args = check_in_danger_args(input_args)
 
-    # Read YAML config files and transform them into dicts
-    input_args = read_yaml_config(input_config_file)
+    # TODO this will be passed through the container either as env variable or volumes (to remove later)
+    # -------------------------------------------------
+    # str: Data source (a video) for in-danger analysis.
+    input_args["source"] = '/archive/group/ai/datasets/AGRARIAN/MAICH_v1/DJI_20241024104935_0008_D.MP4'
+    # str: Drone metadata file (.srt)
+    input_args["flight_data"] = '/archive/group/ai/datasets/AGRARIAN/MAICH_v1/DJI_20241024104935_0008_D.SRT'
+    # str: Path to the DEM data
+    # dem: '/archive/group/ai/datasets/AGRARIAN/DEM/merged/merged.tif'
+    input_args["dem"] = '/archive/group/ai/datasets/AGRARIAN/DEM/Copernicus_DSM_04_N35_00_E024_00_DEM.tif'
+    # str or null: Path to the DEM data mask, if null assumes all pixels are valid
+    # dem_mask: '/archive/group/ai/datasets/AGRARIAN/DEM/merged/merged_mask.tif'
+    input_args["dem_mask"] = None
+    # int: Frame stride for video inputs.
+    # Allows skipping frames to speed up inference. Higher values skip more frames.
+    # Range: Any positive integer.
+    input_args["vid_stride"] = 3
+    # -------------------------------------------------
 
-    # TODO Check arguments validity
-    # input_args = check_in_danger_input_args(input_args)
-    # TODO Preprocess arguments based on input data format
-    # input_args = preprocess_in_danger_input_args(input_args)
-
+    # Read drone YAML config file and transform it into dict
     drone_args = read_yaml_config("configs/drone_specs.yaml")
-    # TODO Check arguments validity
-    # drone_args = check_drone_args(drone_args)
-    # TODO Preprocess arguments based on input data format
-    # drone_args = preprocess_drone_args(drone_args)
-    # TODO ASSERT sensor_width_mm/sensor_height_mm == sensor_width_pixels/sensor_height_pixels
+    # Check validity of arguments
+    drone_args = check_drone_args(drone_args)
 
     output_args = read_yaml_config("configs/in_danger/output.yaml")
     detection_args = read_yaml_config("configs/in_danger/detector.yaml")
@@ -53,5 +62,4 @@ def main():
 
 if __name__ == "__main__":
 
-    # cProfile.run('main()', './profile_output.prof')
     main()

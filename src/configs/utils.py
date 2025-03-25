@@ -172,6 +172,7 @@ def is_valid_youtube_link(url: str) -> bool:
     match = re.match(reg_exp, url)
     return bool(match)
 
+
 def is_valid_image(img_path: Path) -> bool:
     """
     Check if the given img_path corresponds to a valid image.
