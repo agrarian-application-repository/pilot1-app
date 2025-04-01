@@ -6,8 +6,8 @@ from pathlib import Path
 from geopy.distance import geodesic
 import cv2
 
-from src.in_danger.in_danger_utils import *
-from src.in_danger.in_danger_utils import merge_3d_mask
+from src.in_danger.utils import *
+from src.in_danger.utils import merge_3d_mask
 
 
 def create_temp_tif(tmp_path, filename="temp.tif", width=10, height=10, count=1, dtype='uint8'):
@@ -362,7 +362,7 @@ def test_multiple_danger_types():
     assert set(danger_types) == {
         "Vehicles Danger",
         "Missing DEM data Danger",
-        "Out of Geofenced area Danger DEM data",
+        "Out of Geofenced area Danger",
         "Steep slope Danger"}
     assert np.all((combined_danger_mask + combined_intersections) <= 1)  # Ensure binary mask
     assert np.all(0 <= (combined_danger_mask + combined_intersections))  # Ensure binary mask
@@ -372,7 +372,7 @@ def test_no_false_positives():
     """Ensure that safety areas outside danger masks do not produce false intersections."""
     frame_height, frame_width = 100, 100
     boxes_centers = np.array([[10, 10]])  # Detection far from any danger
-    safety_radius_pixels = 5
+    safety_radius_pixels = 10
 
     # Danger masks are in the opposite corner
     segment_danger_mask = np.zeros((frame_height, frame_width), dtype=np.uint8)
@@ -443,8 +443,7 @@ def test_combined_mask_or_construction():
 
     # Check if the OR operation is correctly applied
     assert np.array_equal(combined_danger_mask, expected_combined_danger), "Combined danger mask is incorrect"
-    assert np.array_equal(combined_intersections,
-                          expected_combined_intersections), "Combined intersection mask is incorrect"
+    assert np.array_equal(combined_intersections, expected_combined_intersections), "Combined intersection mask is incorrect"
 
 
 def test_output_shape():

@@ -1,7 +1,8 @@
 import numpy as np
 import rasterio
 import matplotlib.pyplot as plt
-from src.in_danger.in_danger_utils import compute_slope_mask_runtime, compute_slope_mask_horn
+from src.in_danger.utils import compute_slope_mask_runtime, compute_slope_mask_horn
+import cProfile
 
 
 def load_dem_and_plot_slope_mask(dem_path, slope_threshold_deg):
@@ -36,4 +37,4 @@ def load_dem_and_plot_slope_mask(dem_path, slope_threshold_deg):
 
 
 if __name__ == "__main__":
-    load_dem_and_plot_slope_mask("/archive/group/ai/datasets/AGRARIAN/DEM/Copernicus_DSM_04_N35_00_E024_00_DEM.tif", 35)
+    cProfile.run(load_dem_and_plot_slope_mask("/archive/group/ai/datasets/AGRARIAN/DEM/Copernicus_DSM_04_N35_00_E024_00_DEM.tif", 35))

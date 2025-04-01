@@ -1,7 +1,7 @@
 from src.configs.in_danger import check_in_danger_args
 from src.configs.drone import check_drone_args
-from src.configs.utils import parse_config_file, read_yaml_config
-from src.in_danger.in_danger import perform_in_danger_analysis
+from src.configs.utils import read_yaml_config
+from src.in_danger.in_danger_parallel import perform_in_danger_analysis
 
 
 def main():
@@ -26,7 +26,7 @@ def main():
     # int: Frame stride for video inputs.
     # Allows skipping frames to speed up inference. Higher values skip more frames.
     # Range: Any positive integer.
-    input_args["vid_stride"] = 3
+    input_args["vid_stride"] = 1
     # -------------------------------------------------
 
     # Read drone YAML config file and transform it into dict

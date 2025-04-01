@@ -1,6 +1,6 @@
 import multiprocessing as mp
 
-from src.in_danger.in_danger_utils import create_dangerous_intersections_masks
+from src.in_danger.utils import create_dangerous_intersections_masks
 from src.in_danger.processes.results import DangerDetectionResults
 
 

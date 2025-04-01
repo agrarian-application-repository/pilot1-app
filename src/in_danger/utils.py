@@ -1,5 +1,4 @@
 from pathlib import Path
-from time import time
 from rasterio.warp import reproject, Resampling
 from rasterio.transform import rowcol
 from rasterio.windows import bounds
@@ -10,6 +9,7 @@ from rasterio.features import rasterize
 import cv2
 import numpy as np
 from geopy.distance import geodesic
+from scipy.ndimage import convolve
 
 
 __all__ = [
@@ -195,7 +195,6 @@ def compute_slope_mask_runtime(elev_array, pixel_size, slope_threshold_deg):
     return mask
 
 
-# TODO CHECK PADDING
 def compute_slope_mask_horn(elev_array, pixel_size, slope_threshold_deg):
     """
     Compute a mask indicating where the terrain slope is steeper than a given threshold
@@ -222,28 +221,27 @@ def compute_slope_mask_horn(elev_array, pixel_size, slope_threshold_deg):
     assert elev_array.ndim == 3 and elev_array.shape[0] == 1, "Input must be of shape (1, H, W)"
     elev_array = elev_array[0]
 
-    # Pad the DEM with a 1-pixel border using edge replication.
-    elev_padded = np.pad(elev_array, pad_width=1, mode='edge')
+    # Define Horn's kernels for x and y gradients
+    kernel_x = np.array([[-1, 0, 1],
+                         [-2, 0, 2],
+                         [-1, 0, 1]]) / (8 * pixel_size)
 
-    # Compute the horizontal gradient (Gx) using Horn's method.
-    # For each original pixel, the corresponding 3x3 window in elev_padded is used.
-    gx = (
-        elev_padded[:-2,  2:] + 2 * elev_padded[1:-1,  2:] + elev_padded[2:,  2:] -
-        elev_padded[:-2, :-2] - 2 * elev_padded[1:-1, :-2] - elev_padded[2:, :-2]
-    ) / (8 * pixel_size)
+    kernel_y = np.array([[-1, -2, -1],
+                         [0, 0, 0],
+                         [1, 2, 1]]) / (8 * pixel_size)
 
-    # Compute the vertical gradient (Gy) using Horn's method.
-    gy = (
-        elev_padded[2:,  :-2] + 2 * elev_padded[2:, 1:-1] + elev_padded[2:,  2:] -
-        elev_padded[:-2, :-2] - 2 * elev_padded[:-2, 1:-1] - elev_padded[:-2,  2:]
-    ) / (8 * pixel_size)
+    # Compute gradients using convolution with edge handling directly in convolve
+    dx = convolve(elev_array, kernel_x, mode='nearest')
+    dy = convolve(elev_array, kernel_y, mode='nearest')
 
-    # Compute the slope (in radians) as the arctan of the gradient magnitude.
-    slope_radians = np.arctan(np.sqrt(gx**2 + gy**2))
-    # Convert the slope to degrees.
+    # Calculate slope in radians using Horn's formula
+    slope_radians = np.arctan(np.sqrt(dx ** 2 + dy ** 2))
+
+    # Convert to degrees
     slope_degrees = np.degrees(slope_radians)
 
-    # Create a binary mask: 1 where slope exceeds the threshold, else 0.
+    # Create mask where slope exceeds threshold
+    # Extract the portion corresponding to the original array
     mask = (slope_degrees > slope_threshold_deg).astype(np.uint8)
 
     # Return the mask with the original 3D shape (1, H, W).
@@ -349,7 +347,7 @@ def create_dangerous_intersections_masks(
     if np.any(intersection_nodata > 0):
         danger_types.append("Missing DEM data Danger")
     if np.any(intersection_geofencing > 0):
-        danger_types.append("Out of Geofenced area Danger DEM data")
+        danger_types.append("Out of Geofenced area Danger")
     if np.any(intersection_slope > 0):
         danger_types.append("Steep slope Danger")
 

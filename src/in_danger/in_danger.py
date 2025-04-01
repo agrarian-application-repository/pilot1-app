@@ -6,7 +6,7 @@ import cv2
 from time import time
 import numpy as np
 
-from src.in_danger.in_danger_utils import *
+from src.in_danger.utils import *
 
 from src.in_danger.detection.detection import perform_detection
 from src.in_danger.segmentation.segmentation import perform_segmentation
