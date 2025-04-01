@@ -19,6 +19,7 @@ class VideoStreamWriter(mp.Process):
     def run(self):
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        logfile = open(self.output_dir / "video_stream_writer_log.txt", "w")
 
         annotated_video_path = self.output_dir / "annotated_stream.mp4"
         out = cv2.VideoWriter(
@@ -33,7 +34,8 @@ class VideoStreamWriter(mp.Process):
 
             if previous_step_results is None:
                 out.release()
-                print("Terminating output video streaming process.")
+                logfile.write("Terminating output video streaming process.")
+                logfile.close()
                 break  # End of processing
 
             # save frame to video stream
@@ -46,9 +48,10 @@ class VideoStreamWriter(mp.Process):
 
             if len(self.frame_times) > 1:
                 avg_fps = len(self.frame_times) / (self.frame_times[-1] - self.frame_times[0])
-                print(f"Stream VIDEO frame {previous_step_results.frame_id + 1} | FPS: {avg_fps:.2f}")
+                logfile.write(f"Stream VIDEO frame {previous_step_results.frame_id + 1} | FPS: {avg_fps:.2f}")
             else:
-                print(f"Stream VIDEO frame {previous_step_results.frame_id + 1}")
+                logfile.write(f"Stream VIDEO frame {previous_step_results.frame_id + 1}")
+
 
 
 class NotificationsStreamWriter(mp.Process):
@@ -63,12 +66,14 @@ class NotificationsStreamWriter(mp.Process):
     def run(self):
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        logfile = open(self.output_dir / "notification_stream_writer_log.txt", "w")
 
         while True:
             previous_step_results: AnnotationResults = self.input_queue.get()
 
             if previous_step_results is None:
-                print("Terminating output notification streaming process.")
+                logfile.write("Terminating output notification streaming process.")
+                logfile.close()
                 break  # End of processing
 
             # save msg-img pairs when cooldown has passed and danger is present
@@ -88,4 +93,4 @@ class NotificationsStreamWriter(mp.Process):
                 with open(msgpack_path, "wb") as f:
                     f.write(msgpack_data)
 
-            print(f"Stream NOTIFICATION frame {previous_step_results.frame_id + 1}")
+            logfile.write(f"Stream NOTIFICATION frame {previous_step_results.frame_id + 1}")

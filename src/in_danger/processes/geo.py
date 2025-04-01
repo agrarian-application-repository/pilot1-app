@@ -6,12 +6,12 @@ from shapely import Polygon
 from src.drone_utils.flight_logs import parse_drone_flight_data
 from src.drone_utils.gsd import get_meters_per_pixel
 from src.drone_utils.localization import get_objects_coordinates
-from src.in_danger.in_danger_utils import (close_tifs, compute_slope_mask_horn,
-                                           create_geofencing_mask_runtime,
-                                           extract_dem_window, get_dem,
-                                           get_dem_mask, get_frame_transform,
-                                           get_window_size_m,
-                                           map_window_onto_drone_frame)
+from src.in_danger.utils import (close_tifs, compute_slope_mask_horn,
+                                 create_geofencing_mask_runtime,
+                                 extract_dem_window, get_dem,
+                                 get_dem_mask, get_frame_transform,
+                                 get_window_size_m,
+                                 map_window_onto_drone_frame)
 from src.in_danger.processes.results import FrameQueueObject, GeoResult
 
 

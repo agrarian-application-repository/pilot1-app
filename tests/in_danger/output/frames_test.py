@@ -221,9 +221,12 @@ def test_draw_count_nonempty(patch_get_text_size, capture_rectangle, capture_put
     # Create a dummy frame (the drawing is in-place).
     annotated_frame = np.zeros((frame_height, 300, 3), dtype=np.uint8)
     # Non-empty classes: e.g. 2 detections of class 0 and 3 detections of class 1.
-    classes = np.array([0, 0, 1, 1, 1], dtype=int)
+    classes = np.array([0, 1, 1, 0, 1], dtype=int)
     num_classes = 2
-    classes_names = {0: "Sheep", 1: "Goat"}
+    classes_names = {
+        0: "Sheep",
+        1: "Goat",
+    }
 
     # Call the function.
     draw_count(classes, num_classes, classes_names, annotated_frame)
@@ -274,7 +277,10 @@ def test_draw_count_empty(patch_get_text_size, capture_rectangle, capture_put_te
     annotated_frame = np.zeros((frame_height, 300, 3), dtype=np.uint8)
     classes = np.array([], dtype=int)
     num_classes = 2
-    classes_names = {0: "Sheep", 1: "Goat"}
+    classes_names = {
+        0: "Sheep",
+        1: "Goat",
+    }
 
     draw_count(classes, num_classes, classes_names, annotated_frame)
 
