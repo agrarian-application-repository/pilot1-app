@@ -64,11 +64,12 @@ def validate_directory_structure(input_dir):
     return valid_dirs, (reference_train, reference_val, reference_test)
 
 
-def merge_datasets(valid_dirs, output_dir):
+def merge_datasets(valid_dirs, output_dir, percentages):
     """
     Merges the train, val, and test datasets from valid directories
     into a single output directory.
     """
+
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
@@ -80,9 +81,12 @@ def merge_datasets(valid_dirs, output_dir):
     for dir_path in [train_dir, val_dir, test_dir]:
         dir_path.mkdir(exist_ok=True)
 
+    train_perc, val_perc, test_perc = percentages
+    percentages_suffix = f"_train{train_perc}_val{val_perc}_test{test_perc}"
+
     # Copy files from each valid directory to the output directory
     for subdir in valid_dirs:
-        subdir_name = subdir.name.split('_')[0]  # Extract the <name> part
+        subdir_name = subdir.name.removesuffix(percentages_suffix)  # Extract the <name> part from <name><_train%_val%_test%>
 
         for split in ["train", "val", "test"]:
             src_dir = subdir / split
@@ -95,7 +99,7 @@ def merge_datasets(valid_dirs, output_dir):
                 print(f"Warning: {split} directory in {subdir.name} is empty")
                 continue
 
-            print(f"Copying {len(files)} files from {subdir.name}/{split} to output/{split}...")
+            print(f"Copying {len(files)} files from {subdir.name}/{split} to {output_path}/{split}...")
 
             # Copy files with a prefix to avoid name conflicts
             for file_path in tqdm(files, desc=f"{subdir_name} {split}", unit="file"):
@@ -118,7 +122,7 @@ def main():
     print(f"Found {len(valid_dirs)} valid directories with train {train_perc}%, val {val_perc}%, test {test_perc}%")
 
     print(f"Merging datasets into {args.output_dir}...")
-    merge_datasets(valid_dirs, args.output_dir)
+    merge_datasets(valid_dirs, args.output_dir, percentages)
 
     print("Dataset merge completed successfully!")
 
