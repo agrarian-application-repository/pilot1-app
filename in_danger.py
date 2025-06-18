@@ -11,7 +11,7 @@ def main():
     # Check validity of arguments
     input_args = check_in_danger_args(input_args)
 
-    # TODO this will be passed through the container either as env variable or volumes (to remove later)
+    # TODO this will be passed through the container either as env variable or volumes (to remove later, to check)
     # -------------------------------------------------
     # str: Data source (a video) for in-danger analysis.
     input_args["source"] = '/archive/group/ai/datasets/AGRARIAN/MAICH_v1/DJI_20241024104935_0008_D.MP4'

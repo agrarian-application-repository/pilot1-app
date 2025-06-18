@@ -1,0 +1,22 @@
+# str: Path to the model checkpoint file.
+# Specifies the .pt file for the model to be used during inference.
+# if null, use a statistical approach
+model_checkpoint: null
+
+# int: length of the tracking window
+time_window_size: 100
+
+# float: update period in seconds of the time window
+history_update_period_seconds: 0.2  # (0.2 s = 5 fps) * 100 = 20 seconds anomaly window
+
+# int: run anomaly detection every N updates of the history
+anomaly_detection_period: 10
+
+# str: graph creation strategy, can be ['knn', 'radius']
+graph_strategy: 'knn'
+
+# int: how many neighbours to connect when using graph_strategy: 'knn'
+knn_k: 10
+
+# float: radius in meters used to connect with neighbours when using graph_strategy: 'radius'
+radius_meters: 10.0

@@ -23,15 +23,16 @@ def check_in_danger_args(args: dict[str, Any]) -> dict[str, Any]:
     assert isinstance(args['alerts_cooldown_seconds'], int) and args['alerts_cooldown_seconds'] > 0, \
         f"'alerts_cooldown_seconds' must be a positive integer. Got {args['alerts_cooldown_seconds']}"
 
-    assert isinstance(args['geofencing_vertexes'], list) and \
-            len(args['geofencing_vertexes']) >= 3 and \
-           all(
+    assert args['geofencing_vertexes'] is None or (
+            isinstance(args['geofencing_vertexes'], list) and
+            len(args['geofencing_vertexes']) >= 3 and
+            all(
                 isinstance(coords, list) and
                 len(coords) == 2 and
                 isinstance(coords[0], float) and -180 <= coords[0] <= 180 and
                 isinstance(coords[1], float) and -90 <= coords[1] <= 90
                 for coords in args['geofencing_vertexes']
-        ), \
+            )), \
         f"'geofencing_vertexes' must be a list of (lng,lat) coordinates. Got {args['geofencing_vertexes']}"
 
     return args

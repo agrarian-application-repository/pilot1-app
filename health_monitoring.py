@@ -1,6 +1,6 @@
-# from src.configs.health_monitoring import check_health_monitoring_args, preprocess_health_monitoring_args
+from src.configs.health_monitoring import check_health_monitoring_args
 from src.configs.drone import check_drone_args
-from src.configs.utils import parse_config_file, read_yaml_config
+from src.configs.utils import read_yaml_config
 from src.health_monitoring.health_monitoring import perform_health_monitoring_analysis
 
 
@@ -9,19 +9,15 @@ def main():
     # Read input YAML config file and transform it into dict
     input_args = read_yaml_config("configs/health_monitoring/input.yaml")
     # Check validity of arguments
-    input_args = check_health_monitoring_args(input_args)
-    # Preprocess arguments
-    input_args = preprocess_health_monitoring_args(input_args)
+    input_args = check_health_monitoring_args(input_args)   # TODO: implement
 
-    # TODO this will be passed through the container either as env variable or volumes (to remove later)
+    # TODO this will be passed through the container either as env variable or volumes (to remove later, to check)
+    # -------------------------------------------------
     # str: Data source (a video) for in-danger analysis.
     input_args["source"] = '/archive/group/ai/datasets/AGRARIAN/MAICH_v1/DJI_20241024104935_0008_D.MP4'
     # str: Drone metadata file (.srt)
     input_args["flight_data"] = '/archive/group/ai/datasets/AGRARIAN/MAICH_v1/DJI_20241024104935_0008_D.SRT'
-    # int: Frame stride for video inputs.
-    # Allows skipping frames to speed up inference. Higher values skip more frames.
-    # Range: Any positive integer.
-    input_args["vid_stride"] = 3
+
     # -------------------------------------------------
 
     # Read drone YAML config file and transform it into dict

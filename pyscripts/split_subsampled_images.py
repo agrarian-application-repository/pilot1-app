@@ -34,8 +34,8 @@ def split(input_dir: Path, output_dir: Path, train: float, val: float):
 
     # Calculate split indices
     total_images = len(image_files)
-    train_size = math.ceil(total_images * train)
-    val_size = math.ceil(total_images * val)
+    train_size = int(round(total_images * train, 0))
+    val_size = int(round(total_images * val, 0))
     test_size = total_images - train_size - val_size
 
     # Create splits

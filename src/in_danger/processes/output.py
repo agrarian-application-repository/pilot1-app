@@ -53,7 +53,6 @@ class VideoStreamWriter(mp.Process):
                 logfile.write(f"Stream VIDEO frame {previous_step_results.frame_id + 1}")
 
 
-
 class NotificationsStreamWriter(mp.Process):
     def __init__(self, output_dir, cooldown_seconds, input_queue, shared_dict):
         super().__init__()

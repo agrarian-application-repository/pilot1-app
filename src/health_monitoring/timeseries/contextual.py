@@ -5,6 +5,35 @@ import numpy as np
 # Contextual or Derived Features
 # ----------------------------------------------------
 
+import numpy as np
+
+
+def compute_centroid_timeseries(positions: np.ndarray) -> np.ndarray:
+    """
+    Computes the time series of the centroid from a time series of (x, y) positions
+    of multiple objects.
+
+    Parameters:
+    -----------
+    positions : np.ndarray
+        A NumPy array of shape (N, 2, T) where:
+            - N is the number of objects
+            - 2 corresponds to x and y coordinates
+            - T is the number of time steps
+
+    Returns:
+    --------
+    centroid_ts : np.ndarray
+        A NumPy array of shape (2, T) representing the (x, y) coordinates of the
+        centroid at each time step.
+    """
+
+    # Compute the mean across the object dimension (axis=0)
+    centroid_ts = np.mean(positions, axis=0)  # shape will be (2, T)
+
+    return centroid_ts
+
+
 def compute_relative_position(positions: np.ndarray, reference_point: np.ndarray) -> np.ndarray:
     """
     Compute the relative position of each object with respect to a given reference point.
@@ -29,7 +58,7 @@ def compute_relative_position(positions: np.ndarray, reference_point: np.ndarray
     return relative_positions
 
 
-def compute_distance_to_reference(positions: np.ndarray, reference_point: np.ndarray) -> np.ndarray:
+def compute_distance_to_fixed_reference(positions: np.ndarray, reference_point: np.ndarray) -> np.ndarray:
     """
     Compute the Euclidean distance from each object to a given reference point at each time step.
 
@@ -49,6 +78,31 @@ def compute_distance_to_reference(positions: np.ndarray, reference_point: np.nda
     relative_positions = compute_relative_position(positions, reference_point)
     # Compute the Euclidean norm along the coordinate axis (axis=1)
     distances = np.linalg.norm(relative_positions, axis=1)
+    return distances
+
+
+def compute_distance_to_moving_reference(positions: np.ndarray, reference_ts: np.ndarray) -> np.ndarray:
+    """
+    Compute the Euclidean distance from each object to a moving reference point at each time step.
+
+    Parameters
+    ----------
+    positions : np.ndarray
+        Array of shape (N, 2, T) representing the (x, y) positions of N objects over T time steps.
+    reference_ts : np.ndarray
+        Array of shape (2, T) representing the (x, y) coordinates of the moving reference at each time step.
+
+    Returns
+    -------
+    distances : np.ndarray
+        Array of shape (N, T) containing the Euclidean distances from each object to the reference point at each time.
+    """
+
+    # Compute the relative positions
+    relative_positions = positions - reference_ts[np.newaxis, :, :]  # shape (N, 2, T)
+    # Compute Euclidean distances along the coordinate axis
+    distances = np.linalg.norm(relative_positions, axis=1)  # shape (N, T)
+
     return distances
 
 
@@ -131,6 +185,9 @@ def compute_lagged_features(time_series: np.ndarray, lags: list) -> dict:
     return lagged_features
 
 
+
+
+
 # ----------------------------------------------------
 # Example Usage
 # ----------------------------------------------------
@@ -147,7 +204,7 @@ if __name__ == "__main__":
     print("Relative Positions shape:", relative_positions.shape)  # Expected: (5, 2, 10)
 
     # 2. Compute Distance to the Reference Point
-    distances = compute_distance_to_reference(positions, reference_point)
+    distances = compute_distance_to_fixed_reference(positions, reference_point)
     print("Distance to Reference shape:", distances.shape)  # Expected: (5, 10)
 
     # 3. Compute Zone Indicators (using a 2x2 grid by default)

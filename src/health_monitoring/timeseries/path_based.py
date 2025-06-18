@@ -128,7 +128,7 @@ if __name__ == "__main__":
 
     # Create a dummy dataset:
     N = 3  # Number of objects
-    T = 10  # Number of time steps
+    T = 5  # Number of time steps
 
     # Generate random positions (assuming values between 0 and 1 for a normalized space)
     positions = np.random.rand(N, 2, T)
@@ -137,6 +137,8 @@ if __name__ == "__main__":
     ds_xy = compute_deltaS_xy(positions)
     ds = compute_deltaS_magnitude(ds_xy)
     turning_angle = compute_turning_angle(ds_xy)
+
+    print("\ndisplacemt magnitude:", ds)
 
     # Compute cumulative distance
     cum_distance = compute_cumulative_distance(ds)

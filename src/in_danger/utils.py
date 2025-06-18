@@ -15,6 +15,7 @@ from scipy.ndimage import convolve
 __all__ = [
     "get_dem",
     "get_dem_mask",
+    "open_dem_tifs",
     "close_tifs",
     "extract_dem_window",
     "get_window_size_m",
@@ -42,6 +43,19 @@ def get_dem_mask(dem_mask_path):
         dem_mask_tif = None
 
     return dem_mask_tif
+
+
+def open_dem_tifs(dem_path, dem_mask_path):
+
+    dem_tif = None
+    dem_mask_tif = None
+
+    if dem_path is not None:
+        dem_tif = rasterio.open(Path(dem_path))
+        if dem_mask_path is not None:
+            dem_mask_tif = rasterio.open(Path(dem_mask_path))
+
+    return dem_tif, dem_mask_tif
 
 
 def close_tifs(tif_files):

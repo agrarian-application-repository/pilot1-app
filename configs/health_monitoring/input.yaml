@@ -1,15 +1,4 @@
 # int: Minimum number of seconds between alerts
 alerts_cooldown_seconds: 1
 
-# int: length of the tracking window
-time_window_size: 100
-
-# str: graph creation strategy, can be ['knn', 'radius', null]
-graph_strategy: 'knn'
-
-# int: how many neighbours to connect when using graph_strategy: 'knn'
-graph_knn_neighbours: 10
-
-# float: radius in meters used to connect with neighbours when using graph_strategy: 'radius'
-graph_radius_meters: 10.0
 

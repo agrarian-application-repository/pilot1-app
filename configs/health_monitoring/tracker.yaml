@@ -2,12 +2,11 @@
 
 # str: Path to the model checkpoint file.
 # Specifies the .pt file for the model to be used during inference.
-model_checkpoint: 'experiments/for_maich/weights/best.pt'
-
+model_checkpoint: 'experiments/custom_dataset_yolo11m/weights/best.pt'
 
 # str: Path to the tracker configuration file.
 # Specifies the .yaml file containing the tracker configuration.
-tracker: 'configs/health_monitoring/botsort.yaml'
+tracker: 'configs/health_monitoring/botsort.yaml' # TODO: UPDATE CONF
 
 # float: Confidence threshold for detection filtering.
 # Detections with a confidence score below this value will be discarded.
@@ -17,12 +16,12 @@ conf: 0.3
 # float: IoU threshold for Non-Maximum Suppression (NMS).
 # Helps reduce duplicate detections by suppressing overlapping boxes.
 # Range: (0.0, 1.0]
-iou: 0.6
+iou: 0.3
 
 # int: Image/video (height, width) during inference.
 # All images/videos will be resized to this height before being given to the model (doesn't affect output image/video size).
 # Range: Any positive integer >= 32.
-imgsz:
+imgsz: # TODO: CHANGE
   - 640 # height
   - 640 # width
 
@@ -43,7 +42,7 @@ batch: 1
 # int: Maximum number of detections per image.
 # Limits the total number of objects that can be detected in a single image.
 # Range: Any positive integer.
-max_det: 300
+max_det: 500
 
 # int: Frame stride for video inputs.
 # Allows skipping frames to speed up inference. Higher values skip more frames.

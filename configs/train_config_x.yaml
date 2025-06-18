@@ -6,18 +6,18 @@ task: detect
 # Specifies the model file for training. Accepts a path to a .pt pretrained model.
 # Type: str
 # Allowed values: Any valid file path
-model: /path/to/model.pt
+model: yolo11x.pt
 
 # Path to the dataset configuration file (e.g., coco8.yaml). Contains dataset-specific parameters.
 # Type: str
 # Allowed values: Any valid file path
-data: /path/to/data.yaml
+data: /archive/group/ai/datasets/AGRARIAN/manual_annotations/detection_final/data.yaml
 
 # Total number of training epochs. Each epoch represents a full pass over the entire dataset.
 # Type: int
 # Default: 100
 # Allowed values: >= 1
-epochs: 200
+epochs: 500
 
 # Maximum training time in hours. Overrides the epochs argument if set.
 # Type: float
@@ -29,7 +29,7 @@ time: null
 # Type: int
 # Default: 100
 # Allowed values: >= 1
-patience: 20
+patience: 30
 
 # Batch size. Can be set as an integer, auto mode for GPU utilization, or auto with specified fraction.
 # Type: int/float
@@ -52,7 +52,7 @@ save: true
 # Type: int
 # Default: -1
 # Allowed values: [1, epochs] or -1
-save_period: 20
+save_period: 25
 
 # Enables caching of dataset images in memory (true/ram), on disk (disk), or disables it (false).
 # Type: bool or str
@@ -73,12 +73,12 @@ workers: 8
 # Name of the project directory where training outputs are saved.
 # Type: str
 # Allowed values: Any valid string
-project: path/to/experiments_dir
+project: experiments
 
 # Name of the training run. Used for creating a subdirectory within the project folder.
 # Type: str
 # Allowed values: Any valid string
-name: experiment_name
+name: custom_dataset_yolo11x
 
 # If true, allows overwriting of an existing project/name directory.
 # Type: bool
@@ -169,7 +169,7 @@ lr0: 0.01
 # Type: float
 # Default: 0.01
 # Allowed values: >0
-lrf: 0.01
+lrf: 0.001
 
 # Momentum factor for SGD or beta1 for Adam optimizers.
 # Type: float
@@ -187,7 +187,7 @@ weight_decay: 0.0005
 # Type: int
 # Default: 3
 # Allowed values: >= 0
-warmup_epochs: 3
+warmup_epochs: 5
 
 # Initial momentum for the warmup phase.
 # Type: float
@@ -251,7 +251,7 @@ mask_ratio: 4
 # Type: float
 # Default: 0.0
 # Allowed values: [0.0. 1.0)
-dropout: 0.0
+dropout: 0.1
 
 # Enables validation during training.
 # Type: bool
@@ -280,19 +280,19 @@ hsv_s: 0.7
 # Type: float
 # Default: 0.4
 # Range: [0.0 - 1.0]
-hsv_v: 0.4
+hsv_v: 0.6
 
 # Rotates the image randomly within the specified degree range.
 # Type: float
 # Default: 0.0
 # Range: [-180 to 180]
-degrees: 0.0
+degrees: 45.0
 
 # Translates the image horizontally and vertically.
 # Type: float
 # Default: 0.1
 # Range: [0.0 - 1.0]
-translate: 0.1
+translate: 0.2
 
 # Scales the image by a gain factor.
 # Type: float
@@ -316,7 +316,7 @@ perspective: 0.0
 # Type: float
 # Default: 0.0
 # Range: [0.0 - 1.0]
-flipud: 0.0
+flipud: 0.25
 
 # Flips the image left to right.
 # Type: float
@@ -334,7 +334,7 @@ bgr: 0.0
 # Type: float
 # Default: 1.0
 # Range: [0.0 - 1.0]
-mosaic: 1.0
+mosaic: 0.75
 
 # Blends two images and their labels.
 # Type: float
@@ -364,7 +364,7 @@ auto_augment: 'randaugment'
 # Type: float
 # Default: 0.4
 # Range: [0.0 - 0.9]
-erasing: 0.4
+erasing: 0.3
 
 # Crops the classification image to a fraction of its size.
 # Type: float

@@ -75,8 +75,8 @@ def draw_count(
     font_face = cv2.FONT_HERSHEY_SIMPLEX
     base_font_scale = 0.001 * frame_height  # Scale with frame height
     base_thickness = max(1, int(0.002 * frame_height))  # Ensure thickness is at least 1
-    text_color = (0, 0, 0)  # BLACK
-    fill_color = (255, 255, 255)  # WHITE
+    text_color = BLACK
+    fill_color = WHITE
     line_type = cv2.LINE_AA
     org = (10, frame_height - 10)  # Initial position of the bottom-left corner of the text
 
@@ -146,7 +146,8 @@ def annotate_and_save_frame(
         color_intersect_frame,
 ):
 
-    annotated_frame = frame.copy()  # copy of the original frame on which to draw
+    # create copy of the original frame on which to draw
+    annotated_frame = frame.copy()
 
     # draw safety circles
     draw_safety_areas(annotated_frame, boxes_centers, safety_radius_pixels)
@@ -157,13 +158,15 @@ def annotate_and_save_frame(
     # draw detection boxes
     draw_detections(annotated_frame, classes, boxes_corner1, boxes_corner2)
 
-    # save single image to better identify the exact frame if danger exists
-    if cooldown_has_passed and danger_exists:
-        annotated_img_path = Path(output_dir, f"danger_frame_{frame_id}_annotated.jpg")
-        cv2.imwrite(annotated_img_path, annotated_frame)
-
     # draw animal count
     draw_count(classes, num_classes, classes_names, annotated_frame)
 
     # save the annotated frame into video
     annotated_writer.write(annotated_frame)
+
+    # save single image to better identify the exact frame if danger exists
+    if cooldown_has_passed and danger_exists:
+        annotated_img_path = Path(output_dir, f"danger_frame_{frame_id}_annotated.jpg")
+        cv2.imwrite(annotated_img_path, annotated_frame)
+
+

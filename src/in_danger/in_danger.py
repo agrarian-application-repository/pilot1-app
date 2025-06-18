@@ -33,20 +33,18 @@ def perform_in_danger_analysis(
 
     # ============== LOAD DEM (+ MASK) ===================================
 
-    # Open the DEM
-    dem_tif = get_dem(dem_path=input_args["dem"])
-
-    # Open the DEM mask, if provided
-    dem_mask_tif = get_dem_mask(dem_mask_path=input_args["dem_mask"])
+    # Open the DEM, if provided
+    # open the DEM mask, if provided and DEM provided
+    dem_tif, dem_mask_tif = open_dem_tifs(dem_path=input_args["dem"], dem_mask_path=input_args["dem_mask"])
 
     # ============== LOAD AI MODELS ===================================
 
-    # Load AI models
+    # Load detection model
     detection_model_checkpoint = detection_args.pop("model_checkpoint")
-    segmentation_model_checkpoint = segmentation_args.pop("model_checkpoint")
-
-    # Load YOLO models
     detector = YOLO(detection_model_checkpoint, task="detect")  # Animal detection model
+
+    # Load segmentation model # TODO: CHANGE
+    segmentation_model_checkpoint = segmentation_args.pop("model_checkpoint")
     segmenter = YOLO(segmentation_model_checkpoint, task="segment")  # Dangerous terrain segmentation model
 
     # ============== LOAD DETECTION CLASSES INFO ===================================
@@ -109,7 +107,7 @@ def perform_in_danger_analysis(
     processed_frames_counter = 0
 
     # Alert cooldown initialization
-    alerts_frames_cooldown = input_args["alerts_cooldown_seconds"] * fps   # convert cooldown from seconds to frames
+    alerts_frames_cooldown = max(1, int(input_args["alerts_cooldown_seconds"] * fps))   # convert cooldown from seconds to frames
     last_alert_frame_id = - fps  # to avoid dealing with initial None value, at frame 0 alert is allowed
 
     # Time keeper
@@ -138,7 +136,7 @@ def perform_in_danger_analysis(
         print(f"detection of animals completed in {(time() - crono_start)*1000:.1f} ms")
 
         # ============== PERFORM SEGMENTATION ===================================
-
+        # todo: update
         crono_start = time()
         # Highlight dangerous objects
         segment_danger_mask = perform_segmentation(segmenter, frame, segmentation_args)
@@ -200,41 +198,7 @@ def perform_in_danger_analysis(
 
         print(f"Frame location computed in {(time() - crono_start)*1000:.1f} ms. (Animals position not computed)")
 
-        # ============== COMPUTE DEM (+MASK) WINDOW ENCOMPASSING THE FRAME  ===================================
-
-        crono_start = time()
-
-        center_coords = (frame_flight_data["longitude"], frame_flight_data["latitude"])
-
-        dem_window, dem_mask_window, dem_window_transform, dem_window_bounds, dem_window_size = extract_dem_window(
-            dem_tif=dem_tif,
-            dem_mask_tif=dem_mask_tif,
-            center_lonlat=center_coords,
-            rectangle_lonlat=corners_coordinates,
-        )
-        # dem_window and dem_mask_window are (1,dem_window_size,dem_window_size) arrays
-        assert dem_window.shape == (1, dem_window_size, dem_window_size)
-        assert dem_mask_window.shape == (1, dem_window_size, dem_window_size)
-
-        # find the distance in meters between two points on opposite side of the window at the drone latitude
-        dem_window_size_m = get_window_size_m(frame_flight_data["latitude"], dem_window_bounds)
-        # compute the resolution of each dem pixel in meters
-        dem_pixel_size_m = dem_window_size_m / dem_window_size
-
-        # ============== COMPUTE SLOPE MASK FROM DEM WINDOW ===================================
-
-        # compute the slope mask using the dem window and info about the resolution of each pixel
-        slope_mask_window = compute_slope_mask_horn(
-            elev_array=dem_window,
-            pixel_size=dem_pixel_size_m,
-            slope_threshold_deg=input_args["slope_angle_threshold"]
-        )
-
         # ============== CREATE TRANSFORM TO EXTRACT THE FRAME AREA FROM THE RASTER ========================
-
-        # stack the dem_nodata and dem_slope masks to form a (2, dem_window_size, dem_window_size) mask array
-        masks_window = np.concatenate((dem_mask_window, slope_mask_window), axis=0)
-        assert masks_window.shape == (2, dem_window_size, dem_window_size)
 
         # compute the Affine transform to extract a portion of the raster corresponding to the area in the frame
         frame_transform = get_frame_transform(
@@ -245,31 +209,74 @@ def perform_in_danger_analysis(
             drone_bl=tuple(corners_coordinates[3]),  # (lon, lat) for bottom-left corner
         )
 
-        # ============== ROTATE & UPSCALE MASKS USING FRAME TRANSFORM ========================
-        # rotate and resample using the frame coordinates to obtain a (frame_height, frame_width) version of the
-        # previously created mask, that matches the frame data
-        combined_dem_mask_over_frame = map_window_onto_drone_frame(
-            window=masks_window,
-            window_transform=dem_window_transform,
-            dst_transform=frame_transform,
-            output_shape=(masks_window.shape[2], frame_height, frame_width),
-            crs=dem_tif.crs
-        )
+        # ============== COMPUTE DEM (+MASK) WINDOW ENCOMPASSING THE FRAME  ===================================
 
-        # separate the two masks
-        dem_nodata_danger_mask = combined_dem_mask_over_frame[0]
-        slope_danger_mask = combined_dem_mask_over_frame[1]
+        crono_start = time()
+
+        if dem_tif is not None:
+
+            center_coords = (frame_flight_data["longitude"], frame_flight_data["latitude"])
+
+            dem_window, dem_mask_window, dem_window_transform, dem_window_bounds, dem_window_size = extract_dem_window(
+                dem_tif=dem_tif,
+                dem_mask_tif=dem_mask_tif,
+                center_lonlat=center_coords,
+                rectangle_lonlat=corners_coordinates,
+            )
+            # dem_window and dem_mask_window are (1,dem_window_size,dem_window_size) arrays
+            assert dem_window.shape == (1, dem_window_size, dem_window_size)
+            assert dem_mask_window.shape == (1, dem_window_size, dem_window_size)
+
+            # find the distance in meters between two points on opposite side of the window at the drone latitude
+            dem_window_size_m = get_window_size_m(frame_flight_data["latitude"], dem_window_bounds)
+            # compute the resolution of each dem pixel in meters
+            dem_pixel_size_m = dem_window_size_m / dem_window_size
+
+            # ============== COMPUTE SLOPE MASK FROM DEM WINDOW ===================================
+
+            # compute the slope mask using the dem window and info about the resolution of each pixel
+            slope_mask_window = compute_slope_mask_horn(
+                elev_array=dem_window,
+                pixel_size=dem_pixel_size_m,
+                slope_threshold_deg=input_args["slope_angle_threshold"]
+            )
+
+            # ============== ROTATE & UPSCALE MASKS USING FRAME TRANSFORM ========================
+
+            # stack the dem_nodata and dem_slope masks to form a (2, dem_window_size, dem_window_size) mask array
+            masks_window = np.concatenate((dem_mask_window, slope_mask_window), axis=0)
+            assert masks_window.shape == (2, dem_window_size, dem_window_size)
+
+            # rotate and resample using the frame coordinates to obtain a (frame_height, frame_width) version of the
+            # previously created mask, that matches the frame data
+            combined_dem_mask_over_frame = map_window_onto_drone_frame(
+                window=masks_window,
+                window_transform=dem_window_transform,
+                dst_transform=frame_transform,
+                output_shape=(masks_window.shape[2], frame_height, frame_width),
+                crs=dem_tif.crs
+            )
+
+            # separate the two masks
+            dem_nodata_danger_mask = combined_dem_mask_over_frame[0]
+            slope_danger_mask = combined_dem_mask_over_frame[1]
+        else:
+            dem_nodata_danger_mask = np.zeros(frame_height, frame_width)
+            slope_danger_mask = np.zeros(frame_height, frame_width)
 
         # ============== CREATE GEOFENCING MASK ========================
 
         # compute geofencing directly on the full size frame
         # independently of other two masks for flexibility (slower), as it should not require the dem data
-        geofencing_danger_mask = create_geofencing_mask_runtime(
-            frame_width=frame_width,
-            frame_height=frame_height,
-            transform=frame_transform,
-            polygon=Polygon(input_args["geofencing_vertexes"])
-        )
+        if input_args["geofencing_vertexes"] is not None:
+            geofencing_danger_mask = create_geofencing_mask_runtime(
+                frame_width=frame_width,
+                frame_height=frame_height,
+                transform=frame_transform,
+                polygon=Polygon(input_args["geofencing_vertexes"])
+            )
+        else:
+            geofencing_danger_mask = np.zeros(frame_height, frame_width)
 
         print(f"Frame-overlapping DEM validity and slope masks computed in {(time() - crono_start)*1000:.1f} ms")
 
@@ -293,9 +300,12 @@ def perform_in_danger_analysis(
 
         # ============== RAISE ALERTS IF NEEDED ================
 
-        # if cooldown has passed, check if dangers exist and report them with the appropriate string(s)
+        # verify whether the cooldown has passed
         cooldown_has_passed = (frame_id - last_alert_frame_id) >= alerts_frames_cooldown
+        # verify whether danger animals in danger have been detected
         danger_exists = len(danger_types) > 0
+
+        # report danger with the appropriate string (if needed)
         if cooldown_has_passed and danger_exists:
             danger_type_str = " & ".join(danger_types)
             send_alert(alerts_file, frame_id, danger_type_str)

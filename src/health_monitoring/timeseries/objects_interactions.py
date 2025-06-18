@@ -1,9 +1,10 @@
 import numpy as np
-
+from scipy.stats import circmean
 
 # ----------------------------------------------------
 # Multi-Object Interaction Features
 # ----------------------------------------------------
+
 
 def compute_pairwise_distances(positions: np.ndarray) -> np.ndarray:
     """
@@ -77,7 +78,7 @@ def compute_pairwise_relative_speed(velocity: np.ndarray) -> np.ndarray:
     return relative_speed
 
 
-def compute_local_density(positions: np.ndarray, radius: float) -> np.ndarray:
+def compute_local_density(pairwise_distances: np.ndarray, radius: float) -> np.ndarray:
     """
     Compute the local density for each object by counting the number of neighboring objects
     within a specified radius.
@@ -87,8 +88,8 @@ def compute_local_density(positions: np.ndarray, radius: float) -> np.ndarray:
 
     Parameters
     ----------
-    positions : np.ndarray
-        Array of shape (N, 2, T) representing the positions of N objects over T time steps.
+    pairwise_distances : np.ndarray
+        Array of shape (T, N, N) representing the distances between N objects over T time steps.
     radius : float
         The threshold distance within which another object is considered a neighbor.
 
@@ -98,24 +99,22 @@ def compute_local_density(positions: np.ndarray, radius: float) -> np.ndarray:
         Array of shape (N, T) where each element represents the number of neighbors (excluding itself)
         for the corresponding object and time step.
     """
-    # Compute pairwise distances: shape (T, N, N)
-    distances = compute_pairwise_distances(positions)
     # For each time step and object, count neighbors with distance < radius.
     # Each object's self-distance is 0, so subtract 1.
-    density_t = np.sum(distances < radius, axis=2) - 1  # shape: (T, N)
+    density_t = np.sum(pairwise_distances < radius, axis=2) - 1  # shape: (T, N)
     # Transpose to shape (N, T) for consistency.
     local_density = density_t.T
     return local_density
 
 
-def compute_average_nearest_neighbor_distance(positions: np.ndarray, k: int = 1) -> np.ndarray:
+def compute_average_nearest_neighbor_distance(pairwise_distances: np.ndarray, k: int = 10) -> np.ndarray:
     """
     Compute the average distance to the k nearest neighbors for each object at each time step.
 
     Parameters
     ----------
-    positions : np.ndarray
-        Array of shape (N, 2, T) representing the positions of N objects over T time steps.
+    pairwise_pairwise_distances : np.ndarray
+        Array of shape (T, N, N) representing the distances between N objects over T time steps.
     k : int, optional
         The number of nearest neighbors to consider (default is 1).
 
@@ -124,9 +123,7 @@ def compute_average_nearest_neighbor_distance(positions: np.ndarray, k: int = 1)
     avg_nn_distance : np.ndarray
         Array of shape (N, T) containing the average distance to the k nearest neighbors for each object.
     """
-    # Compute pairwise distances: shape (T, N, N)
-    distances = compute_pairwise_distances(positions)
-    T, N, _ = distances.shape
+    T, N, _ = pairwise_distances.shape
     # Prepare an array to hold the average nearest neighbor distances.
     avg_nn_distance = np.zeros((N, T))
 
@@ -134,7 +131,7 @@ def compute_average_nearest_neighbor_distance(positions: np.ndarray, k: int = 1)
     for t in range(T):
         # distances[t] is shape (N, N)
         for i in range(N):
-            sorted_dists = np.sort(distances[t, i, :])
+            sorted_dists = np.sort(pairwise_distances[t, i, :])
             # The first entry is the self-distance (0); take the next k distances.
             k_effective = min(k, len(sorted_dists) - 1)
             if k_effective > 0:
@@ -165,6 +162,72 @@ def compute_motion_correlation(time_series: np.ndarray) -> np.ndarray:
     return correlation_matrix
 
 
+def compute_average_timeseries(values: np.ndarray) -> np.ndarray:
+    """
+    Compute the average time series across multiple objects.
+
+    Parameters
+    ----------
+    values : np.ndarray
+        Array of shape (N, [C], T), where N is the number of objects and T is the number of time steps.
+        Each row represents the time series for one object.
+
+    Returns
+    -------
+    averaged_ts : np.ndarray
+        Array of shape ([C], T,) representing the average value across all objects at each time step.
+    """
+
+    # Compute mean along the object axis (axis=0)
+    averaged_ts = np.mean(values, axis=0)
+
+    return averaged_ts
+
+
+def compute_median_timeseries(values: np.ndarray) -> np.ndarray:
+    """
+    Compute the median time series across multiple objects.
+
+    Parameters
+    ----------
+    values : np.ndarray
+        Array of shape (N, [C], T), where N is the number of objects and T is the number of time steps.
+        Each row represents the time series for one object.
+
+    Returns
+    -------
+    averaged_ts : np.ndarray
+        Array of shape ([C], T,) representing the median value across all objects at each time step.
+    """
+
+    # Compute median along the object axis (axis=0)
+    median_ts = np.median(values, axis=0)
+
+    return median_ts
+
+
+def compute_circular_average_timeseries(values: np.ndarray) -> np.ndarray:
+    """
+    Compute the circular average time series across multiple objects.
+
+    Parameters
+    ----------
+    values : np.ndarray
+        Array of shape (N, [C], T), where N is the number of objects and T is the number of time steps.
+        Each row represents the angle time series for one object (in radians).
+
+    Returns
+    -------
+    averaged_ts : np.ndarray
+        Array of shape ([C], T,) representing the circular average at each time step.
+    """
+
+    # Compute circular mean across objects (axis=0)
+    averaged_ts = circmean(values, axis=0, high=np.pi, low=-np.pi)
+
+    return averaged_ts
+
+
 # ----------------------------------------------------
 # Example Usage
 # ----------------------------------------------------
@@ -191,11 +254,11 @@ if __name__ == "__main__":
 
     # 4. Compute Local Density with a specified radius.
     radius = 0.2
-    local_density = compute_local_density(positions, radius)
+    local_density = compute_local_density(distances, radius)
     print("Local Density shape:", local_density.shape)  # Expected: (N, T)
 
     # 5. Compute Average Nearest Neighbor Distance (using k=1).
-    avg_nn_distance = compute_average_nearest_neighbor_distance(positions, k=1)
+    avg_nn_distance = compute_average_nearest_neighbor_distance(distances, k=1)
     print("Average Nearest Neighbor Distance shape:", avg_nn_distance.shape)  # Expected: (N, T)
 
     # 6. Compute Motion Correlation.
