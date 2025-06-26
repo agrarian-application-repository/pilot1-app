@@ -1,10 +1,7 @@
 import torch
 from torch_geometric.data import Data
 
-from src.drone_utils.flight_logs import parse_drone_flight_data
-from src.drone_utils.gsd import get_meters_per_pixel
-
-from src.health_monitoring.graphs.graphs import create_knn_graph, create_radius_graph, create_fully_connected_graph
+from src.health_monitoring.graphs.graphs import create_knn_graph, create_radius_graph
 
 
 def create_pyg_graph(

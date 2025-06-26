@@ -97,7 +97,7 @@ def compute_turning_angle(ds_xy: np.ndarray) -> np.ndarray:
 
 
 if __name__ == "__main__":
-    from istantaneous_kinematic import compute_deltaS_xy, compute_vel_xy
+    from src.health_monitoring.timeseries.istantaneous_kinematic import compute_deltaS_xy, compute_vel_xy
     # Create a dummy dataset:
     # Let's assume we have 3 objects, positions in 2D space, and 10 time steps.
     N = 3

@@ -15,16 +15,12 @@ yolo11s.pt
 yolo11m.pt
 yolo11l.pt
 yolo11x.pt
-yolo11n-seg.pt
-yolo11s-seg.pt
-yolo11m-seg.pt
-yolo11l-seg.pt
-yolo11x-seg.pt
-yolo11n-obb.pt
-yolo11s-obb.pt
-yolo11m-obb.pt
-yolo11l-obb.pt
-yolo11x-obb.pt
+
+# checkpoints
+checkpoints/in_danger/*
+checkpoints/health_monitoring/*
+TMP/
+TMP_HEALTH/
 
 ###########################################
 

@@ -2,28 +2,28 @@
 
 # str: Path to the model checkpoint file.
 # Specifies the .pt file for the model to be used during inference.
-model_checkpoint: 'experiments/custom_dataset_yolo11m/weights/best.pt'
+model_checkpoint: 'checkpoints/in_danger/detection.pt'
 
 # str: Path to the tracker configuration file.
 # Specifies the .yaml file containing the tracker configuration.
-tracker: 'configs/health_monitoring/botsort.yaml' # TODO: UPDATE CONF
+tracker: 'configs/health_monitoring/botsort.yaml'
 
 # float: Confidence threshold for detection filtering.
 # Detections with a confidence score below this value will be discarded.
 # Range: (0.0, 1.0]
-conf: 0.3
+conf: 0.22
 
 # float: IoU threshold for Non-Maximum Suppression (NMS).
 # Helps reduce duplicate detections by suppressing overlapping boxes.
 # Range: (0.0, 1.0]
-iou: 0.3
+iou: 0.5
 
 # int: Image/video (height, width) during inference.
 # All images/videos will be resized to this height before being given to the model (doesn't affect output image/video size).
 # Range: Any positive integer >= 32.
-imgsz: # TODO: CHANGE
-  - 640 # height
-  - 640 # width
+imgsz:
+  - 1088 # height
+  - 1920 # width
 
 # bool: Enable half-precision (FP16) inference.
 # Can increase inference speed on supported GPUs with minimal accuracy loss.

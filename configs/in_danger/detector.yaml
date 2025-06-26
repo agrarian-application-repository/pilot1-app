@@ -2,7 +2,7 @@
 
 # str: Path to the model checkpoint file.
 # Specifies the .pt file for the model to be used during inference.
-model_checkpoint: 'experiments/custom_dataset_yolo11m/weights/best.pt'
+model_checkpoint: 'checkpoints/in_danger/detection.pt'
 
 # float: Confidence threshold for detection filtering.
 # Detections with a confidence score below this value will be discarded.

@@ -185,9 +185,6 @@ def compute_lagged_features(time_series: np.ndarray, lags: list) -> dict:
     return lagged_features
 
 
-
-
-
 # ----------------------------------------------------
 # Example Usage
 # ----------------------------------------------------

@@ -1,24 +1,27 @@
 import multiprocessing as mp
 
-from src.in_danger.segmentation.segmentation import \
-    postprocess_segmentation_results
-from ultralytics import YOLO
+from src.in_danger.segmentation.segmentation import create_onnx_segmentation_session, perform_segmentation
 
 from src.in_danger.processes.results import FrameQueueObject, SegmentationResult
 
 
 class SegmenterWrapper:
 
-    def __init__(self, model, predict_args):
-        self.segmenter = model
+    def __init__(self, onnx_session, onnx_input_name, onnx_input_shape, predict_args):
+        self.onnx_session = onnx_session
+        self.onnx_input_name = onnx_input_name
+        self.onnx_input_shape = onnx_input_shape
         self.predict_args = predict_args
 
     def predict(self, frame):
-        segment_results = self.segmenter.predict(source=frame, verbose=False, **self.predict_args)
-        # frame size (H, W, 3)
-        frame_height = frame.shape[0]
-        frame_width = frame.shape[1]
-        return postprocess_segmentation_results(segment_results, frame_height, frame_width)
+        segment_results = perform_segmentation(
+            session=self.onnx_session,
+            input_name=self.onnx_input_name,
+            input_shape=self.onnx_input_shape,
+            frame=frame,
+            segmentation_args=self.predict_args
+        )
+        return segment_results
 
 
 class SegmentationWorker(mp.Process):
@@ -38,8 +41,8 @@ class SegmentationWorker(mp.Process):
     def run(self):
         """Main loop of the process: initializes the segmenter and processes frames."""
         segmentation_model_checkpoint = self.segmentation_args.pop("model_checkpoint")
-        model = YOLO(segmentation_model_checkpoint, task="segment")
-        segmenter = SegmenterWrapper(model=model, predict_args=self.segmentation_args)
+        segmenter_session, segmenter_input_name, segmenter_input_shape = create_onnx_segmentation_session(segmentation_model_checkpoint)
+        segmenter = SegmenterWrapper(segmenter_session, segmenter_input_name, segmenter_input_shape, self.segmentation_args)
 
         while True:
             frame_object: FrameQueueObject = self.input_queue.get()
@@ -49,6 +52,5 @@ class SegmentationWorker(mp.Process):
                 break
 
             # Perform segmentation using stored arguments
-            mask = segmenter.predict(frame_object.frame)
-            result = SegmentationResult(frame_id=frame_object.frame_id, mask=mask)
+            result = segmenter.predict(frame_object.frame)
             self.result_queue.put(result)

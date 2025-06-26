@@ -1,5 +1,5 @@
 import numpy as np
-from istantaneous_kinematic import compute_magnitude
+from src.health_monitoring.timeseries.istantaneous_kinematic import compute_magnitude
 
 
 # ==============================
@@ -123,8 +123,8 @@ def compute_curvature(ds: np.ndarray, turning_angle: np.ndarray) -> np.ndarray:
 # Example Usage
 # ==============================
 if __name__ == "__main__":
-    from istantaneous_kinematic import compute_deltaS_xy, compute_deltaS_magnitude
-    from directional import compute_turning_angle
+    from src.health_monitoring.timeseries.istantaneous_kinematic import compute_deltaS_xy, compute_deltaS_magnitude
+    from src.health_monitoring.timeseries.directional import compute_turning_angle
 
     # Create a dummy dataset:
     N = 3  # Number of objects

@@ -29,6 +29,7 @@ class HistoryTracker:
         - ids: List of keys to update
         - coordinates: List of (x, y) tuples corresponding to the ids
         """
+        print("updating history")
 
         # Iterate over the ids and coordinates provided in the update
         for key, coords in zip(ids, coordinates):
@@ -70,7 +71,7 @@ class HistoryTracker:
 
     def get_ids_history(self, ids):
         # ids must already exist
-        if not set(ids).issubset(set(self.data.keys())):
+        if (not set(ids).issubset(set(self.data.keys()))) or (len(ids) == 0):
             raise ValueError(f"Cannot get history of an id that does not exists. Requested: {set(ids)}, Existing: {set(self.data.keys())}")
 
         tracked = {}

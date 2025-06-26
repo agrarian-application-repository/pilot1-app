@@ -20,3 +20,6 @@ knn_k: 10
 
 # float: radius in meters used to connect with neighbours when using graph_strategy: 'radius'
 radius_meters: 10.0
+
+# float
+majority_vote_threshold: 0.5

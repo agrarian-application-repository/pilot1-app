@@ -1,5 +1,4 @@
 import numpy as np
-from scipy.stats import circmean
 
 # ----------------------------------------------------
 # Multi-Object Interaction Features
@@ -84,7 +83,7 @@ def compute_local_density(pairwise_distances: np.ndarray, radius: float) -> np.n
     within a specified radius.
 
     For each object at each time step, the density is defined as the count of other objects
-    whose distance is less than the specified radius.
+    whose distance is less than, or equal to, the specified radius.
 
     Parameters
     ----------
@@ -101,7 +100,7 @@ def compute_local_density(pairwise_distances: np.ndarray, radius: float) -> np.n
     """
     # For each time step and object, count neighbors with distance < radius.
     # Each object's self-distance is 0, so subtract 1.
-    density_t = np.sum(pairwise_distances < radius, axis=2) - 1  # shape: (T, N)
+    density_t = np.sum(pairwise_distances <= radius, axis=2) - 1  # shape: (T, N)
     # Transpose to shape (N, T) for consistency.
     local_density = density_t.T
     return local_density
@@ -160,72 +159,6 @@ def compute_motion_correlation(time_series: np.ndarray) -> np.ndarray:
     # np.corrcoef expects each variable as a row; if time_series is (N, T), this works directly.
     correlation_matrix = np.corrcoef(time_series)
     return correlation_matrix
-
-
-def compute_average_timeseries(values: np.ndarray) -> np.ndarray:
-    """
-    Compute the average time series across multiple objects.
-
-    Parameters
-    ----------
-    values : np.ndarray
-        Array of shape (N, [C], T), where N is the number of objects and T is the number of time steps.
-        Each row represents the time series for one object.
-
-    Returns
-    -------
-    averaged_ts : np.ndarray
-        Array of shape ([C], T,) representing the average value across all objects at each time step.
-    """
-
-    # Compute mean along the object axis (axis=0)
-    averaged_ts = np.mean(values, axis=0)
-
-    return averaged_ts
-
-
-def compute_median_timeseries(values: np.ndarray) -> np.ndarray:
-    """
-    Compute the median time series across multiple objects.
-
-    Parameters
-    ----------
-    values : np.ndarray
-        Array of shape (N, [C], T), where N is the number of objects and T is the number of time steps.
-        Each row represents the time series for one object.
-
-    Returns
-    -------
-    averaged_ts : np.ndarray
-        Array of shape ([C], T,) representing the median value across all objects at each time step.
-    """
-
-    # Compute median along the object axis (axis=0)
-    median_ts = np.median(values, axis=0)
-
-    return median_ts
-
-
-def compute_circular_average_timeseries(values: np.ndarray) -> np.ndarray:
-    """
-    Compute the circular average time series across multiple objects.
-
-    Parameters
-    ----------
-    values : np.ndarray
-        Array of shape (N, [C], T), where N is the number of objects and T is the number of time steps.
-        Each row represents the angle time series for one object (in radians).
-
-    Returns
-    -------
-    averaged_ts : np.ndarray
-        Array of shape ([C], T,) representing the circular average at each time step.
-    """
-
-    # Compute circular mean across objects (axis=0)
-    averaged_ts = circmean(values, axis=0, high=np.pi, low=-np.pi)
-
-    return averaged_ts
 
 
 # ----------------------------------------------------

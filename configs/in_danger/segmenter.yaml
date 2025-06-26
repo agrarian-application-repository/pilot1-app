@@ -1,12 +1,8 @@
 # Segmenter Configuration
 
 # str: Path to the model checkpoint file.
-# Specifies the .pt file for the model to be used during inference.
-model_checkpoint: 'yolo11m-seg.pt'
+# Specifies the .onnx file for the model to be used during inference.
+model_checkpoint: 'checkpoints/in_danger/segmentation.onnx'
 
-# int: Image/video (height, width) during inference.
-# All images/videos will be resized to this height before being given to the model.
-# Range: Any positive integer.
-imgsz:
-  - 1080 # height
-  - 1920 # width
+# list[int] or null: Indexes of classes to ignore
+suppress_classes: null

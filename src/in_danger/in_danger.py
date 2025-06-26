@@ -9,7 +9,7 @@ import numpy as np
 from src.in_danger.utils import *
 
 from src.in_danger.detection.detection import perform_detection
-from src.in_danger.segmentation.segmentation import perform_segmentation
+from src.in_danger.segmentation.segmentation import create_onnx_segmentation_session, perform_segmentation
 from src.in_danger.output.alerts import send_alert
 from src.in_danger.output.frames import get_danger_intersect_colored_frames, annotate_and_save_frame
 
@@ -43,9 +43,9 @@ def perform_in_danger_analysis(
     detection_model_checkpoint = detection_args.pop("model_checkpoint")
     detector = YOLO(detection_model_checkpoint, task="detect")  # Animal detection model
 
-    # Load segmentation model # TODO: CHANGE
+    # Load segmentation model
     segmentation_model_checkpoint = segmentation_args.pop("model_checkpoint")
-    segmenter = YOLO(segmentation_model_checkpoint, task="segment")  # Dangerous terrain segmentation model
+    segmenter_session, segmenter_input_name,  segmenter_input_shape = create_onnx_segmentation_session(segmentation_model_checkpoint)  # Dangerous terrain segmentation model
 
     # ============== LOAD DETECTION CLASSES INFO ===================================
 
@@ -136,10 +136,10 @@ def perform_in_danger_analysis(
         print(f"detection of animals completed in {(time() - crono_start)*1000:.1f} ms")
 
         # ============== PERFORM SEGMENTATION ===================================
-        # todo: update
+
         crono_start = time()
         # Highlight dangerous objects
-        segment_danger_mask = perform_segmentation(segmenter, frame, segmentation_args)
+        segment_danger_mask = perform_segmentation(segmenter_session, segmenter_input_name,  segmenter_input_shape, frame, segmentation_args)
         print(f"Segmentation and danger mask creation completed in {(time() - crono_start)*1000:.1f} ms")
 
         # ============== COMPUTE FRAME GROUND RESOLUTION IN METERS/PIXEL  ===================================
@@ -336,16 +336,16 @@ def perform_in_danger_analysis(
         )
 
         iteration_time = time() - iteration_start_time
-        print(f"Iteration completed in {iteration_time*1000:.1f} ms. Equivalent fps = {1/iteration_time:.2f}")
+        print(f"Iteration completed in {iteration_time*1000:.1f} ms. Equivalent fps = {1/iteration_time:.3f}")
 
     """ Processing completed, print stats and release resources"""
 
     total_time = time() - processing_start_time
-    print(f"Danger Analysis for {processed_frames_counter} frames (out of {total_frames}) completed in {total_time:.1f} seconds")
+    print(f"Danger Analysis for {processed_frames_counter} frames (out of {total_frames}) completed in {total_time:.3f} seconds")
     real_processing_rate = processed_frames_counter / total_time
-    print(f"Real processing rate: {real_processing_rate:.1f} fps. Real time: {real_processing_rate >= fps}")
+    print(f"Real processing rate: {real_processing_rate:.3f} fps. Real time: {real_processing_rate >= fps}")
     apparent_processing_rate = total_frames / total_time
-    print(f"Apparent processing rate: {apparent_processing_rate:.1f} fps. Real time: {apparent_processing_rate >= fps}")
+    print(f"Apparent processing rate: {apparent_processing_rate:.3f} fps. Real time: {apparent_processing_rate >= fps}")
 
     # close tifs
     close_tifs([dem_tif, dem_mask_tif])
