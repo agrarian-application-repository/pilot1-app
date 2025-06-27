@@ -110,7 +110,7 @@ def perform_health_monitoring_analysis(
     anomaly_detection_period_frames = history_update_period_frames * anomaly_detection_args["anomaly_detection_period"]
     previous_ids = []
     previous_anomaly_status = []
-    
+
     # ============== BEGIN VIDEO PROCESSING ===================================
 
     # Frame counter
@@ -150,6 +150,7 @@ def perform_health_monitoring_analysis(
                 aspect_ratio=aspect_ratio,
         )
 
+        # TODO: REMOVE
         with open(output_dir / "tracks.txt", "a") as f:
             f.write(str(sorted(ids_list)))
             f.write("\n")
@@ -171,8 +172,8 @@ def perform_health_monitoring_analysis(
         # first applied at after at least (history_update_period_frames * window_size) frames
         run_anomaly_detection = (
                 ((frame_id-1) % anomaly_detection_period_frames == 0) and
-                (frame_id-1) > (history_tracker.window_size * history_update_period_frames) and
-                len(ids_list) >= 3  # at least two references to determine third anomaly
+                ((frame_id-1) > (history_tracker.window_size * history_update_period_frames)) and
+                (len(ids_list) >= 3)  # at least two references to determine third anomaly
         )
 
         if run_anomaly_detection:

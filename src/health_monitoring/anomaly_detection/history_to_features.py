@@ -78,7 +78,7 @@ def collect_features(
 
     # ============= HERD FEATURES ============================
 
-    # variation in distance of each entity w.r.t. the herd centroid
+    # variation in distance of each entity w.r.t. the herd centroid (avg position)
 
     herd_centroid = compute_average_timeseries(s)                                                   # (2, T)
 
@@ -258,20 +258,20 @@ def collect_features(
         diff_da_angle_wrt_herd_stat = compute_temporal_circular_statistics(diff_da_angle_wrt_herd)      # (N,2)
 
         diff_local_density_wrt_herd_stat = compute_temporal_linear_statistics(diff_local_density_wrt_herd)  # (N, 6)
-        diff_avg_knn_distance_wrt_herd_stat = compute_temporal_linear_statistics( diff_avg_knn_distance_wrt_herd)  # (N, 6)
+        diff_avg_knn_distance_wrt_herd_stat = compute_temporal_linear_statistics(diff_avg_knn_distance_wrt_herd)  # (N, 6)
 
         entity_kinematics_magnitude = [
             ds_m_stat,                                                                                  # (N, 6)
-            v_m_stat,                                                                                   # (N, 6)
-            # dv_m_stat,                                                                                # (N, 6)
-            a_m_stat,                                                                                   # (N, 6)
+            # v_m_stat,                                                                                 # (N, 6)
+            dv_m_stat,                                                                                  # (N, 6)
+            # a_m_stat,                                                                                 # (N, 6)
             # da_m_stat,                                                                                # (N, 6)
         ]
 
         entity_kinematics_angles = [
             ds_angle_stat,                                                                              # (N, 2)
             # v_angle_stat,                                                                             # (N, 2)
-            # dv_angle_stat,                                                                            # (N, 2)
+            dv_angle_stat,                                                                              # (N, 2)
             # a_angle_stat,                                                                             # (N, 2)
             # da_angle_stat,                                                                            # (N, 2)
         ]
@@ -289,14 +289,16 @@ def collect_features(
         ]
 
         herd_kinematics_magnitudes = [
+            # diff_ds_m_wrt_herd_stat,                                                                  # (N, 6)
             diff_v_m_wrt_herd_stat,                                                                     # (N, 6)
             # diff_dv_m_wrt_herd_stat,                                                                  # (N, 6)
-            diff_a_m_wrt_herd_stat,                                                                     # (N, 6)
+            # diff_a_m_wrt_herd_stat,                                                                   # (N, 6)
             # diff_da_m_wrt_herd_stat,                                                                  # (N, 6)
         ]
 
         herd_kinematics_angles = [
-            # diff_v_angle_wrt_herd_stat,                                                               # (N, 2)
+            # diff_ds_angle_wrt_herd_stat,                                                              # (N, 2)
+            diff_v_angle_wrt_herd_stat,                                                                 # (N, 2)
             # diff_dv_angle_wrt_herd_stat,                                                              # (N, 2)
             # diff_a_angle_wrt_herd_stat,                                                               # (N, 2)
             # diff_da_angle_wrt_herd_stat,                                                              # (N, 2)
