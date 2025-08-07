@@ -234,8 +234,8 @@ class TCPAlertReceiver:
         """Process alert data"""
         try:
             frame_id = alert_data.get('frame_id', 'Unknown')
-            danger = alert_data.get('danger', 'Unknown')
-            timestamp = alert_data.get('timestamp', datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+            alert_str = alert_data.get('alert', 'Unknown')
+            timestamp = alert_data.get('timestamp', time.time())    # use current time as default
             img_shape = alert_data.get('img_shape', [])
             img_dtype = alert_data.get('img_dtype', 'uint8')
             img_format = alert_data.get('img_format', None)
@@ -243,7 +243,7 @@ class TCPAlertReceiver:
             img_bytes = alert_data.get('img_bytes', b'')
 
             format_pattern = "%Y-%m-%d %H:%M:%S"
-            timestamp = datetime.datetime.strptime(timestamp, format_pattern)
+            timestamp = datetime.datetime.fromtimestamp(timestamp).strftime(format_pattern)
             
             if img_bytes:
                 image = self._reconstruct_image(
@@ -251,19 +251,21 @@ class TCPAlertReceiver:
                 )
                 
                 if image is not None:
-                    alert = {
+                    msg = {
                         'frame_id': frame_id,
-                        'danger': danger,
+                        'alert': alert_str,
                         'timestamp': timestamp,
                         'image': image,
                         'processed_time': time.time()
                     }
-                    
                     try:
-                        self.alert_queue.put(alert, timeout=1.0)
-                        logger.info(f"Alert processed: Frame {frame_id}, Dangers: {danger}")
+                        self.alert_queue.put(msg, timeout=1.0)
+                        logger.info(f"Alert processed (Frame {frame_id}): {alert_str}")
                     except queue.Full:
                         logger.warning("Alert queue full, dropping alert")
+
+                else:
+                    logger.warning("Received alert with empty image")
                         
         except Exception as e:
             logger.error(f"Error processing alert: {e}")

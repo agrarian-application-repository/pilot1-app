@@ -2,9 +2,11 @@ black
 isort
 lapx
 matplotlib
+msgpack
 networkx
 numpy
-opencv-python
+opencv-python-headless
+Pillow
 pyYAML
 pytest
 pytest-cov
@@ -16,6 +18,7 @@ scikit-image
 scipy
 setuptools
 shapely
+streamlit
 transformers
 tqdm
 ultralytics

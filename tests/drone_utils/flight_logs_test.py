@@ -1,5 +1,5 @@
 import pytest
-from src.drone_utils.flight_logs import parse_drone_flight_data
+from src.shared.drone_utils.flight_logs import parse_drone_flight_data
 
 # Sample content to test
 content = """

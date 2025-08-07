@@ -1,12 +1,21 @@
 # Use an NVIDIA PyTorch base image
 FROM nvcr.io/nvidia/pytorch:25.01-py3
 
-# Import packages for video processing and streaming
-RUN apt-get update && apt-get install -y \
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install system dependencies
+RUN apt update && apt install -y \
+    ffmpeg \
+    libx264-dev \
+    libavcodec-dev \
+    libavformat-dev \
+    libavutil-dev \ 
+    libswscale-dev \
     libsm6 \
     libxext6 \
     libxrender-dev \
-    ffmpeg \
+    libglib2.0-0 \
+    libgl1-mesa-glx \
     && rm -rf /var/lib/apt/lists/*
 
 # Set the working directory in the container
@@ -18,21 +27,26 @@ COPY requirements.txt .
 # Install Python dependencies without caching
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Create necessary directories in the container
-RUN mkdir -p src/configs
-RUN mkdir -p src/in_danger
+# Make additional directories
+RUN mkdir -p /app/outputs && chmod 777 /app/outputs
+RUN mkdir -p /app/logs && chmod 777 /app/logs
 
-# Copy application code into the container: configs
-COPY src/configs/utils.py ./src/configs
-COPY src/configs/in_danger.py ./src/configs
-# Copy application code into the container: application
-COPY src/in_danger ./src/in_danger
-# Copy application code into the container: run script
-COPY in_danger.py .
+# Copy application code into the container:
+# TODO
 
 # Copy entrypoint and ensure entrypoint script is executable
-COPY entrypoint.sh .
-RUN chmod +x entrypoint.sh
+# TODO
+
+# Input ports:
+# 1935/tcp: For RTMP input
+# 12345/udp: Your custom UDP input
+EXPOSE 1935/tcp 12345/udp 
+
+# Output ports:
+# 8554/tcp: RTSP control port
+# 8554/udp: RTSP RTP data port (often used in conjunction with TCP for RTSP)
+# 54321/tcp: custom TCP output
+EXPOSE 8554/tcp 8554/udp 54321/tcp
 
 # Set entrypoint
 ENTRYPOINT ["./entrypoint.sh"]

@@ -3,7 +3,8 @@ import multiprocessing as mp
 from src.in_danger.detection.detection import postprocess_detection_results
 from ultralytics import YOLO
 
-from src.in_danger.processes.results import DetectionResult, FrameQueueObject
+from src.in_danger.processes.messages import DetectionResult
+from src.shared.processes.messages import CombinedFrametelemetryQueueObject
 
 
 class DetectorWrapper:
@@ -41,22 +42,23 @@ class DetectionWorker(mp.Process):
         detector = DetectorWrapper(model=model, predict_args=self.detection_args)
 
         while True:
-            frame_object: FrameQueueObject = self.input_queue.get()
-            if frame_object is None:
+            frame_telemetry_object: CombinedFrametelemetryQueueObject = self.input_queue.get()
+            if frame_telemetry_object is None:
                 self.result_queue.put(None)  # Signal end of processing
                 print("Terminating object detection process.")
                 break
 
             # Perform detection using stored arguments
-            classes, boxes_centers, boxes_corner1, boxes_corner2 = detector.predict(frame_object.frame)
+            classes, boxes_centers, boxes_corner1, boxes_corner2 = detector.predict(frame_telemetry_object.frame)
             result = DetectionResult(
-                frame_id=frame_object.frame_id,
-                frame=frame_object.frame,
+                frame_id=frame_telemetry_object.frame_id,
+                frame=frame_telemetry_object.frame,
                 classes_names=classes_names,
                 num_classes=num_classes,
                 classes=classes,
                 boxes_centers=boxes_centers,
                 boxes_corner1=boxes_corner1,
                 boxes_corner2=boxes_corner2,
+                timestamp=frame_telemetry_object.timestamp
             )
             self.result_queue.put(result)

@@ -13,17 +13,17 @@ from src.in_danger.segmentation.segmentation import create_onnx_segmentation_ses
 from src.in_danger.output.alerts import send_alert
 from src.in_danger.output.frames import get_danger_intersect_colored_frames, annotate_and_save_frame
 
-from src.drone_utils.flight_logs import parse_drone_flight_data
-from src.drone_utils.gsd import get_meters_per_pixel
-from src.drone_utils.localization import get_objects_coordinates
+from src.shared.drone_utils.flight_logs import parse_drone_flight_data
+from src.shared.drone_utils.gsd import get_meters_per_pixel
+from src.shared.drone_utils.localization import get_objects_coordinates
 
 
 def perform_in_danger_analysis(
-        input_args: dict[str:Any],
-        output_args: dict[str:Any],
-        detection_args: dict[str:Any],
-        segmentation_args: dict[str:Any],
-        drone_args: dict[str:Any],
+        input_args: dict[str,Any],
+        output_args: dict[str,Any],
+        detection_args: dict[str,Any],
+        segmentation_args: dict[str,Any],
+        drone_args: dict[str,Any],
 ) -> None:
 
     # ============== CREATE OUTPUT DIRECTORY ===================================
@@ -261,8 +261,8 @@ def perform_in_danger_analysis(
             dem_nodata_danger_mask = combined_dem_mask_over_frame[0]
             slope_danger_mask = combined_dem_mask_over_frame[1]
         else:
-            dem_nodata_danger_mask = np.zeros(frame_height, frame_width)
-            slope_danger_mask = np.zeros(frame_height, frame_width)
+            dem_nodata_danger_mask = np.zeros((frame_height, frame_width))
+            slope_danger_mask = np.zeros((frame_height, frame_width))
 
         # ============== CREATE GEOFENCING MASK ========================
 
@@ -276,7 +276,7 @@ def perform_in_danger_analysis(
                 polygon=Polygon(input_args["geofencing_vertexes"])
             )
         else:
-            geofencing_danger_mask = np.zeros(frame_height, frame_width)
+            geofencing_danger_mask = np.zeros((frame_height, frame_width))
 
         print(f"Frame-overlapping DEM validity and slope masks computed in {(time() - crono_start)*1000:.1f} ms")
 

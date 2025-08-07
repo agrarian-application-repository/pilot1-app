@@ -1,5 +1,5 @@
 import pytest
-from src.drone_utils.gsd import get_meters_per_pixel
+from src.shared.drone_utils.gsd import get_meters_per_pixel
 
 
 # **Test valid calculations**

@@ -1,26 +1,39 @@
 import multiprocessing as mp
 from pathlib import Path
-
+import logging
 import numpy as np
 from shapely import Polygon
-from src.drone_utils.flight_logs import parse_drone_flight_data
-from src.drone_utils.gsd import get_meters_per_pixel
-from src.drone_utils.localization import get_objects_coordinates
+from src.shared.drone_utils.gsd import get_meters_per_pixel
+from src.shared.drone_utils.localization import get_objects_coordinates
 from src.in_danger.utils import (close_tifs, compute_slope_mask_horn,
                                  create_geofencing_mask_runtime,
                                  extract_dem_window, open_dem_tifs, get_frame_transform,
                                  get_window_size_m,
                                  map_window_onto_drone_frame)
-from src.in_danger.processes.results import FrameQueueObject, GeoResult
+from src.in_danger.processes.messages import GeoResult
+from src.shared.processes.messages import CombinedFrametelemetryQueueObject
+
+
+# ================================================================
+
+logger = logging.getLogger("main.danger_geo")
+
+if not logger.handlers:  # Avoid duplicate handlers
+    video_handler = logging.FileHandler('/app/logs/danger_geo.log')
+    video_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    logger.addHandler(video_handler)
+    logger.setLevel(logging.DEBUG)
+
+# ================================================================
 
 
 class GeoWorker(mp.Process):
 
-    def __init__(self, input_args, drone_args, input_queue, result_queue, shared_dict):
+    def __init__(self, input_args, drone_args, input_queue, result_queue, video_info_dict):
 
         super().__init__()
 
-        self.shared_dict = shared_dict
+        self.video_info_dict = video_info_dict
 
         self.input_queue = input_queue
         self.result_queue = result_queue
@@ -31,8 +44,8 @@ class GeoWorker(mp.Process):
     def run(self):
         """Main loop of the process: instantiate files and then and processes frames."""
 
-        frame_width = self.shared_dict["frame_width"]
-        frame_height = self.shared_dict["frame_height"]
+        frame_width = self.video_info_dict["frame_width"]
+        frame_height = self.video_info_dict["frame_height"]
 
         # Open the DEM, if provided
         # open the DEM mask, if provided and DEM provided
@@ -51,16 +64,16 @@ class GeoWorker(mp.Process):
         ])
 
         while True:
-            frame_object: FrameQueueObject = self.input_queue.get()
-            if frame_object is None:
+            frame_telemetry_object: CombinedFrametelemetryQueueObject = self.input_queue.get()
+            if frame_telemetry_object is None:
                 self.result_queue.put(None)  # Signal end of processing
                 close_tifs([dem_tif, dem_mask_tif])     # close tif files
                 flight_data_file.close()    # close txt files
-                print("Terminating geo data handling process.")
+                logger.info("Terminating geo data handling process.")
                 break
 
             # load frame flight data
-            frame_flight_data = parse_drone_flight_data(flight_data_file, frame_object.frame_id)
+            frame_flight_data = frame_telemetry_object.telemetry
 
             # Perform the pixels to meters conversion using the sensor resolution
             meters_per_pixel = get_meters_per_pixel(
@@ -169,7 +182,7 @@ class GeoWorker(mp.Process):
             # ============== PUT RESULTS ON QUEUE ========================
 
             result = GeoResult(
-                frame_id=frame_object.frame_id,
+                frame_id=frame_telemetry_object.frame_id,
                 safety_radius_pixels=safety_radius_pixels,
                 nodata_dem_mask=dem_nodata_danger_mask,
                 geofencing_mask=geofencing_danger_mask,

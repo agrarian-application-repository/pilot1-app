@@ -3,8 +3,8 @@ from src.health_monitoring.graphs.dataset import create_pyg_dataset
 from src.health_monitoring.anomaly_detection.statistical_methods import detect_anomalies_statistical
 from src.health_monitoring.anomaly_detection.history_to_features import collect_features
 
-from src.drone_utils.gsd import get_meters_per_pixel
-from src.drone_utils.flight_logs import parse_drone_flight_data
+from src.shared.drone_utils.gsd import get_meters_per_pixel
+from src.shared.drone_utils.flight_logs import parse_drone_flight_data
 
 
 def compute_gsd_from_file(

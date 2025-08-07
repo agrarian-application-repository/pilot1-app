@@ -1,11 +1,23 @@
 import multiprocessing as mp
 import numpy as np
-
+import logging
 from src.in_danger.output.frames import (draw_count, draw_dangerous_area,
                                          draw_detections, draw_safety_areas,
                                          get_danger_intersect_colored_frames)
-from src.in_danger.processes.results import (AnnotationResults,
-                                             DangerDetectionResults)
+from src.in_danger.processes.messages import DangerDetectionResults
+from src.shared.processes.messages import AnnotationResults
+
+# ================================================================
+
+logger = logging.getLogger("main.danger_annotation")
+
+if not logger.handlers:  # Avoid duplicate handlers
+    video_handler = logging.FileHandler('/app/logs/danger_annotation.log')
+    video_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    logger.addHandler(video_handler)
+    logger.setLevel(logging.DEBUG)
+
+# ================================================================
 
 
 def annotate_frame(
@@ -42,18 +54,18 @@ def annotate_frame(
 
 class AnnotationWorker(mp.Process):
 
-    def __init__(self, input_queue, stream_queues, shared_dict):
+    def __init__(self, input_queue, stream_queues, video_info_dict):
         super().__init__()
 
-        self.shared_dict = shared_dict
+        self.video_info_dict = video_info_dict
 
         self.input_queue = input_queue
         self.stream_queues = stream_queues
 
     def run(self):
 
-        frame_width = self.shared_dict["frame_width"]
-        frame_height = self.shared_dict["frame_height"]
+        frame_width = self.video_info_dict["frame_width"]
+        frame_height = self.video_info_dict["frame_height"]
         frame_shape = (frame_height, frame_width, 3)
         color_danger_frame, color_intersect_frame = get_danger_intersect_colored_frames(shape=frame_shape)
 
@@ -63,7 +75,7 @@ class AnnotationWorker(mp.Process):
                 # Send termination signal to all stream queues
                 for stream_queue in self.stream_queues:
                     stream_queue.put(None)  # Signal end of processing
-                print("Terminating annotation process.")
+                logger.info("Terminating annotation process.")
                 break
 
             annotated_frame = annotate_frame(
@@ -84,7 +96,8 @@ class AnnotationWorker(mp.Process):
             result = AnnotationResults(
                 frame_id=previous_step_results.frame_id,
                 annotated_frame=annotated_frame,
-                danger_types=previous_step_results.danger_types
+                alert_msg=previous_step_results.danger_types,
+                timestamp=previous_step_results.timestamp
             )
 
             # Send result to both streaming queues

@@ -5,13 +5,13 @@ import time
 import cv2
 import msgpack
 
-from src.in_danger.processes.results import AnnotationResults
+from src.shared.processes.messages import AnnotationResults
 
 
-class VideoStreamWriter(mp.Process):
-    def __init__(self, output_dir, input_queue, shared_dict):
+class VideoStreamFileWriter(mp.Process):
+    def __init__(self, output_dir, input_queue, video_info_dict):
         super().__init__()
-        self.shared_dict = shared_dict
+        self.video_info_dict = video_info_dict
         self.input_queue = input_queue
         self.output_dir = Path(output_dir)
         self.frame_times = []  # Store timestamps for FPS calculation
@@ -25,8 +25,8 @@ class VideoStreamWriter(mp.Process):
         out = cv2.VideoWriter(
             filename=annotated_video_path,
             fourcc=cv2.VideoWriter_fourcc(*"mp4v"),
-            fps=self.shared_dict["fps"],
-            frameSize=(self.shared_dict["frame_width"], self.shared_dict["frame_height"])
+            fps=self.video_info_dict["fps"],
+            frameSize=(self.video_info_dict["frame_width"], self.video_info_dict["frame_height"])
         )
 
         while True:
@@ -53,14 +53,14 @@ class VideoStreamWriter(mp.Process):
                 logfile.write(f"Stream VIDEO frame {previous_step_results.frame_id + 1}")
 
 
-class NotificationsStreamWriter(mp.Process):
-    def __init__(self, output_dir, cooldown_seconds, input_queue, shared_dict):
+class NotificationsStreamFileWriter(mp.Process):
+    def __init__(self, output_dir, cooldown_seconds, input_queue, video_info_dict):
         super().__init__()
-        self.shared_dict = shared_dict
+        self.video_info_dict = video_info_dict
         self.input_queue = input_queue
         self.output_dir = Path(output_dir)
-        self.last_alert_frame_id = -shared_dict["fps"]
-        self.alerts_frames_cooldown = shared_dict["fps"] * cooldown_seconds
+        self.last_alert_frame_id = -video_info_dict["fps"]
+        self.alerts_frames_cooldown = video_info_dict["fps"] * cooldown_seconds
 
     def run(self):
 
@@ -77,13 +77,13 @@ class NotificationsStreamWriter(mp.Process):
 
             # save msg-img pairs when cooldown has passed and danger is present
             cooldown_has_passed = (previous_step_results.frame_id - self.last_alert_frame_id) >= self.alerts_frames_cooldown
-            danger_exists = len(previous_step_results.danger_types) > 0
+            alert_exists = len(previous_step_results.alert_msg) > 0
 
-            if cooldown_has_passed and danger_exists:
+            if cooldown_has_passed and alert_exists:
                 self.last_alert_frame_id = previous_step_results.frame_id   # update last alert id to restart cooldown
                 msgpack_data = msgpack.packb({
                     "frame_id": previous_step_results.frame_id+1,
-                    "danger_types": previous_step_results.danger_types,
+                    "alert_msg": previous_step_results.alert_msg,
                     "img_bytes": previous_step_results.annotated_frame.tobytes(),
                     "img_shape": previous_step_results.annotated_frame.shape,
                     "img_dtype": str(previous_step_results.annotated_frame.dtype),

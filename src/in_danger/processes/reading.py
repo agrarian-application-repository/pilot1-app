@@ -1,26 +1,53 @@
 import multiprocessing as mp
-
+import logging
 import cv2
 import time
+from pathlib import Path
+from src.shared.processes.messages import CombinedFrametelemetryQueueObject
+from src.shared.drone_utils.flight_logs import parse_drone_flight_data
 
-from src.in_danger.processes.results import FrameQueueObject
+# ================================================================
 
+logger = logging.getLogger("main.files_reader")
 
-class VideoReader(mp.Process):
-    """Reads video frames and pushes them to the frame queue."""
-    def __init__(self, source, models_queues, shared_dict, video_info_set_event):
+if not logger.handlers:  # Avoid duplicate handlers
+    video_handler = logging.FileHandler('/app/logs/files_reader.log')
+    video_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    logger.addHandler(video_handler)
+    logger.setLevel(logging.DEBUG)
+
+# ================================================================
+
+class VideoTelemetryFilesReader(mp.Process):
+    """Reads video frames and corresponding telemetry, and pushes them to the next processes queue queue."""
+    def __init__(self, source:str, telemetry_file:str, models_queues, video_info_dict, video_info_set_event):
         super().__init__()
 
-        self.source = source
+        self.video_source = source
+        self.telemetry_file = telemetry_file
         self.models_input_queues = models_queues
 
-        self.shared_dict = shared_dict
+        self.video_info_dict = video_info_dict
         self.video_info_set_event = video_info_set_event
 
     def run(self):
-        cap = cv2.VideoCapture(self.source)  # Open webcam or video file
+        
+        # Open drone flight data
+        flight_data_file_path = Path(self.telemetry_file)
+        flight_data_file = open(flight_data_file_path, "r")
+        
+        if not flight_data_file:
+            logger.error("Unable to open video source. Terminating video reading process.")
+            # Signal that video information is (attempted to be) set
+            self.video_info_set_event.set()
+            # Send termination signal to all model queues
+            for model_queue in self.models_input_queues:
+                model_queue.put(None)  # Signal end of processing
+            return
+
+        cap = cv2.VideoCapture(self.video_source)  # Open webcam or video file
         if not cap.isOpened():
-            print("Error: Unable to open video source. Terminating video reading process.")
+            logger.error("Unable to open video source. Terminating video reading process.")
             # Signal that video information is (attempted to be) set
             self.video_info_set_event.set()
             # Send termination signal to all model queues
@@ -29,31 +56,45 @@ class VideoReader(mp.Process):
             return
 
         # set application-wide info about the video stream
-        self.shared_dict["frame_width"] = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        self.shared_dict["frame_height"] = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        self.shared_dict["fps"] = int(cap.get(cv2.CAP_PROP_FPS))
+        self.video_info_dict["frame_width"] = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        self.video_info_dict["frame_height"] = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        self.video_info_dict["fps"] = int(cap.get(cv2.CAP_PROP_FPS))
         # ensure other processes don't start until these are set
         self.video_info_set_event.set()
 
         # Initialize a counter for frame IDs
-        frame_id = 0
+        frame_id = 1
+        
+        # ietarte over frames
         while cap.isOpened():
             success, frame = cap.read()
+            
             if not success:     # End of video or read error
                 # Send termination signal to all model queues
                 for model_queue in self.models_input_queues:
                     model_queue.put(None)  # Signal end of processing
                 cap.release()   # release video reader
-                print("Terminating video reading process.")
+                print("Terminating video and telemetry reading process.")
                 break  # process terminates
 
+            frame_flight_data = parse_drone_flight_data(flight_data_file, frame_id)
+
             # Package the frame with its unique frame ID
-            frame_object = FrameQueueObject(frame_id=frame_id, frame=frame)
+            frame_telemetry_object = CombinedFrametelemetryQueueObject(
+                frame_id=frame_id, 
+                frame=frame,
+                telemetry=frame_flight_data,
+                timestamp=,
+            )
             # Distribute the same frame to each detector's input queue
             for model_queue in self.models_input_queues:
-                model_queue.put(frame_object)
+                model_queue.put(frame_telemetry_object)
+            
             frame_id += 1
 
-            time.sleep(0.025)   # 25ms delay to simulate real time stream
+            time.sleep(0.025)   
+            # 25ms delay to simulate (fast) real time stream and assess wheter folowing processes can keep up
+
+        flight_data_file.close()
 
 

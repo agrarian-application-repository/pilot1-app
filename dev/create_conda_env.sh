@@ -11,6 +11,6 @@ conda activate agrarian
 
 pip install --upgrade pip
 pip install --no-cache-dir torch==2.3.1+cu121 torchvision==0.18.1+cu121 -f https://download.pytorch.org/whl/torch_stable.html
-pip install --no-cache-dir -r requirements.txt
+pip install --no-cache-dir -r dev/requirements.txt
 
 conda deactivate

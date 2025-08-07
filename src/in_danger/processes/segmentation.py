@@ -1,9 +1,22 @@
 import multiprocessing as mp
-
+import logging
 from src.in_danger.segmentation.segmentation import create_onnx_segmentation_session, perform_segmentation
 
-from src.in_danger.processes.results import FrameQueueObject, SegmentationResult
+from src.in_danger.processes.messages import SegmentationResult
+from src.shared.processes.messages import CombinedFrametelemetryQueueObject
 
+
+# ================================================================
+
+logger = logging.getLogger("main.danger_segmentation")
+
+if not logger.handlers:  # Avoid duplicate handlers
+    video_handler = logging.FileHandler('/app/logs/danger_segmentation.log')
+    video_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    logger.addHandler(video_handler)
+    logger.setLevel(logging.DEBUG)
+
+# ================================================================
 
 class SegmenterWrapper:
 
@@ -39,18 +52,28 @@ class SegmentationWorker(mp.Process):
         self.result_queue = result_queue
 
     def run(self):
-        """Main loop of the process: initializes the segmenter and processes frames."""
+        # initializes the segmenter
         segmentation_model_checkpoint = self.segmentation_args.pop("model_checkpoint")
         segmenter_session, segmenter_input_name, segmenter_input_shape = create_onnx_segmentation_session(segmentation_model_checkpoint)
         segmenter = SegmenterWrapper(segmenter_session, segmenter_input_name, segmenter_input_shape, self.segmentation_args)
+        logger.info("Initialized segmentation model")
 
+        # start processing frames
         while True:
-            frame_object: FrameQueueObject = self.input_queue.get()
-            if frame_object is None:
+            frame_telemetry_object: CombinedFrametelemetryQueueObject = self.input_queue.get()
+            if frame_telemetry_object is None:
                 self.result_queue.put(None)  # Signal end of processing
-                print("Terminating segmentation process.")
+                logger.info("Terminating segmentation process.")
                 break
 
             # Perform segmentation using stored arguments
-            result = segmenter.predict(frame_object.frame)
+            mask = segmenter.predict(frame_telemetry_object.frame)
+            
+            # append result on next process queue
+            result = SegmentationResult(
+                frame_id=frame_telemetry_object.frame_id,
+                mask=mask,
+            )
+            
             self.result_queue.put(result)
+            logger.debug("Appended mask to next process queue")
