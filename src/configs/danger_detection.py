@@ -1,7 +1,7 @@
 from typing import Any
 
 
-def check_in_danger_args(args: dict[str, Any]) -> dict[str, Any]:
+def check_danger_detection_args(args: dict[str, Any]) -> dict[str, Any]:
 
     required_keys = {
         "safety_radius_m",

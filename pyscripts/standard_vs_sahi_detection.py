@@ -1,6 +1,6 @@
 from ultralytics import YOLO
 from src.configs.utils import parse_config_file, read_yaml_config
-from src.in_danger.detection.detection import setup_detecion_model_sahi, perform_detection_sahi, perform_detection
+from src.danger_detection.detection.detection import setup_detecion_model_sahi, perform_detection_sahi, perform_detection
 import cv2
 
 
@@ -8,7 +8,7 @@ def main():
 
     # Read YAML config file and transform it into a dict
 
-    inference_args = read_yaml_config("configs/in_danger/detector.yaml")
+    inference_args = read_yaml_config("configs/danger_detection/detector.yaml")
     print(inference_args)
 
     task = "detect"

@@ -1,15 +1,15 @@
-from src.configs.in_danger import check_in_danger_args
+from src.configs.danger_detection import check_danger_detection_args
 from src.configs.drone import check_drone_args
 from src.configs.utils import read_yaml_config
-from src.in_danger.in_danger_parallel import perform_in_danger_analysis
+from src.danger_detection.danger_detection_parallel import perform_danger_detection
 
 
 def main():
 
     # Read input YAML config file and transform it into dict
-    input_args = read_yaml_config("configs/in_danger/input.yaml")
+    input_args = read_yaml_config("configs/danger_detection/input.yaml")
     # Check validity of arguments
-    input_args = check_in_danger_args(input_args)
+    input_args = check_danger_detection_args(input_args)
 
     # TODO this will be passed through the container either as env variable or volumes (to remove later, to check)
     # -------------------------------------------------
@@ -34,9 +34,9 @@ def main():
     # Check validity of arguments
     drone_args = check_drone_args(drone_args)
 
-    output_args = read_yaml_config("configs/in_danger/output.yaml")
-    detection_args = read_yaml_config("configs/in_danger/detector.yaml")
-    segmentation_args = read_yaml_config("configs/in_danger/segmenter.yaml")
+    output_args = read_yaml_config("configs/danger_detection/output.yaml")
+    detection_args = read_yaml_config("configs/danger_detection/detector.yaml")
+    segmentation_args = read_yaml_config("configs/danger_detection/segmenter.yaml")
 
     print("PERFORMING IN-DANGER WITH THE FOLLOWING ARGUMENTS:")
     print("Input arguments")
@@ -51,7 +51,7 @@ def main():
     print(drone_args)
     print("\n")
 
-    perform_in_danger_analysis(
+    perform_danger_detection(
         input_args=input_args,
         output_args=output_args,
         detection_args=detection_args,

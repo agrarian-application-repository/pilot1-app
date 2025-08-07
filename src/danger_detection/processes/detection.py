@@ -1,9 +1,9 @@
 import multiprocessing as mp
 
-from src.in_danger.detection.detection import postprocess_detection_results
+from src.danger_detection.detection.detection import postprocess_detection_results
 from ultralytics import YOLO
 
-from src.in_danger.processes.messages import DetectionResult
+from src.danger_detection.processes.messages import DetectionResult
 from src.shared.processes.messages import CombinedFrametelemetryQueueObject
 
 

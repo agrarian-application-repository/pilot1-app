@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from src.in_danger.detection.detection import postprocess_detection_results
+from src.danger_detection.detection.detection import postprocess_detection_results
 
 
 # --- Dummy Classes to Mimic YOLO's Output Structure ---

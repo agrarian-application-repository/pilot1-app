@@ -6,19 +6,19 @@ import cv2
 from time import time
 import numpy as np
 
-from src.in_danger.utils import *
+from src.danger_detection.utils import *
 
-from src.in_danger.detection.detection import perform_detection
-from src.in_danger.segmentation.segmentation import create_onnx_segmentation_session, perform_segmentation
-from src.in_danger.output.alerts import send_alert
-from src.in_danger.output.frames import get_danger_intersect_colored_frames, annotate_and_save_frame
+from src.danger_detection.detection.detection import perform_detection
+from src.danger_detection.segmentation.segmentation import create_onnx_segmentation_session, perform_segmentation
+from src.danger_detection.output.alerts import send_alert
+from src.danger_detection.output.frames import get_danger_intersect_colored_frames, annotate_and_save_frame
 
 from src.shared.drone_utils.flight_logs import parse_drone_flight_data
 from src.shared.drone_utils.gsd import get_meters_per_pixel
 from src.shared.drone_utils.localization import get_objects_coordinates
 
 
-def perform_in_danger_analysis(
+def perform_danger_detection(
         input_args: dict[str,Any],
         output_args: dict[str,Any],
         detection_args: dict[str,Any],

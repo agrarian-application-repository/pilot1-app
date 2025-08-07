@@ -17,7 +17,7 @@ yolo11l.pt
 yolo11x.pt
 
 # checkpoints
-checkpoints/in_danger/*
+checkpoints/danger_detection/*
 checkpoints/health_monitoring/*
 TMP/
 TMP_HEALTH/

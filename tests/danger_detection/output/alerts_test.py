@@ -1,6 +1,6 @@
 import io
 
-from src.in_danger.output.alerts import send_alert
+from src.danger_detection.output.alerts import send_alert
 
 
 def test_send_alert_default():

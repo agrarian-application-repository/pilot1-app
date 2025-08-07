@@ -1,6 +1,6 @@
 import numpy as np
 from sahi.predict import get_sliced_prediction
-from src.in_danger.sahi_yolo import ModifiedUltralyticsDetectionModel
+from src.danger_detection.sahi_yolo import ModifiedUltralyticsDetectionModel
 
 
 def perform_detection(detector, frame, detection_args):

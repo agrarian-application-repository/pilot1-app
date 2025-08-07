@@ -5,12 +5,12 @@ import numpy as np
 from shapely import Polygon
 from src.shared.drone_utils.gsd import get_meters_per_pixel
 from src.shared.drone_utils.localization import get_objects_coordinates
-from src.in_danger.utils import (close_tifs, compute_slope_mask_horn,
+from src.danger_detection.utils import (close_tifs, compute_slope_mask_horn,
                                  create_geofencing_mask_runtime,
                                  extract_dem_window, open_dem_tifs, get_frame_transform,
                                  get_window_size_m,
                                  map_window_onto_drone_frame)
-from src.in_danger.processes.messages import GeoResult
+from src.danger_detection.processes.messages import GeoResult
 from src.shared.processes.messages import CombinedFrametelemetryQueueObject
 
 

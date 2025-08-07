@@ -1,7 +1,7 @@
 import cv2
 from pathlib import Path
 
-from src.in_danger.output.frames import draw_count
+from src.danger_detection.output.frames import draw_count
 
 
 RED = (0, 0, 255)

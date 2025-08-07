@@ -1,5 +1,5 @@
 import pytest
-from src.configs.in_danger import check_in_danger_args
+from src.configs.danger_detection import check_danger_detection_args
 
 # Valid configuration for reference
 VALID_CONFIG = {
@@ -17,7 +17,7 @@ VALID_CONFIG = {
 
 # Test valid configuration
 def test_valid_config():
-    assert check_in_danger_args(VALID_CONFIG) == VALID_CONFIG
+    assert check_danger_detection_args(VALID_CONFIG) == VALID_CONFIG
 
 
 # Parameterized invalid configurations
@@ -63,4 +63,4 @@ def test_valid_config():
 ])
 def test_invalid_configs(invalid_config, expected_error):
     with pytest.raises(AssertionError, match=expected_error):
-        check_in_danger_args(invalid_config)
+        check_danger_detection_args(invalid_config)

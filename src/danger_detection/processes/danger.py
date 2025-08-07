@@ -1,7 +1,7 @@
 import multiprocessing as mp
 import logging
-from src.in_danger.utils import create_dangerous_intersections_masks
-from src.in_danger.processes.messages import DangerDetectionResults, DetectionResult, SegmentationResult, GeoResult
+from src.danger_detection.utils import create_dangerous_intersections_masks
+from src.danger_detection.processes.messages import DangerDetectionResults, DetectionResult, SegmentationResult, GeoResult
 
 # ================================================================
 

@@ -1,8 +1,8 @@
 import multiprocessing as mp
 import logging
-from src.in_danger.segmentation.segmentation import create_onnx_segmentation_session, perform_segmentation
+from src.danger_detection.segmentation.segmentation import create_onnx_segmentation_session, perform_segmentation
 
-from src.in_danger.processes.messages import SegmentationResult
+from src.danger_detection.processes.messages import SegmentationResult
 from src.shared.processes.messages import CombinedFrametelemetryQueueObject
 
 

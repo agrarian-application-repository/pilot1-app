@@ -1,10 +1,10 @@
 import multiprocessing as mp
 import numpy as np
 import logging
-from src.in_danger.output.frames import (draw_count, draw_dangerous_area,
+from src.danger_detection.output.frames import (draw_count, draw_dangerous_area,
                                          draw_detections, draw_safety_areas,
                                          get_danger_intersect_colored_frames)
-from src.in_danger.processes.messages import DangerDetectionResults
+from src.danger_detection.processes.messages import DangerDetectionResults
 from src.shared.processes.messages import AnnotationResults
 
 # ================================================================

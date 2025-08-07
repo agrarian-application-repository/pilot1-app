@@ -2,11 +2,11 @@ from typing import Any
 
 import multiprocessing as mp
 
-from src.in_danger.processes.detection import DetectionWorker
-from src.in_danger.processes.segmentation import SegmentationWorker
-from src.in_danger.processes.geo import GeoWorker
-from src.in_danger.processes.danger import DangerDetectionWorker
-from src.in_danger.processes.annotation import AnnotationWorker
+from src.danger_detection.processes.detection import DetectionWorker
+from src.danger_detection.processes.segmentation import SegmentationWorker
+from src.danger_detection.processes.geo import GeoWorker
+from src.danger_detection.processes.danger import DangerDetectionWorker
+from src.danger_detection.processes.annotation import AnnotationWorker
 
 from src.shared.processes.stream_video_reader import StreamVideoReader
 from src.shared.processes.stream_telemetry_listener import StreamTelemetryListener
@@ -15,7 +15,7 @@ from src.shared.processes.output_video_streamer import VideoStreamWriter
 from src.shared.processes.output_alert_streamer import NotificationsStreamWriter
 
 
-def perform_in_danger_analysis(
+def perform_danger_detection(
         input_args: dict[str, Any],
         output_args: dict[str, Any],
         detection_args: dict[str, Any],

@@ -1,6 +1,6 @@
 from ultralytics import YOLO
 from src.configs.utils import read_yaml_config
-from src.in_danger.segmentation.segmentation import perform_segmentation, setup_segmentation_model_sahi, perform_segmentation_sahi
+from src.danger_detection.segmentation.segmentation import perform_segmentation, setup_segmentation_model_sahi, perform_segmentation_sahi
 import cv2
 import numpy as np
 
@@ -9,7 +9,7 @@ def main():
 
     # Read YAML config file and transform it into a dict
 
-    inference_args = read_yaml_config("configs/in_danger/segmenter.yaml")
+    inference_args = read_yaml_config("configs/danger_detection/segmenter.yaml")
     print(inference_args)
 
     task = "segment"
