@@ -32,10 +32,24 @@ RUN mkdir -p /app/outputs && chmod 777 /app/outputs
 RUN mkdir -p /app/logs && chmod 777 /app/logs
 
 # Copy application code into the container:
-# TODO
 
-# Copy entrypoint and ensure entrypoint script is executable
-# TODO
+# DEM directory
+RUN mkdir -p /app/dem && chmod 777 /app/dem
+# model checkpoints
+RUN mkdir -p /app/checkpoints && chmod +r /app/checkpoints
+COPY checkpoints/danger_detection/ /app/checkpoints/danger_detection
+# configs
+RUN mkdir -p /app/configs/danger_detection && chmod +r /app/configs/danger_detection
+COPY configs/danger_detection/ /app/configs/danger_detection
+COPY configs/drone_specs.yaml /app/configs
+# src
+RUN mkdir -p /app/src && chmod 777 /app/src
+RUN mkdir -p /app/src/configs/danger_detection
+COPY src/configs/danger_detection.py /app/src/configs/
+COPY src/danger_detection /app/src/danger_detection
+COPY src/shared /app/src/shared/
+# main
+COPY danger_detection.py .
 
 # Input ports:
 # 1935/tcp: For RTMP input
@@ -49,4 +63,4 @@ EXPOSE 1935/tcp 12345/udp
 EXPOSE 8554/tcp 8554/udp 54321/tcp
 
 # Set entrypoint
-ENTRYPOINT ["./entrypoint.sh"]
+ENTRYPOINT ["python", "danger_detection.py"]

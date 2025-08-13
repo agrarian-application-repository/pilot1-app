@@ -1,8 +1,8 @@
 # str: Name of the directory where the results of the analysis will be saved
-output_dir: 'experiments/test_danger_detection_final_parallel'
+output_dir: 'experiments/test_danger_detection_base'
 
 # str: Name of the files on which alerts will be saved
-alert_file_name: 'alerts'
+alert_file_name: 'alerts_base'
 
 # str: Name of the video showing the annotated original data (with/without sheep count and tracks)
-annotated_video_name: 'danger_detection_annotated'
+annotated_video_name: 'danger_detection_base_annotated'
