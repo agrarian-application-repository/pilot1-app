@@ -19,11 +19,11 @@ from src.shared.drone_utils.localization import get_objects_coordinates
 
 
 def perform_danger_detection(
-        input_args: dict[str,Any],
-        output_args: dict[str,Any],
-        detection_args: dict[str,Any],
-        segmentation_args: dict[str,Any],
-        drone_args: dict[str,Any],
+        input_args: dict[str, Any],
+        output_args: dict[str, Any],
+        detection_args: dict[str, Any],
+        segmentation_args: dict[str, Any],
+        drone_args: dict[str, Any],
 ) -> None:
 
     # ============== CREATE OUTPUT DIRECTORY ===================================
@@ -139,7 +139,7 @@ def perform_danger_detection(
 
         crono_start = time()
         # Highlight dangerous objects
-        segment_danger_mask = perform_segmentation(segmenter_session, segmenter_input_name,  segmenter_input_shape, frame, segmentation_args)
+        segment_roads_danger_mask, segment_vehicles_danger_mask = perform_segmentation(segmenter_session, segmenter_input_name,  segmenter_input_shape, frame, segmentation_args)
         print(f"Segmentation and danger mask creation completed in {(time() - crono_start)*1000:.1f} ms")
 
         # ============== COMPUTE FRAME GROUND RESOLUTION IN METERS/PIXEL  ===================================
@@ -292,7 +292,8 @@ def perform_danger_detection(
             frame_width,
             boxes_centers,
             safety_radius_pixels,
-            segment_danger_mask,
+            segment_roads_danger_mask,
+            segment_vehicles_danger_mask,
             dem_nodata_danger_mask,
             geofencing_danger_mask,
             slope_danger_mask,

@@ -11,7 +11,7 @@ from src.shared.drone_utils.flight_logs import parse_drone_flight_data
 logger = logging.getLogger("main.files_reader")
 
 if not logger.handlers:  # Avoid duplicate handlers
-    video_handler = logging.FileHandler('/app/logs/files_reader.log')
+    video_handler = logging.FileHandler('./logs/files_reader.log')
     video_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(video_handler)
     logger.setLevel(logging.DEBUG)
@@ -84,7 +84,7 @@ class VideoTelemetryFilesReader(mp.Process):
                 frame_id=frame_id, 
                 frame=frame,
                 telemetry=frame_flight_data,
-                timestamp=,
+                timestamp=time.time(),
             )
             # Distribute the same frame to each detector's input queue
             for model_queue in self.models_input_queues:

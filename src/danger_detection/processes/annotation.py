@@ -12,7 +12,7 @@ from src.shared.processes.messages import AnnotationResults
 logger = logging.getLogger("main.danger_annotation")
 
 if not logger.handlers:  # Avoid duplicate handlers
-    video_handler = logging.FileHandler('/app/logs/danger_annotation.log')
+    video_handler = logging.FileHandler('./logs/danger_annotation.log')
     video_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(video_handler)
     logger.setLevel(logging.DEBUG)

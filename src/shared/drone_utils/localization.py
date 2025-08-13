@@ -29,7 +29,7 @@ def get_objects_coordinates(
     distances_y_m = (((-1) * objects_coords[:, 1]) - center_point_pixel_y) * meters_per_pixel  # distances on Y, Shape (N,)
     distances_m = np.sqrt(distances_x_m ** 2 + distances_y_m ** 2)  # Shape (N,)
 
-    base_angles = np.degrees(np.atan2(distances_y_m, distances_x_m))
+    base_angles = np.degrees(np.arctan2(distances_y_m, distances_x_m))
     angles = (base_angles - angle_wrt_north)
     bearings = np.mod(90 - angles, 360)
 

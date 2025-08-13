@@ -8,12 +8,13 @@ from src.danger_detection.processes.messages import DangerDetectionResults, Dete
 logger = logging.getLogger("main.danger_detection")
 
 if not logger.handlers:  # Avoid duplicate handlers
-    video_handler = logging.FileHandler('/app/logs/danger_detection.log')
+    video_handler = logging.FileHandler('./logs/danger_detection.log')
     video_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(video_handler)
     logger.setLevel(logging.DEBUG)
 
 # ================================================================
+
 
 class DangerDetectionWorker(mp.Process):
 
@@ -44,7 +45,8 @@ class DangerDetectionWorker(mp.Process):
                 frame_width=self.video_info_dict["frame_width"],
                 boxes_centers=detection_result.boxes_centers,
                 safety_radius_pixels=geo_result.safety_radius_pixels,
-                segment_danger_mask=segmentation_result.mask,
+                segment_roads_danger_mask=segmentation_result.roads_mask,
+                segment_vehicles_danger_mask=segmentation_result.vehicles_mask,
                 dem_nodata_danger_mask=geo_result.nodata_dem_mask,
                 geofencing_danger_mask=geo_result.geofencing_mask,
                 slope_danger_mask=geo_result.slope_mask,

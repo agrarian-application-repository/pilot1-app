@@ -19,7 +19,7 @@ from src.shared.processes.messages import CombinedFrametelemetryQueueObject
 logger = logging.getLogger("main.danger_geo")
 
 if not logger.handlers:  # Avoid duplicate handlers
-    video_handler = logging.FileHandler('/app/logs/danger_geo.log')
+    video_handler = logging.FileHandler('./logs/danger_geo.log')
     video_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(video_handler)
     logger.setLevel(logging.DEBUG)

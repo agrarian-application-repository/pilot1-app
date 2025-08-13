@@ -339,7 +339,8 @@ def create_dangerous_intersections_masks(
     frame_width,
     boxes_centers,
     safety_radius_pixels,
-    segment_danger_mask,
+    segment_roads_danger_mask,
+    segment_vehicles_danger_mask,
     dem_nodata_danger_mask,
     geofencing_danger_mask,
     slope_danger_mask,
@@ -350,24 +351,28 @@ def create_dangerous_intersections_masks(
     safety_mask = create_safety_mask(frame_height, frame_width, boxes_centers, safety_radius_pixels)
 
     # create the intersection mask between safety areas and dangerous areas masks
-    intersection_segment = np.logical_and(safety_mask, segment_danger_mask)
+    intersection_roads = np.logical_and(safety_mask, segment_roads_danger_mask)
+    intersection_vehicles = np.logical_and(safety_mask, segment_vehicles_danger_mask)
     intersection_nodata = np.logical_and(safety_mask, dem_nodata_danger_mask)
     intersection_geofencing = np.logical_and(safety_mask, geofencing_danger_mask)
     intersection_slope = np.logical_and(safety_mask, slope_danger_mask)
 
     danger_types = []
-    if np.any(intersection_segment > 0):
-        danger_types.append("Vehicles Danger")
+    if np.any(intersection_roads > 0):
+        danger_types.append("Roads")
+    if np.any(intersection_vehicles > 0):
+        danger_types.append("Vehicles")
     if np.any(intersection_nodata > 0):
-        danger_types.append("Missing DEM data Danger")
+        danger_types.append("Missing elevation data")
     if np.any(intersection_geofencing > 0):
-        danger_types.append("Out of Geofenced area Danger")
+        danger_types.append("Out of geo-fenced area")
     if np.any(intersection_slope > 0):
-        danger_types.append("Steep slope Danger")
+        danger_types.append("Steep slope")
 
     # compute combined danger mask
     combined_danger_mask = merge_3d_mask(np.stack([
-        segment_danger_mask,
+        segment_roads_danger_mask,
+        segment_vehicles_danger_mask,
         dem_nodata_danger_mask,
         geofencing_danger_mask,
         slope_danger_mask,
@@ -375,7 +380,8 @@ def create_dangerous_intersections_masks(
 
     # compute combined intersection mask
     combined_intersections = merge_3d_mask(np.stack([
-        intersection_segment,
+        intersection_roads,
+        intersection_vehicles,
         intersection_nodata,
         intersection_geofencing,
         intersection_slope

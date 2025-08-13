@@ -11,12 +11,13 @@ from src.shared.processes.messages import CombinedFrametelemetryQueueObject
 logger = logging.getLogger("main.danger_segmentation")
 
 if not logger.handlers:  # Avoid duplicate handlers
-    video_handler = logging.FileHandler('/app/logs/danger_segmentation.log')
+    video_handler = logging.FileHandler('./logs/danger_segmentation.log')
     video_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(video_handler)
     logger.setLevel(logging.DEBUG)
 
 # ================================================================
+
 
 class SegmenterWrapper:
 
@@ -67,12 +68,13 @@ class SegmentationWorker(mp.Process):
                 break
 
             # Perform segmentation using stored arguments
-            mask = segmenter.predict(frame_telemetry_object.frame)
+            roads_mask, vehicles_mask = segmenter.predict(frame_telemetry_object.frame)
             
             # append result on next process queue
             result = SegmentationResult(
                 frame_id=frame_telemetry_object.frame_id,
-                mask=mask,
+                roads_mask=roads_mask,
+                vehicles_mask=vehicles_mask,
             )
             
             self.result_queue.put(result)

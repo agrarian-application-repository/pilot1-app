@@ -38,7 +38,8 @@ class SegmentationResult:
         mask (np.ndarray): The segmentation mask as a NumPy array.
     """
     frame_id: int
-    mask: np.ndarray
+    roads_mask: np.ndarray
+    vehicles_mask: np.ndarray
 
 
 @dataclass

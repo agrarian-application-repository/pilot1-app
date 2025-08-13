@@ -1,16 +1,28 @@
 import numpy as np
 import cv2
 import onnxruntime as ort
+from time import time
 
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
 
+imagenet_mean_255 = np.array(IMAGENET_MEAN, dtype=np.float32) * 255.0
+imagenet_inv_std_255 = 1 / (np.array(IMAGENET_STD, dtype=np.float32) * 255.0)
+
 
 def create_onnx_segmentation_session(model_ckpt_path: str):
 
-    # Create ONNX Runtime session
-    providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']  # GPU first, fallback to CPU
-    session = ort.InferenceSession(model_ckpt_path, providers=providers)
+    # Optimized ONNX session creation with performance settings
+    session_options = ort.SessionOptions()
+    session_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+    session_options.enable_cpu_mem_arena = True
+    session_options.enable_mem_pattern = True
+    session_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+    session_options.inter_op_num_threads = 1  # For real-time processing
+    session_options.intra_op_num_threads = 0  # Use all available cores
+    providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+    session = ort.InferenceSession(model_ckpt_path, providers=providers, sess_options=session_options)
+
     # Get input details
     input_name = session.get_inputs()[0].name
     input_shape = session.get_inputs()[0].shape
@@ -20,8 +32,8 @@ def create_onnx_segmentation_session(model_ckpt_path: str):
     return session, input_name, input_shape
 
 
-def resize_with_padding(image, target_size=(1920, 1080), pad_color=(0, 0, 0)):
-    target_w, target_h = target_size
+def resize_with_padding(image, target_size=(1080, 1920), pad_color=(0, 0, 0)):
+    target_h, target_w = target_size
     orig_h, orig_w = image.shape[:2]
 
     # Compute scale to fit within target size
@@ -32,16 +44,13 @@ def resize_with_padding(image, target_size=(1920, 1080), pad_color=(0, 0, 0)):
     resized = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
 
     # Create padded image
-    padded = np.full((target_h, target_w, 3), pad_color, dtype=np.uint8)
+    pad_top = (target_h - new_h) // 2
+    pad_bottom = target_h - new_h - pad_top
+    pad_left = (target_w - new_w) // 2
+    pad_right = target_w - new_w - pad_left
+    padded = cv2.copyMakeBorder(resized, pad_top, pad_bottom, pad_left, pad_right, cv2.BORDER_CONSTANT, value=pad_color)
 
-    # Compute top-left corner for centering
-    x_offset = (target_w - new_w) // 2
-    y_offset = (target_h - new_h) // 2
-
-    # Paste resized image into padded image
-    padded[y_offset:y_offset+new_h, x_offset:x_offset+new_w] = resized
-
-    return padded, (x_offset, y_offset, new_w, new_h)
+    return padded, (pad_left, pad_top, new_w, new_h)
 
 
 def restore_original_mask(final_mask, original_shape, padding_info):
@@ -60,7 +69,6 @@ def restore_original_mask(final_mask, original_shape, padding_info):
 
     # Crop out the padded borders
     cropped_mask = final_mask[y_offset:y_offset+new_h, x_offset:x_offset+new_w]
-
     # Resize mask back to original image size
     restored_mask = cv2.resize(cropped_mask, (original_shape[1], original_shape[0]), interpolation=cv2.INTER_NEAREST)
 
@@ -82,7 +90,7 @@ def preprocess_segmentation_data(frame: np.ndarray, input_shape):
     # Convert BGR to RGB (cv2 loads as BGR, but models expect RGB)
     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-    expected_img_shape = input_shape[2:]    # (H,W)
+    expected_img_shape = tuple(input_shape[2:])    # (H,W)
     true_img_shape = frame.shape[:2]    # (H,W)
 
     if expected_img_shape != true_img_shape:
@@ -90,26 +98,18 @@ def preprocess_segmentation_data(frame: np.ndarray, input_shape):
     else:
         resized, padding_info = frame_rgb, (0, 0, frame.shape[1], frame.shape[0])   # (0,0,W,H)
 
-    # Convert to float32 and normalize to [0, 1]
-    normalized = resized.astype(np.float32) / 255.0
+    # normalization
+    normalized = resized.astype(np.float32)
+    cv2.subtract(normalized, imagenet_mean_255, normalized)
+    cv2.multiply(normalized, imagenet_inv_std_255, normalized)
 
-    # Normalize with ImageNet mean and std
-    mean = np.array(IMAGENET_MEAN, dtype=np.float32)
-    std = np.array(IMAGENET_STD, dtype=np.float32)
-
-    # Apply normalization
-    normalized = (normalized - mean) / std
-
-    # Transpose from HWC to CHW format
-    transposed = np.transpose(normalized, (2, 0, 1))
-
-    # Add batch dimension (NCHW format)
-    batched = np.expand_dims(transposed, axis=0)
+    # Transpose from HWC to CHW format and add batch dimension
+    batched = np.transpose(normalized, (2, 0, 1))[np.newaxis, ...]
 
     return batched, padding_info
 
 
-def postprocess_segmentation_output(mask: np.ndarray, original_shape: tuple, padding_info, suppress_classes: list[int]):
+def postprocess_segmentation_output(mask: list, original_shape: tuple, padding_info, suppress_classes: list[int]):
     """
     Postprocess ONNX model output to get segmentation mask.
 
@@ -120,16 +120,22 @@ def postprocess_segmentation_output(mask: np.ndarray, original_shape: tuple, pad
         suppress_classes: list of classes indexes to suppress (set to background)
 
     Returns:
-        np.ndarray: Segmentation mask resized to original image size
+        np.ndarray: Segmentation mask resized to original image size for roads
+        np.ndarray: Segmentation mask resized to original image size for vehicles
     """
+
+    mask = mask[0].squeeze()    # get first result, suppress channel dim
 
     mask = restore_original_mask(mask, original_shape, padding_info)
 
-    if suppress_classes is not None:
-        for cls in suppress_classes:
-            mask[mask == cls] = 0
+    if suppress_classes:
+        suppress_mask = np.isin(mask, suppress_classes)
+        mask[suppress_mask] = 0
 
-    return mask
+    roads_mask = (mask == 1).astype(np.uint8)
+    vehicles_mask = (mask == 2).astype(np.uint8)
+
+    return roads_mask, vehicles_mask
 
 
 def perform_segmentation(session: ort.InferenceSession, input_name, input_shape, frame: np.ndarray, segmentation_args):
@@ -148,20 +154,21 @@ def perform_segmentation(session: ort.InferenceSession, input_name, input_shape,
     """
 
     # Preprocess the frame
+    start = time()
     preprocessed_frame, padding_info = preprocess_segmentation_data(frame, input_shape)
 
     # Run inference
+    start = time()
     mask = session.run(None, {input_name: preprocessed_frame})
-    mask = mask[0]  # remove batch dimension
 
     # Postprocess result
-    postprocessed_mask = postprocess_segmentation_output(
+    start = time()
+    roads_mask, vehicles_mask = postprocess_segmentation_output(
         mask=mask,
         original_shape=frame.shape[:2],
         padding_info=padding_info,
         suppress_classes=segmentation_args["suppress_classes"]
     )
 
-    assert postprocessed_mask.dtype == np.uint8
-
-    return postprocessed_mask
+    # onnx model returns class labels
+    return roads_mask, vehicles_mask
