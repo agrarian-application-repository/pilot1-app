@@ -1,6 +1,7 @@
 import multiprocessing as mp
 import numpy as np
 import logging
+from time import time
 from src.danger_detection.output.frames import (draw_count, draw_dangerous_area,
                                          draw_detections, draw_safety_areas,
                                          get_danger_intersect_colored_frames)
@@ -70,6 +71,7 @@ class AnnotationWorker(mp.Process):
         color_danger_frame, color_intersect_frame = get_danger_intersect_colored_frames(shape=frame_shape)
 
         while True:
+            iter_start = time()
             previous_step_results: DangerDetectionResults = self.input_queue.get()
             if previous_step_results is None:
                 # Send termination signal to all stream queues
@@ -103,4 +105,6 @@ class AnnotationWorker(mp.Process):
             # Send result to both streaming queues
             for stream_queue in self.stream_queues:
                 stream_queue.put(result)
+
+            logger.debug(f"frame {previous_step_results.frame_id}  completed in {(time()-iter_start)*1000:.2f} ms")
 

@@ -18,9 +18,17 @@ if not logger.handlers:  # Avoid duplicate handlers
 
 # ================================================================
 
+
 class VideoTelemetryFilesReader(mp.Process):
     """Reads video frames and corresponding telemetry, and pushes them to the next processes queue queue."""
-    def __init__(self, source:str, telemetry_file:str, models_queues, video_info_dict, video_info_set_event):
+    def __init__(
+            self,
+            source:str,
+            telemetry_file:str,
+            models_queues,
+            video_info_dict,
+            video_info_set_event
+    ):
         super().__init__()
 
         self.video_source = source

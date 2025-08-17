@@ -5,6 +5,19 @@ from ultralytics import YOLO
 
 from src.danger_detection.processes.messages import DetectionResult
 from src.shared.processes.messages import CombinedFrametelemetryQueueObject
+from time import time
+import logging
+
+# ================================================================
+
+logger = logging.getLogger("main.danger_detector")
+
+if not logger.handlers:  # Avoid duplicate handlers
+    video_handler = logging.FileHandler('./logs/danger_detector.log')
+    video_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    logger.addHandler(video_handler)
+    logger.setLevel(logging.DEBUG)
+# ================================================================
 
 
 class DetectorWrapper:
@@ -42,6 +55,7 @@ class DetectionWorker(mp.Process):
         detector = DetectorWrapper(model=model, predict_args=self.detection_args)
 
         while True:
+            iter_start = time()
             frame_telemetry_object: CombinedFrametelemetryQueueObject = self.input_queue.get()
             if frame_telemetry_object is None:
                 self.result_queue.put(None)  # Signal end of processing
@@ -62,3 +76,6 @@ class DetectionWorker(mp.Process):
                 timestamp=frame_telemetry_object.timestamp
             )
             self.result_queue.put(result)
+
+            logger.debug(f"frame {frame_telemetry_object.frame_id} completed in {(time() - iter_start) * 1000:.2f} ms")
+

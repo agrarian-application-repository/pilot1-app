@@ -8,7 +8,8 @@ from src.danger_detection.processes.segmentation import SegmentationWorker
 from src.danger_detection.processes.geo import GeoWorker
 from src.danger_detection.processes.danger import DangerDetectionWorker
 from src.danger_detection.processes.annotation import AnnotationWorker
-from src.danger_detection.processes.output import VideoStreamFileWriter, NotificationsStreamFileWriter
+from src.danger_detection.processes.output_video import VideoStreamFileWriter
+from src.danger_detection.processes.output_msg import NotificationsStreamFileWriter
 
 
 def perform_danger_detection(

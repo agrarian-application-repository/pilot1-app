@@ -4,7 +4,7 @@ from src.danger_detection.segmentation.segmentation import create_onnx_segmentat
 
 from src.danger_detection.processes.messages import SegmentationResult
 from src.shared.processes.messages import CombinedFrametelemetryQueueObject
-
+from time import time
 
 # ================================================================
 
@@ -61,6 +61,7 @@ class SegmentationWorker(mp.Process):
 
         # start processing frames
         while True:
+            iter_start = time()
             frame_telemetry_object: CombinedFrametelemetryQueueObject = self.input_queue.get()
             if frame_telemetry_object is None:
                 self.result_queue.put(None)  # Signal end of processing
@@ -79,3 +80,6 @@ class SegmentationWorker(mp.Process):
             
             self.result_queue.put(result)
             logger.debug("Appended mask to next process queue")
+
+            logger.debug(f"frame {frame_telemetry_object.frame_id} completed in {(time()-iter_start)*1000:.2f} ms")
+

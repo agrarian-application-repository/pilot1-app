@@ -2,7 +2,7 @@ import multiprocessing as mp
 import logging
 from src.danger_detection.utils import create_dangerous_intersections_masks
 from src.danger_detection.processes.messages import DangerDetectionResults, DetectionResult, SegmentationResult, GeoResult
-
+from time import time
 # ================================================================
 
 logger = logging.getLogger("main.danger_detection")
@@ -28,6 +28,7 @@ class DangerDetectionWorker(mp.Process):
 
     def run(self):
         while True:
+            iter_start = time()
             # Collect one result from each model's result queue
             detection_result: DetectionResult
             segmentation_result: SegmentationResult
@@ -71,3 +72,5 @@ class DangerDetectionWorker(mp.Process):
                 timestamp=detection_result.timestamp,
             )
             self.result_queue.put(result)
+
+        logger.debug(f"frame {detection_result.frame_id} completed in {(time() - iter_start) * 1000:.2f} ms")
