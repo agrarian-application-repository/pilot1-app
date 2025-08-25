@@ -23,18 +23,16 @@ def perform_danger_detection(
         drone_args: dict[str, Any],
 ) -> None:
     
-    # TODO: integrate additional args
     video_info_dict = {
-        "frame_width": 1920,
-        "frame_height": 1080,
-        "fps": 30,
+        "frame_width": drone_args.pop("frame_width"),
+        "frame_height": drone_args.pop("frame_height"),
+        "fps": drone_args.pop("fps"),
     }
     
     telemetry_in_port=12345
     video_url_out = "rtsp://127.0.0.1:8554/annot"
     alerts_url_out = "tcp://127.0.0.1:54321"
 
-    input_args["video_info_dict"] = video_info_dict
     output_args["telemetry_in_port"] = telemetry_in_port
     output_args["video_url_out"] = video_url_out
     output_args["alerts_url_out"] = alerts_url_out
@@ -66,7 +64,7 @@ def perform_danger_detection(
 
     # Create StreamVideoReader process
     video_reader_process = StreamVideoReader(
-        video_info_dict=input_args["video_info_dict"],
+        video_info_dict=video_info_dict,
         source=input_args["source"],
         frame_queue=received_frames_queue,
     )
@@ -104,26 +102,26 @@ def perform_danger_detection(
         drone_args=drone_args,
         input_queue=geo_in_queue,
         result_queue=geo_results_queue,
-        video_info_dict=input_args["video_info_dict"],
+        video_info_dict=video_info_dict,
     )
 
     # Create DangerIdentification process
     danger_identification_process = DangerDetectionWorker(
         models_results_queues=models_results_queues,
         result_queue=danger_detection_results_queue,
-        video_info_dict=input_args["video_info_dict"],
+        video_info_dict=video_info_dict,
     )
 
     # Create VideoAnnotatorWorker
     annotation_process = AnnotationWorker(
         input_queue=danger_detection_results_queue,
         stream_queues=stream_queues,
-        video_info_dict=input_args["video_info_dict"],
+        video_info_dict=video_info_dict,
     )
 
     # Create VideoStreamWriter process
     video_writer_process = VideoStreamWriter(
-        video_info_dict=input_args["video_info_dict"],
+        video_info_dict=video_info_dict,
         input_queue=video_stream_queue,
         output_dir=output_args["output_dir"],
         output_url=output_args["video_url_out"],
@@ -132,7 +130,7 @@ def perform_danger_detection(
 
     # Create VideoStreamWriter process
     notification_writer_process = NotificationsStreamWriter(
-        video_info_dict=input_args["video_info_dict"],
+        video_info_dict=video_info_dict,
         cooldown_seconds=input_args["alerts_cooldown_seconds"],
         input_queue=notifications_stream_queue,
         output_dir=output_args["output_dir"],

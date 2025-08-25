@@ -27,11 +27,13 @@ COPY requirements.txt .
 # Install Python dependencies without caching
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Make additional directories
-RUN mkdir -p /app/outputs && chmod 777 /app/outputs
+# Make additional directories:
+
+# logs (for debugging)
 RUN mkdir -p /app/logs && chmod 777 /app/logs
 
-# Copy application code into the container:
+# outputs
+RUN mkdir -p /app/outputs && chmod 777 /app/outputs
 
 # DEM directory
 RUN mkdir -p /app/dem && chmod 777 /app/dem
@@ -40,11 +42,10 @@ RUN mkdir -p /app/checkpoints && chmod +r /app/checkpoints
 COPY checkpoints/danger_detection/ /app/checkpoints/danger_detection
 # configs
 RUN mkdir -p /app/configs/danger_detection && chmod +r /app/configs/danger_detection
-COPY configs/danger_detection/ /app/configs/danger_detection
-COPY configs/drone_specs.yaml /app/configs
+
 # src
 RUN mkdir -p /app/src && chmod 777 /app/src
-RUN mkdir -p /app/src/configs/danger_detection
+RUN mkdir -p /app/src/configs/danger_detection && chmod 777 /app/src/configs/danger_detection
 COPY src/configs/danger_detection.py /app/src/configs/
 COPY src/danger_detection /app/src/danger_detection
 COPY src/shared /app/src/shared/
@@ -63,4 +64,4 @@ EXPOSE 1935/tcp 12345/udp
 EXPOSE 8554/tcp 8554/udp 54321/tcp
 
 # Set entrypoint
-ENTRYPOINT ["python", "danger_detection.py"]
+ENTRYPOINT ["python", "danger_detection_stream.py"]

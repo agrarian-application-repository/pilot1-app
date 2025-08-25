@@ -1,8 +1,8 @@
 from src.configs.danger_detection import check_danger_detection_args
 from src.configs.drone import check_drone_args
 from src.configs.utils import read_yaml_config
-from src.danger_detection.danger_detection_parallel import perform_danger_detection
-
+from src.danger_detection.danger_detection_stream import perform_danger_detection
+import os
 
 def main():
 
@@ -10,24 +10,6 @@ def main():
     input_args = read_yaml_config("configs/danger_detection/input.yaml")
     # Check validity of arguments
     input_args = check_danger_detection_args(input_args)
-
-    # TODO this will be passed through the container either as env variable or volumes (to remove later, to check)
-    # -------------------------------------------------
-    # str: Data source (a video) for in-danger analysis.
-    input_args["source"] = '/archive/group/ai/datasets/AGRARIAN/MAICH_v1/DJI_20241024104935_0008_D.MP4'
-    # str: Drone metadata file (.srt)
-    input_args["flight_data"] = '/archive/group/ai/datasets/AGRARIAN/MAICH_v1/DJI_20241024104935_0008_D.SRT'
-    # str: Path to the DEM data
-    # dem: '/archive/group/ai/datasets/AGRARIAN/DEM/merged/merged.tif'
-    input_args["dem"] = '/archive/group/ai/datasets/AGRARIAN/DEM/Copernicus_DSM_04_N35_00_E024_00_DEM.tif'
-    # str or null: Path to the DEM data mask, if null assumes all pixels are valid
-    # dem_mask: '/archive/group/ai/datasets/AGRARIAN/DEM/merged/merged_mask.tif'
-    input_args["dem_mask"] = None
-    # int: Frame stride for video inputs.
-    # Allows skipping frames to speed up inference. Higher values skip more frames.
-    # Range: Any positive integer.
-    input_args["vid_stride"] = 1
-    # -------------------------------------------------
 
     # Read drone YAML config file and transform it into dict
     drone_args = read_yaml_config("configs/drone_specs.yaml")
@@ -39,6 +21,28 @@ def main():
     segmentation_args = read_yaml_config("configs/danger_detection/segmenter.yaml")
 
     output_args["output_dir"] = "outputs/" + output_args["output_dir"]
+
+    urls = {
+        "stream_ip": os.environ.get("stream_ip", "127.0.0.1"),  
+        "stream_port": int(os.environ.get("stream_port", "1935")),
+        "stream_name": os.environ.get("stream_name", "drone"),
+        "telemetry_ip": os.environ.get("telemetry_ip", "0.0.0.0"),
+        "telemetry_port": int(os.environ.get("telemetry_port", "12345")),
+        "annotations_ip": os.environ.get("annotations_ip", "127.0.0.1"),
+        "annotations_port": int(os.environ.get("annotations_port", "8554")),
+        "annotations_name": os.environ.get("annotations_name", "annot"),
+        "alerts_ip": os.environ.get("alerts_ip", "127.0.0.1"),
+        "alerts_port": int(os.environ.get("alerts_port", "54321")),
+    }
+    # TODO
+    # check_urls
+
+    input_args["source"] = f"rtmp://{urls["stream_ip"]}:{urls["stream_port"]}/{urls["stream_name"]}"
+    input_args["telemetry_in_port"] = urls["telemetry_port"]
+    
+    output_args["video_url_out"] = f"rtmp://{urls["annotations_ip"]}:{urls["annotations_port"]}/{urls["annotations_name"]}"
+    output_args["alerts_url_out"] = f"tcp://{urls["alerts_ip"]}:{urls["alerts_port"]}"
+   
 
     print("PERFORMING IN-DANGER WITH THE FOLLOWING ARGUMENTS:")
     print("Input arguments")

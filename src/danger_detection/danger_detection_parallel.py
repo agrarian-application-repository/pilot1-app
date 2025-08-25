@@ -13,11 +13,11 @@ from src.danger_detection.processes.output_msg import NotificationsStreamFileWri
 
 
 def perform_danger_detection(
-        input_args: dict[str:Any],
-        output_args: dict[str:Any],
-        detection_args: dict[str:Any],
-        segmentation_args: dict[str:Any],
-        drone_args: dict[str:Any],
+        input_args: dict[str,Any],
+        output_args: dict[str,Any],
+        detection_args: dict[str,Any],
+        segmentation_args: dict[str,Any],
+        drone_args: dict[str,Any],
 ) -> None:
 
     # ============== SETUP QUEUES AND EVENTS ===================================
