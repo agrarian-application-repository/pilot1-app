@@ -49,10 +49,7 @@ OPTIONS:
     --dem               TIF                     DEM data
     --dem_mask          TIF                     DEM mask data
     --in_conf           YAML                    Input config file
-    --out_conf          YAML                    Output config file
     --drone_conf        YAML                    Drone config file
-    --detect_conf       YAML                    Detector config file
-    --segment_conf      YAML                    Segmenter config file
     
     --stream_ip         URL(IP)                 IP of the mediamtx server from which to retrieve the stream (default: 127.0.0.1)
     --stream_port       URL(PORT)               Port where to receive the stream from the mediamtx server (exposed Dockerfile: 1935, RTMP)
@@ -113,39 +110,12 @@ while [[ $# -gt 0 ]]; do
                 exit 1
             fi
             ;;
-        --out_conf)
-            OUTPUT_CONFIG="$2"
-            if [[ -f "$OUTPUT_CONFIG" ]] && [[ "$OUTPUT_CONFIG" == *.yaml ]]; then
-                shift 2
-            else
-                echo "Error: --out_conf requires an existing .yaml file."
-                exit 1
-            fi
-            ;;
         --drone_conf)
             DRONE_CONFIG="$2"
             if [[ -f "$DRONE_CONFIG" ]] && [[ "$DRONE_CONFIG" == *.yaml ]]; then
                 shift 2
             else
                 echo "Error: --drone_conf requires an existing .yaml file."
-                exit 1
-            fi
-            ;;
-        --detect_conf)
-            DETECTOR_CONFIG="$2"
-            if [[ -f "$DETECTOR_CONFIG" ]] && [[ "$DETECTOR_CONFIG" == *.yaml ]]; then
-                shift 2
-            else
-                echo "Error: --detect_conf requires an existing .yaml file."
-                exit 1
-            fi
-            ;;
-        --segment_conf)
-            SEGMENTER_CONFIG="$2"
-            if [[ -f "$SEGMENTER_CONFIG" ]] && [[ "$SEGMENTER_CONFIG" == *.yaml ]]; then
-                shift 2
-            else
-                echo "Error: --segment_conf requires an existing .yaml file."
                 exit 1
             fi
             ;;
@@ -223,7 +193,7 @@ done
 
 # Check for mandatory arguments after parsing is complete.
 # This ensures all required options were provided.
-if [[ -z "$INPUT_CONFIG" || -z "$OUTPUT_CONFIG" || -z "$DRONE_CONFIG" || -z "$DETECTOR_CONFIG" || -z "$SEGMENTER_CONFIG" ]]; then
+if [[ -z "$INPUT_CONFIG" || -z "$DRONE_CONFIG" ]]; then
     echo "Error: Missing one or more required configuration files."
     show_help
     exit 1
@@ -371,10 +341,10 @@ fi
 
 # Add config files via volume mapping
 DOCKER_CMD="$DOCKER_CMD -v $INPUT_CONFIG:/app/configs/danger_detection/input.yaml"
-DOCKER_CMD="$DOCKER_CMD -v $OUTPUT_CONFIG:/app/configs/danger_detection/output.yaml"
 DOCKER_CMD="$DOCKER_CMD -v $DRONE_CONFIG:/app/configs/drone_specs.yaml"
-DOCKER_CMD="$DOCKER_CMD -v $DETECTOR_CONFIG:/app/configs/danger_detection/detector.yaml"
-DOCKER_CMD="$DOCKER_CMD -v $SEGMENTER_CONFIG:/app/configs/danger_detection/segmenter.yaml"
+DOCKER_CMD="$DOCKER_CMD -v configs/danger_detection/detector.yaml:/app/configs/danger_detection/detector.yaml"
+DOCKER_CMD="$DOCKER_CMD -v configs/danger_detection/segmenter.yaml:/app/configs/danger_detection/segmenter.yaml"
+DOCKER_CMD="$DOCKER_CMD -v configs/danger_detection/output.yaml:/app/configs/danger_detection/output.yaml"
 
 
 # Add env file if specified
