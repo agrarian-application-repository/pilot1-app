@@ -202,7 +202,7 @@ fi
 # Build image if requested
 if [[ "$BUILD" == "true" ]]; then
     echo "Building Docker image: $IMAGE_NAME"
-    docker build -f "./docker/ui/Dockerfile" -t "$IMAGE_NAME" .
+    docker build -f "./docker/danger_detection/Dockerfile" -t "$IMAGE_NAME" .
 fi
 
 # Remove existing container if requested
@@ -340,11 +340,11 @@ if [[ -n "$DEM_MASK_PATH" ]]; then
 fi
 
 # Add config files via volume mapping
-DOCKER_CMD="$DOCKER_CMD -v $INPUT_CONFIG:/app/configs/danger_detection/input.yaml"
-DOCKER_CMD="$DOCKER_CMD -v $DRONE_CONFIG:/app/configs/drone_specs.yaml"
-DOCKER_CMD="$DOCKER_CMD -v configs/danger_detection/detector.yaml:/app/configs/danger_detection/detector.yaml"
-DOCKER_CMD="$DOCKER_CMD -v configs/danger_detection/segmenter.yaml:/app/configs/danger_detection/segmenter.yaml"
-DOCKER_CMD="$DOCKER_CMD -v configs/danger_detection/output.yaml:/app/configs/danger_detection/output.yaml"
+DOCKER_CMD="$DOCKER_CMD -v $(pwd)/$INPUT_CONFIG:/app/configs/danger_detection/input.yaml"
+DOCKER_CMD="$DOCKER_CMD -v $(pwd)/$DRONE_CONFIG:/app/configs/drone_specs.yaml"
+DOCKER_CMD="$DOCKER_CMD -v $(pwd)/configs/danger_detection/detector.yaml:/app/configs/danger_detection/detector.yaml"
+DOCKER_CMD="$DOCKER_CMD -v $(pwd)/configs/danger_detection/segmenter.yaml:/app/configs/danger_detection/segmenter.yaml"
+DOCKER_CMD="$DOCKER_CMD -v $(pwd)/configs/danger_detection/output.yaml:/app/configs/danger_detection/output.yaml"
 
 
 # Add env file if specified
@@ -404,4 +404,7 @@ echo "Launching container..."
 echo "Command: $DOCKER_CMD"
 echo ""
 
-exec $DOCKER_CMD
+# exec $DOCKER_CMD
+$DOCKER_CMD
+
+# source launch_danger_detection.sh -b -d -r --in_conf configs/danger_detection/input.yaml --drone_conf configs/drone_specs.yaml

@@ -1,5 +1,4 @@
-# Use an NVIDIA PyTorch base image
-FROM nvcr.io/nvidia/pytorch:25.01-py3
+FROM pytorch/pytorch:2.5.1-cuda12.1-cudnn9-devel
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -45,7 +44,7 @@ RUN mkdir -p /app/{configs/health_monitoring,src/configs/health_monitoring}
 # Copy checkpoints from repo to container 
 COPY checkpoints/health_monitoring/ /app/checkpoints/health_monitoring
 # Copy useful arguments checking code to container 
-COPY src/configs/health_monitoring.py src/configs/drone.py src/configs/networks.py /app/src/configs/
+COPY src/configs/health_monitoring.py src/configs/drone.py src/configs/networks.py src/configs/utils.py /app/src/configs/
 # Copy health monitoring only code to container
 COPY src/health_monitoring /app/src/health_monitoring
 # Copy health monitoring shared (with danger detection) code to container

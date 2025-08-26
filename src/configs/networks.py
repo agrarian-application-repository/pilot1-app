@@ -82,6 +82,20 @@ def is_dynamic_port(port:int|str) -> bool:
         return 49152 <= port_num <= 65535
     except (ValueError, TypeError):
         return False
+    
+def is_register_or_dynamic_port(port: int|str) -> bool:
+    """
+    Check if a port is in the registered or dynamic/private ports range (1024-65535).
+    
+    Args:
+        port (int, str): The port number to check
+        
+    Returns:
+        bool: True if port is in dynamic range, False otherwise
+    """
+
+    return is_registered_port(port) or is_dynamic_port(port) 
+
 
 def get_port_category(port:int|str) -> str:
     """
@@ -130,11 +144,11 @@ def validate_port_range(start_port: int|str, end_port: int|str) -> bool:
 
 def check_networking_args(urls: dict):
 
-    assert is_valid_ip(urls["stream_ip"]), f"Invalid 'stream_ip' {urls["stream_ip"]}"
-    assert is_registered_port(urls["stream_port"]), f"Invalid 'stream_port' {urls["stream_port"]}, expected value in [1024-49151]"
-    assert is_valid_ip(urls["telemetry_ip"]), f"Invalid 'telemetry_ip' {urls["telemetry_ip"]}"
-    assert is_registered_port(urls["telemetry_port"]), f"Invalid 'telemetry_port' {urls["telemetry_port"]}, expected value in [1024-49151]"
-    assert is_valid_ip(urls["annotations_ip"]), f"Invalid 'annotations_ip' {urls["annotations_ip"]}"
-    assert is_registered_port(urls["annotations_port"]), f"Invalid 'annotations_port' {urls["annotations_port"]}, expected value in [1024-49151]"
-    assert is_valid_ip(urls["alerts_ip"]), f"Invalid 'alerts_ip' {urls["alerts_ip"]}"
-    assert is_registered_port(urls["alerts_port"]), f"Invalid 'alerts_port' {urls["alerts_port"]}, expected value in [1024-49151]"
+    assert is_valid_ip(urls["stream_ip"]), f"Invalid 'stream_ip' {urls['stream_ip']}"
+    assert is_register_or_dynamic_port(urls["stream_port"]), f"Invalid 'stream_port' {urls['stream_port']}, expected value in [1024-65535]"
+    assert is_valid_ip(urls["telemetry_ip"]), f"Invalid 'telemetry_ip' {urls['telemetry_ip']}"
+    assert is_register_or_dynamic_port(urls["telemetry_port"]), f"Invalid 'telemetry_port' {urls['telemetry_port']}, expected value in [1024-65535]"
+    assert is_valid_ip(urls["annotations_ip"]), f"Invalid 'annotations_ip' {urls['annotations_ip']}"
+    assert is_register_or_dynamic_port(urls["annotations_port"]), f"Invalid 'annotations_port' {urls['annotations_port']}, expected value in [1024-65535]"
+    assert is_valid_ip(urls["alerts_ip"]), f"Invalid 'alerts_ip' {urls['alerts_ip']}"
+    assert is_register_or_dynamic_port(urls["alerts_port"]), f"Invalid 'alerts_port' {urls['alerts_port']}, expected value in [1024-65535]"

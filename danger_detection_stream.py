@@ -1,6 +1,6 @@
 from src.configs.danger_detection import check_danger_detection_args
 from src.configs.drone import check_drone_args
-from configs.networks import check_networking_args
+from src.configs.networks import check_networking_args
 from src.configs.utils import read_yaml_config
 from src.danger_detection.danger_detection_stream import perform_danger_detection
 from pathlib import Path
@@ -37,11 +37,11 @@ def main():
     }
     check_networking_args(urls)
 
-    input_args["source"] = f"rtmp://{urls["stream_ip"]}:{urls["stream_port"]}/{urls["stream_name"]}"
+    input_args["source"] = f"rtmp://{urls['stream_ip']}:{urls['stream_port']}/{urls['stream_name']}"
     input_args["telemetry_in_port"] = urls["telemetry_port"]
     
-    output_args["video_url_out"] = f"rtsp://{urls["annotations_ip"]}:{urls["annotations_port"]}/{urls["annotations_name"]}"
-    output_args["alerts_url_out"] = f"tcp://{urls["alerts_ip"]}:{urls["alerts_port"]}"
+    output_args["video_url_out"] = f"rtsp://{urls['annotations_ip']}:{urls['annotations_port']}/{urls['annotations_name']}"
+    output_args["alerts_url_out"] = f"tcp://{urls['alerts_ip']}:{urls['alerts_port']}"
 
     # DEM data is passed to the container as volume mapped into /app/dem/dem.tif,dem_mask.tif
     dem_path = "dem/dem.tif"

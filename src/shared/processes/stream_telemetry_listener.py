@@ -3,7 +3,7 @@ import json
 import time
 import logging
 import multiprocessing as mp
-from messages import TelemetryQueueObject
+from src.shared.processes.messages import TelemetryQueueObject
 
 # ================================================================
 

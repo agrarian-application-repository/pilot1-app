@@ -1,3 +1,4 @@
+geopy
 msgpack
 numpy
 opencv-python-headless

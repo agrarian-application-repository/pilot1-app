@@ -1,5 +1,4 @@
-# Use an NVIDIA PyTorch base image
-FROM nvcr.io/nvidia/pytorch:25.01-py3
+FROM pytorch/pytorch:2.5.1-cuda12.1-cudnn9-devel
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -45,7 +44,7 @@ RUN mkdir -p /app/{configs/danger_detection,src/configs/danger_detection}
 # Copy checkpoints from repo to container 
 COPY checkpoints/danger_detection/ /app/checkpoints/danger_detection
 # Copy useful arguments checking code to container 
-COPY src/configs/danger_detection.py src/configs/drone.py src/configs/networks.py /app/src/configs/
+COPY src/configs/danger_detection.py src/configs/drone.py src/configs/networks.py src/configs/utils.py /app/src/configs/
 # Copy danger detection only code to container
 COPY src/danger_detection /app/src/danger_detection
 # Copy danger detection shared (with health monitoring) code to container

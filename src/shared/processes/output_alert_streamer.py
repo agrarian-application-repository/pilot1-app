@@ -306,7 +306,7 @@ class NotificationsStreamWriter(mp.Process):
             
             msg = f"Frame {frame_results.frame_id}, "
             msg += f"Alert: {frame_results.alert_msg}, "
-            msg += f"timestamp: {datetime.datetime.fromtimestamp(frame_results.timestamp).strftime("%Y-%m-%d %H:%M:%S.%f")}\n"
+            msg += f"timestamp: {datetime.datetime.fromtimestamp(frame_results.timestamp).strftime('%Y-%m-%d %H:%M:%S.%f')}\n"
             
             self.alerts_file.write(msg)
             self.alerts_file.flush()  # Ensure data is written immediately

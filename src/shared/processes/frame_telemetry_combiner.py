@@ -30,7 +30,7 @@ class FrameTelemetryCombiner(mp.Process):
             frame_queue: mp.Queue, 
             telemetry_queue: mp.Queue, 
             output_queues: list[mp.Queue], 
-            max_time_diff_s: float = 0.15
+            max_time_diff_s: float = 0.15,
         ):
         """
         Initialize the FrameTelemetryCombiner.
@@ -46,7 +46,7 @@ class FrameTelemetryCombiner(mp.Process):
         self.telemetry_queue = telemetry_queue
         self.output_queues = output_queues
         self.max_time_diff_s = max_time_diff_s
-        self.telemetry_buffer = deque(frame_queue._maxsize)
+        self.telemetry_buffer = deque(maxlen=frame_queue._maxsize)
         self.running = True
         
     def stop(self):

@@ -2,7 +2,7 @@ import multiprocessing as mp
 import cv2
 import logging
 import time
-from messages import FrameQueueObject
+from src.shared.processes.messages import FrameQueueObject
 
 # ================================================================
 
