@@ -1,5 +1,4 @@
 import multiprocessing as mp
-from pathlib import Path
 import logging
 import numpy as np
 from shapely import Polygon

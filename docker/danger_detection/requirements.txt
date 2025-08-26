@@ -1,8 +1,12 @@
+msgpack
 numpy
-opencv-python
+opencv-python-headless
+onnx
+onnxruntime-gpu
 pyYAML
 python-dotenv
 numpy
+rasterio
 requests
 scikit-image
 scipy

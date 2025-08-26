@@ -9,7 +9,7 @@ from src.health_monitoring.processes.annotation import AnnotationWorker
 from src.health_monitoring.processes.output import VideoStreamWriter, NotificationsStreamWriter
 
 
-def perform_health_monitoring_analysis(
+def perform_health_monitoring(
         input_args: dict[str:Any],
         output_args: dict[str:Any],
         tracking_args: dict[str:Any],

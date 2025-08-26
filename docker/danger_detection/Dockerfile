@@ -26,14 +26,13 @@ RUN apt update && apt install -y \
     libxext6 \
     libxrender-dev \
     libglib2.0-0 \
-    libgl1-mesa-glx \
     && rm -rf /var/lib/apt/lists/*
 
 # Set the working directory in the container
 WORKDIR /app
 
 # Copy only the requirements file first to leverage Docker caching
-COPY requirements.txt .
+COPY docker/danger_detection/requirements.txt ./requirements.txt
 
 # Install Python dependencies without caching
 RUN pip install --no-cache-dir -r requirements.txt

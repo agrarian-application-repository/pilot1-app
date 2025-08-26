@@ -17,7 +17,7 @@ from src.health_monitoring.output.frames import annotate_and_save_frame
 from src.health_monitoring.output.alerts import send_alert
 
 
-def perform_health_monitoring_analysis(
+def perform_health_monitoring(
         input_args: dict[str:Any],
         output_args: dict[str:Any],
         tracking_args: dict[str:Any],

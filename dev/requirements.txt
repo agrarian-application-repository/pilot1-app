@@ -5,6 +5,8 @@ matplotlib
 msgpack
 networkx
 numpy
+onnx
+onnxruntime-gpu
 opencv-python-headless
 Pillow
 pyYAML
@@ -12,7 +14,7 @@ pytest
 pytest-cov
 python-dotenv
 ray[tune]
-numpy
+rasterio
 requests
 scikit-image
 scipy
