@@ -39,7 +39,8 @@ def annotate_frame(
     annotated_frame = frame.copy()  # copy of the original frame on which to draw
 
     # draw safety circles
-    draw_safety_areas(annotated_frame, boxes_centers, safety_radius_pixels)
+    if safety_radius_pixels > 0:
+        draw_safety_areas(annotated_frame, boxes_centers, safety_radius_pixels)
 
     # Overlay dangerous areas (in red) and intersections (in yellow) on the annotated frame
     draw_dangerous_area(annotated_frame, danger_mask, intersection_mask, color_danger_frame, color_intersect_frame)

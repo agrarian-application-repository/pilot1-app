@@ -51,10 +51,6 @@ class GeoWorker(mp.Process):
         # open the DEM mask, if provided and DEM provided
         dem_tif, dem_mask_tif = open_dem_tifs(dem_path=self.input_args["dem"], dem_mask_path=self.input_args["dem_mask"])
 
-        # Open drone flight data
-        flight_data_file_path = Path(self.input_args["flight_data"])
-        flight_data_file = open(flight_data_file_path, "r")
-
         # set the col/row identifier of the frame corners (x,y)
         frame_corners = np.array([
             [0, 0],  # upper left  (0,   0   )
@@ -67,12 +63,25 @@ class GeoWorker(mp.Process):
             iter_start = time()
 
             frame_telemetry_object: CombinedFrametelemetryQueueObject = self.input_queue.get()
+            
             if frame_telemetry_object is None:
                 self.result_queue.put(None)  # Signal end of processing
                 close_tifs([dem_tif, dem_mask_tif])     # close tif files
-                flight_data_file.close()    # close txt files
                 logger.info("Terminating geo data handling process.")
                 break
+
+            if frame_telemetry_object.telemetry is None:
+                result = GeoResult(
+                    frame_id=frame_telemetry_object.frame_id,
+                    safety_radius_pixels=-1,
+                    nodata_dem_mask=np.zeros(frame_height, frame_width),
+                    geofencing_mask=np.zeros(frame_height, frame_width),
+                    slope_mask=np.zeros(frame_height, frame_width),
+                )
+                self.result_queue.put(result)
+                logger.warning("No telemetry match found, skipping GEo step")
+                logger.debug(f"completed in {(time()-iter_start)*1000:.2f} ms")
+                continue
 
             # load frame flight data
             frame_flight_data = frame_telemetry_object.telemetry

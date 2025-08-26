@@ -3,6 +3,17 @@ FROM nvcr.io/nvidia/pytorch:25.01-py3
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+ENV STREAM_IP="127.0.0.1"
+ENV STREAM_PORT="1935"
+ENV STREAM_NAME="drone"
+ENV TELEMETRY_IP="0.0.0.0"
+ENV TELEMETRY_PORT="12345"
+ENV ANNOTATIONS_IP="127.0.0.1"
+ENV ANNOTATIONS_PORT="8554"
+ENV ANNOTATIONS_NAME="annot"
+ENV ALERTS_IP="127.0.0.1"
+ENV ALERTS_PORT="54321"
+
 # Install system dependencies
 RUN apt update && apt install -y \
     ffmpeg \
@@ -27,30 +38,24 @@ COPY requirements.txt .
 # Install Python dependencies without caching
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Make additional directories:
+# Create first level directories
+RUN mkdir -p /app/{logs,outputs,dem,checkpoints,configs,src}
+# Create inner directories
+RUN mkdir -p /app/{configs/danger_detection,src/configs/danger_detection}
 
-# logs (for debugging)
-RUN mkdir -p /app/logs && chmod 777 /app/logs
-
-# outputs
-RUN mkdir -p /app/outputs && chmod 777 /app/outputs
-
-# DEM directory
-RUN mkdir -p /app/dem && chmod 777 /app/dem
-# model checkpoints
-RUN mkdir -p /app/checkpoints && chmod +r /app/checkpoints
+# Copy checkpoints from repo to container 
 COPY checkpoints/danger_detection/ /app/checkpoints/danger_detection
-# configs
-RUN mkdir -p /app/configs/danger_detection && chmod +r /app/configs/danger_detection
-
-# src
-RUN mkdir -p /app/src && chmod 777 /app/src
-RUN mkdir -p /app/src/configs/danger_detection && chmod 777 /app/src/configs/danger_detection
-COPY src/configs/danger_detection.py /app/src/configs/
+# Copy useful arguments checking code to container 
+COPY src/configs/danger_detection.py src/configs/drone.py src/configs/networks.py /app/src/configs/
+# Copy danger detection only code to container
 COPY src/danger_detection /app/src/danger_detection
+# Copy danger detection shared (with health monitoring) code to container
 COPY src/shared /app/src/shared/
-# main
-COPY danger_detection.py .
+# Copy main script to container
+COPY danger_detection_stream.py .
+
+# Set permissions for entire /app directory at once
+RUN chmod -R 777 /app
 
 # Input ports:
 # 1935/tcp: For RTMP input

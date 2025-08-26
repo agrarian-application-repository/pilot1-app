@@ -28,36 +28,28 @@ def perform_danger_detection(
         "frame_height": drone_args.pop("frame_height"),
         "fps": drone_args.pop("fps"),
     }
-    
-    telemetry_in_port=12345
-    video_url_out = "rtsp://127.0.0.1:8554/annot"
-    alerts_url_out = "tcp://127.0.0.1:54321"
-
-    output_args["telemetry_in_port"] = telemetry_in_port
-    output_args["video_url_out"] = video_url_out
-    output_args["alerts_url_out"] = alerts_url_out
 
     # ============== SETUP QUEUES AND EVENTS ===================================
     
+    queue_lenght = 2 * video_info_dict["fps"]       # hold frames for 2 seconds
 
+    received_frames_queue = mp.Queue(queue_lenght)
+    received_telemetries_queue = mp.Queue(queue_lenght * 4)     # longer because telemetry can be delivered more frequently
 
-    received_frames_queue = mp.Queue()
-    received_telemetries_queue = mp.Queue()
-
-    detection_in_queue = mp.Queue()
-    segmentation_in_queue = mp.Queue()
-    geo_in_queue = mp.Queue()
+    detection_in_queue = mp.Queue(queue_lenght)
+    segmentation_in_queue = mp.Queue(queue_lenght)
+    geo_in_queue = mp.Queue(queue_lenght)
     models_in_queues = [detection_in_queue, segmentation_in_queue, geo_in_queue]
 
-    detection_results_queue = mp.Queue()
-    segmentation_results_queue = mp.Queue()
-    geo_results_queue = mp.Queue()
+    detection_results_queue = mp.Queue(queue_lenght)
+    segmentation_results_queue = mp.Queue(queue_lenght)
+    geo_results_queue = mp.Queue(queue_lenght)
     models_results_queues = [detection_results_queue, segmentation_results_queue, geo_results_queue]
 
-    danger_detection_results_queue = mp.Queue()
+    danger_detection_results_queue = mp.Queue(queue_lenght)
 
-    video_stream_queue = mp.Queue()
-    notifications_stream_queue = mp.Queue()
+    video_stream_queue = mp.Queue(queue_lenght)
+    notifications_stream_queue = mp.Queue(queue_lenght)
     stream_queues = [video_stream_queue, notifications_stream_queue]
 
     # ============== START PROCESSES PROCESSES ===================================
@@ -71,7 +63,7 @@ def perform_danger_detection(
 
     # Create StreamTelemetryReader process
     telemetry_reader_process = StreamTelemetryListener(
-        port=output_args["telemetry_in_port"],
+        port=input_args["telemetry_in_port"],
         telemetry_queue=received_telemetries_queue,
     )
 

@@ -158,11 +158,12 @@ class StreamVideoReader(mp.Process):
             # Put frame in queue (with timeout to prevent blocking)
             try:
                 self.frame_queue.put(frame_object, timeout=1.0)
-                logger.debug(f"Added frame {frame_id} to queue")
+                logger.debug(f"Added frame {frame_id} to queue.")
             # break out of video processing if a problem arises in putting frames on queue
             except mp.queues.Full as e: # Catch Full specifically
-                logger.error(f"Failed to put frame in queue: Queue is full. Consumer too slow or stopped?: {e}")
-                break
+                logger.error(f"Failed to put frame in queue: Queue is full. Consumer too slow or stopped?. Continuing to listen for new frames")
+                time.sleep(0.1)
+                continue
             except Exception as e:
                 logger.error(f"Exception: {e}")
                 break

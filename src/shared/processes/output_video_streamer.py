@@ -27,7 +27,6 @@ class VideoStreamWriter(mp.Process):
             input_queue: mp.Queue, 
             output_dir: str, 
             output_url: str, 
-            max_queue_size: int = 60, 
         ):
 
         super().__init__()
@@ -35,7 +34,6 @@ class VideoStreamWriter(mp.Process):
         self.input_queue = input_queue
         self.output_dir = Path(output_dir)
         self.output_url = output_url
-        self.max_queue_size = max_queue_size
         self.frames_dropped = 0
         self.frame_times = []  # Store timestamps for FPS calculation
     
@@ -104,32 +102,6 @@ class VideoStreamWriter(mp.Process):
         
         return out_file, out_stream
     
-    def _manage_queue_buffer(self) -> None:
-        """Drop frames if queue is getting too large to prevent excessive buffering."""
-        try:
-            queue_size = self.input_queue.qsize()
-            if queue_size > self.max_queue_size:
-                frames_to_drop = queue_size - self.max_queue_size
-                logger.warning(f"Queue size ({queue_size}) exceeds maximum ({self.max_queue_size}). Dropping {frames_to_drop} frames.")
-                
-                for _ in range(frames_to_drop):
-                    try:
-                        dropped_frame = self.input_queue.get_nowait()
-                        if dropped_frame is None:
-                            # Put the sentinel back if we accidentally consumed it
-                            self.input_queue.put(None)
-                            break
-                        self.frames_dropped += 1
-                    except queue.Empty:
-                        break
-                        
-                if self.frames_dropped > 0:
-                    logger.warning(f"Total frames dropped due to buffering: {self.frames_dropped}")
-                    
-        except NotImplementedError:
-            # qsize() not available on all platforms
-            pass
-    
     def _calculate_and_log_fps(self, frame_id: int) -> None:
         """Calculate and log FPS based on recent frame timestamps."""
         self.frame_times.append(time.time())
@@ -175,8 +147,6 @@ class VideoStreamWriter(mp.Process):
         
         try:
             while True:
-                # Manage queue buffer to prevent excessive memory usage
-                self._manage_queue_buffer()
                 
                 # Get frame from queue with timeout
                 try:

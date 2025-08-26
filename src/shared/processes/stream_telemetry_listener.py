@@ -84,38 +84,28 @@ class StreamTelemetryListener(mp.Process):
         while not self._stop_event.is_set():
             
             try:
+                # receive the data
                 data, addr = self._socket.recvfrom(4096)
-                self._process_telemetry_data(data, addr)
+                # Decode and parse JSON
+                telemetry = json.loads(data.decode('utf-8'))
+                queue_object = TelemetryQueueObject(telemetry=telemetry, timestamp=time.time())
+                self.telemetry_queue.put(queue_object, timeout=1.0)
+                logger.debug(f"Captured telemetry from {addr}: {len(data)} bytes")
             
             except socket.timeout:
                 # Timeout allows us to check stop_event periodically
                 logger.error("socket timed-out, continuing to try to receive ...")
-                continue
+            except json.JSONDecodeError as e:
+                logger.error(f"Received invalid JSON")
+                time.sleep(0.1)
+            except mp.queues.Full as e: # Catch Full specifically
+                logger.error(f"Failed to put telemetry in queue: Queue is full. Consumer too slow or stopped?. Continuing to listen ...")
+                time.sleep(0.1)
             except Exception as e:
                 # if any other exception is raised, check wheter to stop or not
                 if not self._stop_event.is_set():
-                    logger.error(f"Error receiving telemetry: {e}")
-                    time.sleep(0.1)  # Brief pause before retrying
-    
-    def _process_telemetry_data(self, data, addr):
-        """
-        Process received telemetry data and add to buffer.
-        
-        Args:
-            data (bytes): Raw UDP data
-            addr (tuple): Source address (host, port)
-        """
-        try:
-            # Decode and parse JSON
-            telemetry = json.loads(data.decode('utf-8'))
-            queue_object = TelemetryQueueObject(telemetry=telemetry, timestamp=time.time())
-            self.telemetry_queue.put(queue_object, timeout=1.0)
-            logger.debug(f"Captured telemetry from {addr}: {len(data)} bytes")
-            
-        except json.JSONDecodeError as e:
-            logger.error(f"Invalid JSON received from {addr}: {e}")
-        except Exception as e:
-            logger.error(f"Error processing telemetry from {addr}: {e}")
+                    logger.error(f"Error in readinf and processing telemetry: {e}")
+                    time.sleep(0.1)
 
     def _terminate_process(self) -> None:
         """

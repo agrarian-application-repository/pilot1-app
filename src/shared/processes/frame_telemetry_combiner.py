@@ -2,7 +2,7 @@ import multiprocessing as mp
 import logging
 from collections import deque
 from src.shared.processes.messages import FrameQueueObject, TelemetryQueueObject, CombinedFrametelemetryQueueObject
-
+from typing import Optional
 
 # ================================================================
 
@@ -30,7 +30,7 @@ class FrameTelemetryCombiner(mp.Process):
             frame_queue: mp.Queue, 
             telemetry_queue: mp.Queue, 
             output_queues: list[mp.Queue], 
-            max_time_diff_s: float = 0.25
+            max_time_diff_s: float = 0.15
         ):
         """
         Initialize the FrameTelemetryCombiner.
@@ -46,7 +46,7 @@ class FrameTelemetryCombiner(mp.Process):
         self.telemetry_queue = telemetry_queue
         self.output_queues = output_queues
         self.max_time_diff_s = max_time_diff_s
-        self.telemetry_buffer = deque()
+        self.telemetry_buffer = deque(frame_queue._maxsize)
         self.running = True
         
     def stop(self):
@@ -86,6 +86,11 @@ class FrameTelemetryCombiner(mp.Process):
                     best_match = telemetry_data
                     best_time_diff = time_diff
                     match_index = i
+
+                if best_match is not None and time_diff > self.max_time_diff_s:
+                    # do not scan the entire data structure if a best match has already been found an now the time distance is growing
+                    break
+
             except ValueError:
                 logger.warning("expection rasied while searching for the best matching telemetry, continuing ...")
                 continue
@@ -100,18 +105,18 @@ class FrameTelemetryCombiner(mp.Process):
         
         return best_match
     
-    def _combine_frame_telemetry(self, frame_data: FrameQueueObject, telemetry_data: TelemetryQueueObject) -> CombinedFrametelemetryQueueObject:
+    def _combine_frame_telemetry(self, frame_data: FrameQueueObject, telemetry_data: Optional[TelemetryQueueObject]) -> CombinedFrametelemetryQueueObject:
         """
         Combine frame and telemetry data into output format.
         
         Returns:
-            CombinedQueueObject object or None
+            CombinedQueueObject object
         """
 
         combined_data = CombinedFrametelemetryQueueObject(
             frame_id = frame_data.frame_id, 
             frame=frame_data.frame, 
-            telemetry=telemetry_data.telemetry,
+            telemetry=telemetry_data.telemetry if telemetry_data is not None else None,
            timestamp= frame_data.timestamp,
         )
 
@@ -145,14 +150,12 @@ class FrameTelemetryCombiner(mp.Process):
                 # Find best matching telemetry
                 best_telemetry = self._find_best_telemetry_match(frame_timestamp)
 
-                # if cannot find suitable telemetry, skip frame
                 if best_telemetry is None:
                     failed_matchings += 1
                     logger.warning(
                         f"Unable to find suitable telemetry for frame {frame_timestamp.frame_id}. "
                         f"Total matches not found: {failed_matchings}"
-                    )
-                    continue
+                )
                 
                 # Combine frame and telemetry data
                 combined_data = self._combine_frame_telemetry(frame_data, best_telemetry)
