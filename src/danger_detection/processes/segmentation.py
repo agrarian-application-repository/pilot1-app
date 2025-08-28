@@ -11,7 +11,7 @@ from time import time
 logger = logging.getLogger("main.danger_segmentation")
 
 if not logger.handlers:  # Avoid duplicate handlers
-    video_handler = logging.FileHandler('./logs/danger_segmentation.log')
+    video_handler = logging.FileHandler('./logs/danger_segmentation.log', mode='w')
     video_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(video_handler)
     logger.setLevel(logging.DEBUG)
@@ -53,11 +53,15 @@ class SegmentationWorker(mp.Process):
         self.result_queue = result_queue
 
     def run(self):
+        logger.info("Segmentation process started")
         # initializes the segmenter
         segmentation_model_checkpoint = self.segmentation_args.pop("model_checkpoint")
+        logger.info("Segmentation model checkpoint loaded")
         segmenter_session, segmenter_input_name, segmenter_input_shape = create_onnx_segmentation_session(segmentation_model_checkpoint)
+        logger.info("ONNX session created")
         segmenter = SegmenterWrapper(segmenter_session, segmenter_input_name, segmenter_input_shape, self.segmentation_args)
         logger.info("Initialized segmentation model")
+        logger.info("Running...")
 
         # start processing frames
         while True:
@@ -65,7 +69,7 @@ class SegmentationWorker(mp.Process):
             frame_telemetry_object: CombinedFrametelemetryQueueObject = self.input_queue.get()
             if frame_telemetry_object is None:
                 self.result_queue.put(None)  # Signal end of processing
-                logger.info("Terminating segmentation process.")
+                logger.info("Found sentinel value on queue. Terminating segmentation process.")
                 break
 
             # Perform segmentation using stored arguments

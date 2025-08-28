@@ -13,7 +13,7 @@ from src.shared.processes.messages import AnnotationResults
 logger = logging.getLogger("main.danger_annotation")
 
 if not logger.handlers:  # Avoid duplicate handlers
-    video_handler = logging.FileHandler('./logs/danger_annotation.log')
+    video_handler = logging.FileHandler('./logs/danger_annotation.log', mode='w')
     video_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(video_handler)
     logger.setLevel(logging.DEBUG)
@@ -66,10 +66,12 @@ class AnnotationWorker(mp.Process):
 
     def run(self):
 
+        logger.info("Annotation process started.")
         frame_width = self.video_info_dict["frame_width"]
         frame_height = self.video_info_dict["frame_height"]
         frame_shape = (frame_height, frame_width, 3)
         color_danger_frame, color_intersect_frame = get_danger_intersect_colored_frames(shape=frame_shape)
+        logger.info("Running...")
 
         while True:
             iter_start = time()
@@ -78,7 +80,7 @@ class AnnotationWorker(mp.Process):
                 # Send termination signal to all stream queues
                 for stream_queue in self.stream_queues:
                     stream_queue.put(None)  # Signal end of processing
-                logger.info("Terminating annotation process.")
+                logger.info("Found sentinel value on queue. Terminating annotation process.")
                 break
 
             annotated_frame = annotate_frame(

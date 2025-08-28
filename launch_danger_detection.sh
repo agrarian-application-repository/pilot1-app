@@ -13,27 +13,27 @@ DEM_MASK_PATH=""
 
 # Algorithms configuration
 INPUT_CONFIG=""
-OUTPUT_CONFIG=""
 DRONE_CONFIG=""
-DETECTOR_CONFIG=""
-SEGMENTER_CONFIG=""
+# OUTPUT_CONFIG=""  --> not provided by the user, use repo config
+# DETECTOR_CONFIG=""  --> not provided by the user, use repo config
+# SEGMENTER_CONFIG=""  --> not provided by the user, use repo config
 
-# Stream and network configuration variables
-STREAM_IP=""
-STREAM_PORT=""
-STREAM_NAME=""
-TELEMETRY_IP=""
-TELEMETRY_PORT=""
-ANNOTATIONS_IP=""
-ANNOTATIONS_PORT=""
-ANNOTATIONS_NAME=""
-ALERTS_IP=""
-ALERTS_PORT=""
+# Stream and network configuration variables with defaults
+STREAM_IP="mediamtx_server"
+STREAM_PORT="1935"
+STREAM_NAME="drone"
+TELEMETRY_IP="0.0.0.0"
+TELEMETRY_PORT="12345"
+ANNOTATIONS_IP="mediamtx_server"
+ANNOTATIONS_PORT="8554"
+ANNOTATIONS_NAME="annot"
+ALERTS_IP="127.0.0.1"
+ALERTS_PORT="54321"
 
 DETACHED="false"
 REMOVE_EXISTING="false"
 ENV_FILE=""
-NETWORK=""
+NETWORK="agrarian-network"
 BUILD="false"
 
 # Help function
@@ -51,16 +51,12 @@ OPTIONS:
     --in_conf           YAML                    Input config file
     --drone_conf        YAML                    Drone config file
     
-    --stream_ip         URL(IP)                 IP of the mediamtx server from which to retrieve the stream (default: 127.0.0.1)
-    --stream_port       URL(PORT)               Port where to receive the stream from the mediamtx server (exposed Dockerfile: 1935, RTMP)
     --stream_name       URL(NAME)               Name of the stream (default: drone)
     --telemetry_ip      URL(IP)                 IP where to receive the telemetry packets (default: 0.0.0.0 - listen on all interfaces)
     --telemetry_port    URL(PORT)               Port where to receive the UDP packets (exposed Dockerfile: 12345/udp)
-    --annotations_ip    URL(IP)                 IP of the mediamtx server where to send the annotated stream (default: 127.0.0.1)
-    --annotations_port  URL(PORT)               Port where to send the annotated stream (exposed Dockerfile: 85547/tcp 8554/udp, RTSP)
     --annotations_name  URL(NAME)               Name of the annotated stream (default: annot)
     --alerts_ip         URL(IP)                 IP of the machine where to send the alerts TPC packets (default: 127.0.0.1)
-    --alerts_port       URL(PORT)               Port where to send the alerts TCP packets (exposed Dockerfile: 54321/tcp)
+    --alerts_port       URL(PORT)               Port where to send the alerts TCP packets
 
     -d, --detached                              Run in detached mode
     -r, --remove                                Remove existing container if it exists
@@ -119,14 +115,6 @@ while [[ $# -gt 0 ]]; do
                 exit 1
             fi
             ;;
-        --stream_ip)
-            STREAM_IP="$2"
-            shift 2
-            ;;
-        --stream_port)
-            STREAM_PORT="$2"
-            shift 2
-            ;;
         --stream_name)
             STREAM_NAME="$2"
             shift 2
@@ -137,14 +125,6 @@ while [[ $# -gt 0 ]]; do
             ;;
         --telemetry_port)
             TELEMETRY_PORT="$2"
-            shift 2
-            ;;
-        --annotations_ip)
-            ANNOTATIONS_IP="$2"
-            shift 2
-            ;;
-        --annotations_port)
-            ANNOTATIONS_PORT="$2"
             shift 2
             ;;
         --annotations_name)
@@ -230,98 +210,33 @@ else
     DOCKER_CMD="$DOCKER_CMD -it"
 fi
 
+DOCKER_CMD="$DOCKER_CMD --gpus all"
+
 # Add container name
 DOCKER_CMD="$DOCKER_CMD --name $CONTAINER_NAME"
 
-# Add port mappings
-
-# Stream input (RTMP) - default port 1935
-if [[ -n "$STREAM_PORT" ]]; then
-    DOCKER_CMD="$DOCKER_CMD -p $STREAM_PORT:1935"
-else
-    DOCKER_CMD="$DOCKER_CMD -p 1935:1935"
-fi
-
-# Telemetry input (UDP) - default port 12345
-if [[ -n "$TELEMETRY_PORT" ]]; then
-    DOCKER_CMD="$DOCKER_CMD -p $TELEMETRY_PORT:12345/udp"
-else
-    DOCKER_CMD="$DOCKER_CMD -p 12345:12345/udp"
-fi
-
-# Annotations output (RTSP) - default ports 8554 (UDP) and 8554 (TCP)
-if [[ -n "$ANNOTATIONS_PORT" ]]; then
-    DOCKER_CMD="$DOCKER_CMD -p $ANNOTATIONS_PORT:8554/tcp -p $ANNOTATIONS_PORT:8554/udp"
-else
-    DOCKER_CMD="$DOCKER_CMD -p 8554:8554/tcp -p 8554:8554/udp"
-fi
-
-# Alerts output (TCP) - default port 54321
-if [[ -n "$ALERTS_PORT" ]]; then
-    DOCKER_CMD="$DOCKER_CMD -p $ALERTS_PORT:54321/tcp"
-else
-    DOCKER_CMD="$DOCKER_CMD -p 54321:54321/tcp"
-fi
-
+# Add port mappings (omit RTMP port 1935  and RTSP, internal networking handles them)
+DOCKER_CMD="$DOCKER_CMD -p $TELEMETRY_PORT:12345/udp"
+# port 54321/tcp because only the receiver needs port mapping, here the application is sending TCP packets
+# port 1935 (RTMP) omitted because it is mapped by the media server
+# port 8554/tcp and 8554/udp omitted because communication with media server handled internally through the docker network
 
 # Add network if specified
 if [[ -n "$NETWORK" ]]; then
     DOCKER_CMD="$DOCKER_CMD --network $NETWORK"
 fi
 
-
-# Add environment variables (IPs/Ports/Names)
-if [[ -n "$STREAM_IP" ]]; then
-    DOCKER_CMD="$DOCKER_CMD -e STREAM_IP=$STREAM_IP"
-fi
-
-if [[ -n "$STREAM_PORT" ]]; then
-    DOCKER_CMD="$DOCKER_CMD -e STREAM_PORT=$STREAM_PORT"
-else
-    DOCKER_CMD="$DOCKER_CMD -e STREAM_PORT=1935"
-fi
-
-if [[ -n "$STREAM_NAME" ]]; then
-    DOCKER_CMD="$DOCKER_CMD -e STREAM_NAME=$STREAM_NAME"
-fi
-
-# For telemetry receiving, default to 0.0.0.0 to listen on all interfaces
-if [[ -n "$TELEMETRY_IP" ]]; then
-    DOCKER_CMD="$DOCKER_CMD -e TELEMETRY_IP=$TELEMETRY_IP"
-else
-    DOCKER_CMD="$DOCKER_CMD -e TELEMETRY_IP=0.0.0.0"
-fi
-
-if [[ -n "$TELEMETRY_PORT" ]]; then
-    DOCKER_CMD="$DOCKER_CMD -e TELEMETRY_PORT=$TELEMETRY_PORT"
-else
-    DOCKER_CMD="$DOCKER_CMD -e TELEMETRY_PORT=12345"
-fi
-
-if [[ -n "$ANNOTATIONS_IP" ]]; then
-    DOCKER_CMD="$DOCKER_CMD -e ANNOTATIONS_IP=$ANNOTATIONS_IP"
-fi
-
-if [[ -n "$ANNOTATIONS_PORT" ]]; then
-    DOCKER_CMD="$DOCKER_CMD -e ANNOTATIONS_PORT=$ANNOTATIONS_PORT"
-else
-    DOCKER_CMD="$DOCKER_CMD -e ANNOTATIONS_PORT=8554"
-fi
-
-if [[ -n "$ANNOTATIONS_NAME" ]]; then
-    DOCKER_CMD="$DOCKER_CMD -e ANNOTATIONS_NAME=$ANNOTATIONS_NAME"
-fi
-
-if [[ -n "$ALERTS_IP" ]]; then
-    DOCKER_CMD="$DOCKER_CMD -e ALERTS_IP=$ALERTS_IP"
-fi
-
-if [[ -n "$ALERTS_PORT" ]]; then
-    DOCKER_CMD="$DOCKER_CMD -e ALERTS_PORT=$ALERTS_PORT"
-else
-    DOCKER_CMD="$DOCKER_CMD -e ALERTS_PORT=54321"
-fi
-
+# Add environment variables
+DOCKER_CMD="$DOCKER_CMD -e STREAM_IP=$STREAM_IP"
+DOCKER_CMD="$DOCKER_CMD -e STREAM_PORT=$STREAM_PORT"
+DOCKER_CMD="$DOCKER_CMD -e STREAM_NAME=$STREAM_NAME"
+DOCKER_CMD="$DOCKER_CMD -e TELEMETRY_IP=$TELEMETRY_IP"
+DOCKER_CMD="$DOCKER_CMD -e TELEMETRY_PORT=$TELEMETRY_PORT"
+DOCKER_CMD="$DOCKER_CMD -e ANNOTATIONS_IP=$ANNOTATIONS_IP"
+DOCKER_CMD="$DOCKER_CMD -e ANNOTATIONS_PORT=$ANNOTATIONS_PORT"
+DOCKER_CMD="$DOCKER_CMD -e ANNOTATIONS_NAME=$ANNOTATIONS_NAME"
+DOCKER_CMD="$DOCKER_CMD -e ALERTS_IP=$ALERTS_IP"
+DOCKER_CMD="$DOCKER_CMD -e ALERTS_PORT=$ALERTS_PORT"
 
 # Map to local logs folder for debugging
 DOCKER_CMD="$DOCKER_CMD -v $(pwd)/logs:/app/logs"
@@ -346,7 +261,6 @@ DOCKER_CMD="$DOCKER_CMD -v $(pwd)/configs/danger_detection/detector.yaml:/app/co
 DOCKER_CMD="$DOCKER_CMD -v $(pwd)/configs/danger_detection/segmenter.yaml:/app/configs/danger_detection/segmenter.yaml"
 DOCKER_CMD="$DOCKER_CMD -v $(pwd)/configs/danger_detection/output.yaml:/app/configs/danger_detection/output.yaml"
 
-
 # Add env file if specified
 if [[ -n "$ENV_FILE" ]]; then
     if [[ -f "$ENV_FILE" ]]; then
@@ -360,7 +274,7 @@ fi
 # Add image name
 DOCKER_CMD="$DOCKER_CMD $IMAGE_NAME"
 
-# Display configuration
+# Display configuration (simplified - showing actual values)
 echo "======================================================="
 echo "Agrarian Danger Detection StreamContainer Configuration"
 echo "======================================================="
@@ -371,22 +285,22 @@ echo "Network:              ${NETWORK:-default}"
 echo "Environment File:     ${ENV_FILE:-none}"
 echo ""
 echo "Stream Configuration:"
-echo "  Input Stream IP:    ${STREAM_IP:-127.0.0.1 (default)}"
-echo "  Input Stream Port:  ${STREAM_PORT:-1935 (default)}"
-echo "  Stream Name:        ${STREAM_NAME:-drone (default)}"
+echo "  Input Stream IP:    $STREAM_IP"
+echo "  Input Stream Port:  $STREAM_PORT"
+echo "  Stream Name:        $STREAM_NAME"
 echo ""
 echo "Telemetry Configuration:"
-echo "  Telemetry IP:       ${TELEMETRY_IP:-0.0.0.0 (default - listen on all interfaces)}"
-echo "  Telemetry Port:     ${TELEMETRY_PORT:-12345 (default)}"
+echo "  Telemetry IP:       $TELEMETRY_IP"
+echo "  Telemetry Port:     $TELEMETRY_PORT"
 echo ""
 echo "Annotations Configuration:"
-echo "  Annotations IP:     ${ANNOTATIONS_IP:-127.0.0.1 (default)}"
-echo "  Annotations Port:   ${ANNOTATIONS_PORT:-8554 (default)}"
-echo "  Annotations Name:   ${ANNOTATIONS_NAME:-annot (default)}"
+echo "  Annotations IP:     $ANNOTATIONS_IP"
+echo "  Annotations Port:   $ANNOTATIONS_PORT"
+echo "  Annotations Name:   $ANNOTATIONS_NAME"
 echo ""
 echo "Alerts Configuration:"
-echo "  Alerts IP:          ${ALERTS_IP:-127.0.0.1 (default)}"
-echo "  Alerts Port:        ${ALERTS_PORT:-54321 (default)}"
+echo "  Alerts IP:          $ALERTS_IP"
+echo "  Alerts Port:        $ALERTS_PORT"
 echo "======================================================"
 
 # Ask for confirmation unless in detached mode
@@ -407,4 +321,4 @@ echo ""
 # exec $DOCKER_CMD
 $DOCKER_CMD
 
-# source launch_danger_detection.sh -b -d -r --in_conf configs/danger_detection/input.yaml --drone_conf configs/drone_specs.yaml
+# source launch_danger_detection.sh -b -r --in_conf configs/danger_detection/input.yaml --drone_conf configs/drone_specs.yaml

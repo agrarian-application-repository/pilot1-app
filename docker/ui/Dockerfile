@@ -8,7 +8,6 @@ ENV TCP_PORT=54321
 ENV MEDIAMTX_WEBRTC_URL="http://mediamtx:8889"
 ENV STREAM_NAME="annot"
 ENV STUN_SERVER="stun:stun.l.google.com:19302"
-ENV CONTAINER="true"
 
 # Install system dependencies
 RUN apt update && apt install -y \
@@ -24,19 +23,24 @@ RUN apt update && apt install -y \
 WORKDIR /app
 
 # Copy requirements and install Python dependencies
-COPY ./docker/ui/requirements.txt .
+COPY docker/ui/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Make additional directories
-RUN mkdir -p /app/logs && chmod 777 /app/logs
-RUN mkdir -p /app/assets && chmod 777 /app/assets
+RUN mkdir -p /app/{logs,assets,src,src/ui}
 
 # Copy the application script inside /app
-COPY ./src/ui/* /app/
-COPY ./assets/* /app/assets/
+COPY assets /app/assets
+COPY src/ui /app/src/ui
+
+# copy main file
+COPY ui.py .
+
+# Set permissions for entire /app directory at once
+RUN chmod -R 777 /app
 
 # Input port:
-# 54321/tcp: custom TCP output
+# 54321/tcp: custom TCP output for receiving alerts
 # 8501/tcp: streamlit web UI
 EXPOSE 54321/tcp
 EXPOSE 8501/tcp

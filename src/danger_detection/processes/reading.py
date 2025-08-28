@@ -11,7 +11,7 @@ from src.shared.drone_utils.flight_logs import parse_drone_flight_data
 logger = logging.getLogger("main.files_reader")
 
 if not logger.handlers:  # Avoid duplicate handlers
-    video_handler = logging.FileHandler('./logs/files_reader.log')
+    video_handler = logging.FileHandler('./logs/files_reader.log', mode='w')
     video_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(video_handler)
     logger.setLevel(logging.DEBUG)

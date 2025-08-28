@@ -1,0 +1,14 @@
+# Python-specific
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.venv
+venv
+.env
+*.env
+dist/
+*.egg-info/
+
+# Operating System specific
+.DS_Store

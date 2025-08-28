@@ -13,7 +13,7 @@ from src.shared.processes.rtsp_streamer import RTSPStreamer
 logger = logging.getLogger("main.video_out")
 
 if not logger.handlers:  # Avoid duplicate handlers
-    video_handler = logging.FileHandler('/app/logs/video_out.log')
+    video_handler = logging.FileHandler('/app/logs/video_out.log', mode='w')
     video_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(video_handler)
     logger.setLevel(logging.DEBUG)

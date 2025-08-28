@@ -9,7 +9,7 @@ from src.shared.processes.messages import FrameQueueObject
 logger = logging.getLogger("main.stream_video_in")
 
 if not logger.handlers:  # Avoid duplicate handlers
-    video_handler = logging.FileHandler('/app/logs/stream_video_in.log')
+    video_handler = logging.FileHandler('/app/logs/stream_video_in.log', mode='w')
     video_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(video_handler)
     logger.setLevel(logging.DEBUG)
@@ -173,7 +173,6 @@ class StreamVideoReader(mp.Process):
             cap.release()
         
         self._terminate_process()
-        logger.info("Video reading process terminated")
         
     def _terminate_process(self):
         """Send termination signal and set event."""
@@ -186,6 +185,9 @@ class StreamVideoReader(mp.Process):
 
         except Exception as e:
             logger.error(f"Failed to send termination signal: {e}")
+
+        logger.info("Video reading process terminated")
+        
 
     def is_running(self) -> bool:
         """

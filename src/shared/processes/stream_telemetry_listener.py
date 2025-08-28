@@ -10,7 +10,7 @@ from src.shared.processes.messages import TelemetryQueueObject
 logger = logging.getLogger("main.stream_telemetry_in")
 
 if not logger.handlers:  # Avoid duplicate handlers
-    video_handler = logging.FileHandler('/app/logs/stream_telemetry_in.log')
+    video_handler = logging.FileHandler('/app/logs/stream_telemetry_in.log', mode='w')
     video_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(video_handler)
     logger.setLevel(logging.DEBUG)
@@ -94,7 +94,7 @@ class StreamTelemetryListener(mp.Process):
             
             except socket.timeout:
                 # Timeout allows us to check stop_event periodically
-                logger.error("socket timed-out, continuing to try to receive ...")
+                logger.warning("socket timed-out, continuing to try to receive ...")
             except json.JSONDecodeError as e:
                 logger.error(f"Received invalid JSON")
                 time.sleep(0.1)
@@ -130,5 +130,5 @@ class StreamTelemetryListener(mp.Process):
         """
         Signal the process to stop gracefully.
         """
-        logger.info("Stopping telemetry listener...")
+        logger.info("Received stop signal. Stopping telemetry listener...")
         self._stop_event.set()

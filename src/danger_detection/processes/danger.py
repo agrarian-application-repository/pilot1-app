@@ -8,7 +8,7 @@ from time import time
 logger = logging.getLogger("main.danger_detection")
 
 if not logger.handlers:  # Avoid duplicate handlers
-    video_handler = logging.FileHandler('./logs/danger_detection.log')
+    video_handler = logging.FileHandler('./logs/danger_detection.log', mode='w')
     video_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(video_handler)
     logger.setLevel(logging.DEBUG)
@@ -21,10 +21,11 @@ class DangerDetectionWorker(mp.Process):
     def __init__(self, models_results_queues, result_queue, video_info_dict):
         super().__init__()
 
+        logger.info("Danger detection process started.")
         self.video_info_dict = video_info_dict
-
         self.models_results_queues = models_results_queues
         self.result_queue = result_queue
+        logger.info("Running...")
 
     def run(self):
         while True:
@@ -33,11 +34,15 @@ class DangerDetectionWorker(mp.Process):
             detection_result: DetectionResult
             segmentation_result: SegmentationResult
             geo_result: GeoResult
-            detection_result, segmentation_result, geo_result = [q.get() for q in self.models_results_queues]
+
+            detection_result=self.models_results_queues[0].get()
+            segmentation_result=self.models_results_queues[1].get()
+            geo_result=self.models_results_queues[2].get()
+            
             if detection_result is None or segmentation_result is None or geo_result is None:
                 assert detection_result is None and segmentation_result is None and geo_result is None, "All three model should terminate together"
                 self.result_queue.put(None)    # Signal end of processing
-                logger.info("Terminating danger detection process.")
+                logger.info("Found sentinel value on queues. Terminating danger detection process.")
                 break
 
             assert detection_result.frame_id == segmentation_result.frame_id == geo_result.frame_id, "IDs should match"
@@ -73,4 +78,4 @@ class DangerDetectionWorker(mp.Process):
             )
             self.result_queue.put(result)
 
-        logger.debug(f"frame {detection_result.frame_id} completed in {(time() - iter_start) * 1000:.2f} ms")
+            logger.debug(f"frame {detection_result.frame_id} completed in {(time() - iter_start) * 1000:.2f} ms")

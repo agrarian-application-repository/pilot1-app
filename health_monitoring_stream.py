@@ -23,12 +23,12 @@ def main():
 
     # URLs cvomponents are passed to the container as environmental variables
     urls = {
-        "stream_ip": os.environ.get("STREAM_IP", "127.0.0.1"),  
+        "stream_ip": os.environ.get("STREAM_IP", "mediamtx_server"),  
         "stream_port": int(os.environ.get("STREAM_PORT", "1935")),
         "stream_name": os.environ.get("STREAM_NAME", "drone"),
         "telemetry_ip": os.environ.get("TELEMETRY_IP", "0.0.0.0"),
         "telemetry_port": int(os.environ.get("TELEMETRY_PORT", "12345")),
-        "annotations_ip": os.environ.get("ANNOTATIONS_IP", "127.0.0.1"),
+        "annotations_ip": os.environ.get("ANNOTATIONS_IP", "mediamtx_server"),
         "annotations_port": int(os.environ.get("ANNOTATIONS_PORT", "8554")),
         "annotations_name": os.environ.get("ANNOTATIONS_NAME", "annot"),
         "alerts_ip": os.environ.get("ALERTS_IP", "127.0.0.1"),

@@ -13,7 +13,7 @@ import logging
 logger = logging.getLogger("main.danger_detector")
 
 if not logger.handlers:  # Avoid duplicate handlers
-    video_handler = logging.FileHandler('./logs/danger_detector.log')
+    video_handler = logging.FileHandler('./logs/animals_detection.log', mode='w')
     video_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(video_handler)
     logger.setLevel(logging.DEBUG)
@@ -47,19 +47,23 @@ class DetectionWorker(mp.Process):
 
     def run(self):
         """Main loop of the process: initializes the detector and processes frames."""
+        logger.info("Animal detection process started.")
         detection_model_checkpoint = self.detection_args.pop("model_checkpoint")
         model = YOLO(detection_model_checkpoint, task="detect")
+        logger.info("Animal detection model loaded.")
         # prepare detection classes names and number
         classes_names = model.names  # Dictionary of class names
         num_classes = len(classes_names)
         detector = DetectorWrapper(model=model, predict_args=self.detection_args)
+        logger.info("Running...")
 
         while True:
             iter_start = time()
             frame_telemetry_object: CombinedFrametelemetryQueueObject = self.input_queue.get()
+            
             if frame_telemetry_object is None:
                 self.result_queue.put(None)  # Signal end of processing
-                print("Terminating object detection process.")
+                logger.info("Found sentinel value on queue. Terminating object detection process.")
                 break
 
             # Perform detection using stored arguments

@@ -2,12 +2,12 @@ FROM pytorch/pytorch:2.5.1-cuda12.1-cudnn9-devel
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-ENV STREAM_IP="127.0.0.1"
+ENV STREAM_IP="mediamtx_server"
 ENV STREAM_PORT="1935"
 ENV STREAM_NAME="drone"
 ENV TELEMETRY_IP="0.0.0.0"
 ENV TELEMETRY_PORT="12345"
-ENV ANNOTATIONS_IP="127.0.0.1"
+ENV ANNOTATIONS_IP="mediamtx_server"
 ENV ANNOTATIONS_PORT="8554"
 ENV ANNOTATIONS_NAME="annot"
 ENV ALERTS_IP="127.0.0.1"
@@ -56,15 +56,14 @@ COPY danger_detection_stream.py .
 RUN chmod -R 777 /app
 
 # Input ports:
-# 1935/tcp: For RTMP input
+# 1935/tcp: For RTMP input (not exposed, handled by the mediamtx server)
 # 12345/udp: Your custom UDP input
-EXPOSE 1935/tcp 12345/udp 
+EXPOSE 12345/udp 
 
 # Output ports:
-# 8554/tcp: RTSP control port
-# 8554/udp: RTSP RTP data port (often used in conjunction with TCP for RTSP)
-# 54321/tcp: custom TCP output
-EXPOSE 8554/tcp 8554/udp 54321/tcp
+# 8554/tcp: RTSP control port (not exposed, handled internally by the docker network)
+# 8554/udp: RTSP RTP data port (not exposed, handled internally by the docker network)
+# 54321/tcp: custom TCP output (not exposed, application is the sender not the receiver)
 
 # Set entrypoint
 ENTRYPOINT ["python", "danger_detection_stream.py"]

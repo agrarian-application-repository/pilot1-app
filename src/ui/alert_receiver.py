@@ -9,12 +9,10 @@ import struct
 import logging
 import socket
 import datetime
-from constants import HOST, RECONNECT_DELAY, CONTAINER
 # ================================================================
 
 logger = logging.getLogger("ui.receiver")
-logfile_name = "receiver.log"
-log_path = f"/app/logs/{logfile_name}" if CONTAINER else f"../../logs/{logfile_name}"
+log_path = "./logs/ui_receiver.log"
 
 if not logger.handlers:  # Avoid duplicate handlers
     alert_handler = logging.FileHandler(log_path, mode='w')
@@ -26,12 +24,12 @@ if not logger.handlers:  # Avoid duplicate handlers
 
 
 # Utility function to check if port is available
-def is_port_available(port: int):
+def is_port_available(host: str, port: int):
     """Check if a port is available for binding"""
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            s.bind((HOST, port))
+            s.bind((host, port))
             return True
     except socket.error:
         return False
@@ -39,8 +37,10 @@ def is_port_available(port: int):
 
 class TCPAlertReceiver:
     """TCP receiver with auto-reconnection"""
-    def __init__(self, port, alert_queue):
+    def __init__(self, host, port, reconnect_delay, alert_queue):
+        self.host = host
         self.port = port
+        self.reconnection_delay=reconnect_delay
         self.alert_queue = alert_queue
         self.running = False
         self.server_socket = None
@@ -65,8 +65,8 @@ class TCPAlertReceiver:
                 if self.running:
                     # Ensure proper cleanup before restart
                     self._cleanup_server()
-                    logger.info(f"Restarting TCP server in {RECONNECT_DELAY} seconds...")
-                    time.sleep(RECONNECT_DELAY)
+                    logger.info(f"Restarting TCP server in {self.reconnection_delay} seconds...")
+                    time.sleep(self.reconnection_delay)
     
     def _cleanup_server(self):
         """Clean up server resources"""
@@ -98,7 +98,7 @@ class TCPAlertReceiver:
     def _run_server(self):
         """Run the TCP server"""
         # Check if port is available before attempting to bind
-        if not is_port_available(self.port):
+        if not is_port_available(self.host, self.port):
             logger.warning(f"Port {self.port} appears to be in use, will attempt to bind anyway...")
         
         # Create socket with improved options
@@ -111,11 +111,11 @@ class TCPAlertReceiver:
             pass  # SO_REUSEPORT not available on this platform
         
         try:
-            self.server_socket.bind((HOST, self.port))
+            self.server_socket.bind((self.host, self.port))
             self.server_socket.listen(5)
             self.server_socket.settimeout(1.0)
 
-            logger.info(f"TCP server successfully started on {HOST}:{self.port}")
+            logger.info(f"TCP server successfully started on {self.host}:{self.port}")
         
             while self.running:
                 try:

@@ -2,6 +2,7 @@ import numpy as np
 import cv2
 import onnxruntime as ort
 from time import time
+import logging
 
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
@@ -53,7 +54,7 @@ def resize_with_padding(image, target_size=(1080, 1920), pad_color=(0, 0, 0)):
     return padded, (pad_left, pad_top, new_w, new_h)
 
 
-def restore_original_mask(final_mask, original_shape, padding_info):
+def restore_original_mask(final_mask, original_shape, padding_info)->np.ndarray:
     """
     Restore the mask to the original image size.
 
@@ -154,15 +155,12 @@ def perform_segmentation(session: ort.InferenceSession, input_name, input_shape,
     """
 
     # Preprocess the frame
-    start = time()
     preprocessed_frame, padding_info = preprocess_segmentation_data(frame, input_shape)
 
     # Run inference
-    start = time()
     mask = session.run(None, {input_name: preprocessed_frame})
 
     # Postprocess result
-    start = time()
     roads_mask, vehicles_mask = postprocess_segmentation_output(
         mask=mask,
         original_shape=frame.shape[:2],

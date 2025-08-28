@@ -2,17 +2,16 @@ import streamlit as st
 from collections import deque
 import queue
 import logging
-from alert_receiver import TCPAlertReceiver
-from video_player import get_video_player
-from constants import TCP_PORT, MEDIAMTX_WEBRTC_URL, STREAM_NAME, STUN_SERVER, ALERT_BOX_TIMEDIFF, MAX_ALERT_QUEUE_SIZE, MAX_ALERTS_DISPAYED, REFRESH_STATS, REFRESH_ALERTS, CONTAINER
 import streamlit.components.v1 as components
 import datetime
+import os
+from src.ui.alert_receiver import TCPAlertReceiver
+from src.ui.video_player import get_video_player
 
 # ================================================================
 # Logging Configuration
 # ================================================================
-logfile_name = "ui.log"
-log_path = f"/app/logs/{logfile_name}" if CONTAINER else f"../../logs/{logfile_name}"
+log_path = "./logs/ui.log"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -24,10 +23,27 @@ logger = logging.getLogger("ui")
 
 
 # ================================================================
-# initialization
+# Application constants
 # ================================================================
 
-assets_path = f"/app/assets" if CONTAINER else f"../../assets"
+HOST = "0.0.0.0"
+MAX_ALERT_QUEUE_SIZE = 50
+MAX_ALERTS_DISPAYED = 5
+ALERT_BOX_TIMEDIFF = 5.0
+RECONNECT_DELAY = 5.0
+REFRESH_STATS = 1.0
+REFRESH_ALERTS = 1.0
+
+# Configurable parameters with environment variable fallbacks
+TCP_PORT = int(os.getenv("TCP_PORT", "54321"))
+MEDIAMTX_WEBRTC_URL = os.getenv("MEDIAMTX_WEBRTC_URL", "http://mediamtx:8889")
+STREAM_NAME = os.getenv("STREAM_NAME", "annot")
+STUN_SERVER = os.getenv("STUN_SERVER", "stun:stun.l.google.com:19302")
+
+
+# ================================================================
+# initialization
+# ================================================================
 
 def initialize_services(tcp_port, webrtc_url, webrtc_stream, webrtc_stun) -> bool:
     """Initialize all services automatically"""
@@ -44,11 +60,20 @@ def initialize_services(tcp_port, webrtc_url, webrtc_stream, webrtc_stun) -> boo
         st.session_state.total_alerts = 0
         
         # Initialize WebRTC config
-        st.session_state.webrtc_config = {'url': webrtc_url,'stream': webrtc_stream,'stun': webrtc_stun}
-        logger.info(f"WebRTC config has been setup as: {st.session_state.webrtc_config}")
+        webrtc_config = {'url': webrtc_url,'stream': webrtc_stream,'stun': webrtc_stun}
+        st.session_state.webrtc_config = webrtc_config
+        logger.info(f"WebRTC config has been setup: ")
+        logger.info(f"* Webrtc URL: {webrtc_config['url']}")
+        logger.info(f"* Stream name URL: {webrtc_config['stream']}")
+        logger.info(f"* Stun server: {webrtc_config['stun']}")
         
         # Start TCP receiver
-        st.session_state.tcp_receiver = TCPAlertReceiver(tcp_port, st.session_state.alert_queue)
+        st.session_state.tcp_receiver = TCPAlertReceiver(
+            host=HOST,
+            port=tcp_port,
+            reconnect_delay=RECONNECT_DELAY,
+            alert_queue=st.session_state.alert_queue,
+        )
         st.session_state.tcp_thread = st.session_state.tcp_receiver.start()
         st.session_state.current_tcp_port = tcp_port
         logger.info(f"TCP service initialized and started on port {tcp_port}")
@@ -149,7 +174,7 @@ def main():
     
     # Sidebar configuration
     with st.sidebar:
-        st.image(f"{assets_path}/Logo_Leonardo.png", width=200)
+        st.image(f"assets/Logo_Leonardo.png", width=200)
         
         st.subheader("Video stream configuration")
         webrtc_url = st.text_input(

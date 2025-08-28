@@ -19,7 +19,7 @@ from src.shared.processes.messages import AnnotationResults
 logger = logging.getLogger("main.alert_out")
 
 if not logger.handlers:  # Avoid duplicate handlers
-    video_handler = logging.FileHandler('/app/logs/alert_out.log')
+    video_handler = logging.FileHandler('/app/logs/alert_out.log', mode='w')
     video_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(video_handler)
     logger.setLevel(logging.DEBUG)
@@ -360,7 +360,7 @@ class NotificationsStreamWriter(mp.Process):
         # create TCP socket and connect
         connection_established = self._connect_tcp()
         if not connection_established:
-            logger.error("Failed to establish TCP connection, will try to reconnet on send")
+            logger.warning("Failed to establish TCP connection, will try to reconnet on send")
         
         frames_processed = 0
         

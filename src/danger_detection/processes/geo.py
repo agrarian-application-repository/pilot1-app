@@ -18,7 +18,7 @@ from time import time
 logger = logging.getLogger("main.danger_geo")
 
 if not logger.handlers:  # Avoid duplicate handlers
-    video_handler = logging.FileHandler('./logs/danger_geo.log')
+    video_handler = logging.FileHandler('./logs/danger_geo.log', mode='w')
     video_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(video_handler)
     logger.setLevel(logging.DEBUG)
@@ -42,6 +42,7 @@ class GeoWorker(mp.Process):
 
     def run(self):
         """Main loop of the process: instantiate files and then and processes frames."""
+        logger.info("Geo-handling process started.")
 
         frame_width = self.video_info_dict["frame_width"]
         frame_height = self.video_info_dict["frame_height"]
@@ -57,6 +58,8 @@ class GeoWorker(mp.Process):
             [frame_width - 1, frame_height - 1],  # lower right (C-1, R-1 )
             [0, frame_height - 1],  # lower left  (0,   R-1 )
         ])
+        logger.info("Running...")
+
 
         while True:
             iter_start = time()
@@ -66,7 +69,7 @@ class GeoWorker(mp.Process):
             if frame_telemetry_object is None:
                 self.result_queue.put(None)  # Signal end of processing
                 close_tifs([dem_tif, dem_mask_tif])     # close tif files
-                logger.info("Terminating geo data handling process.")
+                logger.info("Found sentinel value on queue. Terminating geo data handling process.")
                 break
 
             if frame_telemetry_object.telemetry is None:
