@@ -5,7 +5,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # set default environmental variables
 ENV TCP_PORT=54321
-ENV MEDIAMTX_WEBRTC_URL="http://mediamtx:8889"
+ENV MEDIAMTX_WEBRTC_URL="http://127.0.0.1:8889"
 ENV STREAM_NAME="annot"
 ENV STUN_SERVER="stun:stun.l.google.com:19302"
 

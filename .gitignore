@@ -1,5 +1,6 @@
 # Datasets and Results
 experiments/
+outputs/
 runs/
 wandb/
 

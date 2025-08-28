@@ -76,9 +76,9 @@ class GeoWorker(mp.Process):
                 result = GeoResult(
                     frame_id=frame_telemetry_object.frame_id,
                     safety_radius_pixels=-1,
-                    nodata_dem_mask=np.zeros(frame_height, frame_width),
-                    geofencing_mask=np.zeros(frame_height, frame_width),
-                    slope_mask=np.zeros(frame_height, frame_width),
+                    nodata_dem_mask=np.zeros((frame_height, frame_width), dtype=np.uint8),
+                    geofencing_mask=np.zeros((frame_height, frame_width), dtype=np.uint8),
+                    slope_mask=np.zeros((frame_height, frame_width), dtype=np.uint8),
                 )
                 self.result_queue.put(result)
                 logger.warning("No telemetry match found, skipping GEo step")
@@ -175,8 +175,8 @@ class GeoWorker(mp.Process):
                 slope_danger_mask = combined_dem_mask_over_frame[1]
 
             else:
-                dem_nodata_danger_mask = np.zeros(frame_height, frame_width)
-                slope_danger_mask = np.zeros(frame_height, frame_width)
+                dem_nodata_danger_mask = np.zeros((frame_height, frame_width), dtype=np.uint8)
+                slope_danger_mask = np.zeros((frame_height, frame_width), dtype=np.uint8)
 
             # ============== CREATE GEOFENCING MASK ========================
 
@@ -190,7 +190,7 @@ class GeoWorker(mp.Process):
                     polygon=Polygon(self.input_args["geofencing_vertexes"])
                 )
             else:
-                geofencing_danger_mask = np.zeros(frame_height, frame_width)
+                geofencing_danger_mask = np.zeros((frame_height, frame_width), dtype=np.uint8)
 
             # ============== PUT RESULTS ON QUEUE ========================
 

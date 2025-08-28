@@ -261,8 +261,8 @@ def perform_danger_detection(
             dem_nodata_danger_mask = combined_dem_mask_over_frame[0]
             slope_danger_mask = combined_dem_mask_over_frame[1]
         else:
-            dem_nodata_danger_mask = np.zeros((frame_height, frame_width))
-            slope_danger_mask = np.zeros((frame_height, frame_width))
+            dem_nodata_danger_mask = np.zeros((frame_height, frame_width), dtype=np.uint8)
+            slope_danger_mask = np.zeros((frame_height, frame_width), dtype=np.uint8)
 
         # ============== CREATE GEOFENCING MASK ========================
 
@@ -276,7 +276,7 @@ def perform_danger_detection(
                 polygon=Polygon(input_args["geofencing_vertexes"])
             )
         else:
-            geofencing_danger_mask = np.zeros((frame_height, frame_width))
+            geofencing_danger_mask = np.zeros((frame_height, frame_width), dtype=np.uint8)
 
         print(f"Frame-overlapping DEM validity and slope masks computed in {(time() - crono_start)*1000:.1f} ms")
 
