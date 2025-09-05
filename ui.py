@@ -5,6 +5,7 @@ import logging
 import streamlit.components.v1 as components
 import datetime
 import os
+from time import time
 from src.ui.alert_receiver import TCPAlertReceiver
 from src.ui.video_player import get_video_player
 
@@ -36,7 +37,7 @@ REFRESH_ALERTS = 1.0
 
 # Configurable parameters with environment variable fallbacks
 TCP_PORT = int(os.getenv("TCP_PORT", "54321"))
-MEDIAMTX_WEBRTC_URL = os.getenv("MEDIAMTX_WEBRTC_URL", "http://127.0.0.1:8889")
+MEDIAMTX_WEBRTC_URL = os.getenv("MEDIAMTX_WEBRTC_URL", "http://10.91.222.62:8889")
 STREAM_NAME = os.getenv("STREAM_NAME", "annot")
 STUN_SERVER = os.getenv("STUN_SERVER", "stun:stun.l.google.com:19302")
 
@@ -96,24 +97,26 @@ def update_metrics():
     if st.session_state.last_alert_timestamp is None:
         st.success("No alerts received yet")
     else:
-        current_datetime_utc = datetime.datetime.now(datetime.timezone.utc)
-        current_datetime_utc = current_datetime_utc.replace(tzinfo=None)
-        logger.info(current_datetime_utc)
-        logger.info(st.session_state.last_alert_timestamp)
+        current_time = time()
+        logger.info(f"current time: {current_time}")
+        logger.info(f"last alert time: {st.session_state.last_alert_timestamp}")
 
-        seconds_passed = int((current_datetime_utc - st.session_state.last_alert_timestamp).total_seconds())
-        logger.info(seconds_passed)
+        seconds_passed = int(current_time - st.session_state.last_alert_timestamp)
+        logger.info(f"seconds_passed: {seconds_passed}")
         minutes_passed = seconds_passed // 60
+        if minutes_passed > 0:
+            seconds_passed = seconds_passed % 60
 
-        # Convert UTC timestamp to local timezone for display
-        last_alert_local = st.session_state.last_alert_timestamp.replace(tzinfo=datetime.timezone.utc).astimezone()
-        last_alert_hms = last_alert_local.strftime('%H:%M:%S')
-        logger.info(last_alert_hms)
+        # Convert time to local timestamp for displaying
+        last_alert_local = datetime.datetime.fromtimestamp(st.session_state.last_alert_timestamp)
+        last_alert_local = last_alert_local.replace(tzinfo=datetime.timezone.utc).astimezone()
+        last_alert_local = last_alert_local.strftime('%H:%M:%S')
+        logger.info(last_alert_local)
 
         if seconds_passed < 60:
-            text = f"Alert received {seconds_passed} seconds ago ({last_alert_hms})"
+            text = f"Alert received {seconds_passed} seconds ago ({last_alert_local} UTC)"
         else:
-            text = f"Alert received {minutes_passed} minutes ago ({last_alert_hms})"
+            text = f"Alert received {minutes_passed}:{seconds_passed} minutes ago ({last_alert_local} UTC)"
         
         if seconds_passed > ALERT_BOX_TIMEDIFF:
             st.warning(text)
@@ -142,14 +145,18 @@ def process_alerts():
         with st.container(height=600):  # Adjust height as needed (in pixels)
             for i, alert in enumerate(st.session_state.alerts):
                 
-                st.session_state.last_alert_timestamp = alert['timestamp']  # UTC
-                alert_local_time = alert['timestamp'].replace(tzinfo=datetime.timezone.utc).astimezone()
+                st.session_state.last_alert_timestamp = alert['timestamp']  # time() UTC
                 
-                st.error(f"**Alert:** {alert['danger']}")
+                alert_local_time = datetime.datetime.fromtimestamp(alert['timestamp'])
+                alert_local_time = alert_local_time.replace(tzinfo=datetime.timezone.utc).astimezone()
+                alert_local_time = alert_local_time.strftime('%Y-%m-%d %H:%M:%S')
+                
+                st.error(f"**Alert:** {alert['alert']}")
                 st.image(
                     alert['image'],
                     use_container_width=True,
-                    caption=f"Frame {alert['frame_id']} - {alert_local_time.strftime('%Y-%m-%d %H:%M:%S')}"
+                    #width="stretch",
+                    caption=f"Frame {alert['frame_id']} - {alert_local_time} UTC"
                 )
                 
                 if i < len(st.session_state.alerts) - 1:

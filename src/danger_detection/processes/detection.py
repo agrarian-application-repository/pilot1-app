@@ -83,3 +83,5 @@ class DetectionWorker(mp.Process):
 
             logger.debug(f"frame {frame_telemetry_object.frame_id} completed in {(time() - iter_start) * 1000:.2f} ms")
 
+        logger.info("terminating")
+        return

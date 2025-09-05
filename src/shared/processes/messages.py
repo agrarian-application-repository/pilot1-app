@@ -37,12 +37,12 @@ class CombinedFrametelemetryQueueObject:
     Attributes:
         frame_id (int): The unique identifier for the frame.
         frame (np.ndarray): The actual image data as a NumPy array.
-        telemetry (dict): A dictionary object containing the drone telemetry.
+        telemetry (dict|None): A dictionary object containing the drone telemetry.
         timestamp (float): The timestamp of reception (of the frame).
     """
     frame_id: int
     frame: np.ndarray
-    telemetry: dict
+    telemetry: dict|None
     timestamp: float
 
 

@@ -32,7 +32,7 @@ def main():
         "annotations_ip": os.environ.get("ANNOTATIONS_IP", "mediamtx_server"),
         "annotations_port": int(os.environ.get("ANNOTATIONS_PORT", "8554")),
         "annotations_name": os.environ.get("ANNOTATIONS_NAME", "annot"),
-        "alerts_ip": os.environ.get("ALERTS_IP", "127.0.0.1"),
+        "alerts_ip": os.environ.get("ALERTS_IP", "10.91.222.62"),
         "alerts_port": int(os.environ.get("ALERTS_PORT", "54321")),
     }
     check_networking_args(urls)

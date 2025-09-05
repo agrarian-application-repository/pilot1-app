@@ -2,7 +2,7 @@
 
 # Set up the RTMP server details (where FFmpeg will push the stream to)
 # Note: The stream key 'stream' is appended to the URL
-rtmp_stream_url="rtmp://127.0.0.1:1935/drone"
+rtmp_stream_url="rtmp://10.91.222.62:1935/drone"
 
 echo "Starting RTMP stream to: $rtmp_stream_url"
 echo "Make sure your RTMP server is running on port 1935"

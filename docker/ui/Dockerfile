@@ -3,12 +3,6 @@ FROM python:3.12-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# set default environmental variables
-ENV TCP_PORT=54321
-ENV MEDIAMTX_WEBRTC_URL="http://127.0.0.1:8889"
-ENV STREAM_NAME="annot"
-ENV STUN_SERVER="stun:stun.l.google.com:19302"
-
 # Install system dependencies
 RUN apt update && apt install -y \
     ffmpeg \
@@ -38,6 +32,12 @@ COPY ui.py .
 
 # Set permissions for entire /app directory at once
 RUN chmod -R 777 /app
+
+# set default environmental variables
+ENV TCP_PORT=54321
+ENV MEDIAMTX_WEBRTC_URL="http://10.91.222.62:8889"
+ENV STREAM_NAME="annot"
+ENV STUN_SERVER="stun:stun.l.google.com:19302"
 
 # Input port:
 # 54321/tcp: custom TCP output for receiving alerts

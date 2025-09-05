@@ -2,7 +2,7 @@
 
 # Set up the RTMP server details (where FFmpeg will push the stream to)
 # Note: The stream key 'stream' is appended to the URL
-rtsp_stream_url="rtsp://127.0.0.1:8554/annot"
+rtsp_stream_url="rtsp://10.91.222.62:8554/annot"
 
 echo "Starting RTSP stream to: $rtsp_stream_url"
 echo "Make sure your RTMP server is running on port 8554"

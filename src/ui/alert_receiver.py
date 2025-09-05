@@ -232,19 +232,33 @@ class TCPAlertReceiver:
     
     def _process_alert(self, alert_data):
         """Process alert data"""
+        # message_data = {
+        #        "frame_id": frame_results.frame_id,
+        #        "alert_msg": frame_results.alert_msg,
+        #        "timestamp": frame_results.timestamp,
+        #        "img_shape": frame_results.annotated_frame.shape,
+        #        "img_dtype": str(frame_results.annotated_frame.dtype),
+        #        "img_format": img_format,
+        #        "compressed": compression_success
+        #    }
+
         try:
             frame_id = alert_data.get('frame_id', 'Unknown')
-            alert_str = alert_data.get('alert', 'Unknown')
-            timestamp = alert_data.get('timestamp', time.time())    # use current time as default
+            alert_str = alert_data.get('alert_msg', 'Unknown')
+            timestamp = alert_data.get('timestamp', None)
             img_shape = alert_data.get('img_shape', [])
             img_dtype = alert_data.get('img_dtype', 'uint8')
             img_format = alert_data.get('img_format', None)
             compressed = alert_data.get('compressed', False)
             img_bytes = alert_data.get('img_bytes', b'')
 
-            format_pattern = "%Y-%m-%d %H:%M:%S"
-            timestamp = datetime.datetime.fromtimestamp(timestamp).strftime(format_pattern)
+            # format_pattern = "%Y-%m-%d %H:%M:%S"
+            # timestamp = datetime.datetime.fromtimestamp(timestamp).strftime(format_pattern)
             
+            if timestamp is None:
+                logger.warning("Received alert with undecodable timestamp")
+                return 
+
             if img_bytes:
                 image = self._reconstruct_image(
                     img_bytes, img_shape, img_dtype, img_format, compressed

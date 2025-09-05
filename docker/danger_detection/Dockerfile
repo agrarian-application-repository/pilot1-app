@@ -2,17 +2,6 @@ FROM pytorch/pytorch:2.5.1-cuda12.1-cudnn9-devel
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-ENV STREAM_IP="mediamtx_server"
-ENV STREAM_PORT="1935"
-ENV STREAM_NAME="drone"
-ENV TELEMETRY_IP="0.0.0.0"
-ENV TELEMETRY_PORT="12345"
-ENV ANNOTATIONS_IP="mediamtx_server"
-ENV ANNOTATIONS_PORT="8554"
-ENV ANNOTATIONS_NAME="annot"
-ENV ALERTS_IP="127.0.0.1"
-ENV ALERTS_PORT="54321"
-
 # Install system dependencies
 RUN apt update && apt install -y \
     ffmpeg \
@@ -54,6 +43,17 @@ COPY danger_detection_stream.py .
 
 # Set permissions for entire /app directory at once
 RUN chmod -R 777 /app
+
+ENV STREAM_IP="mediamtx_server"
+ENV STREAM_PORT="1935"
+ENV STREAM_NAME="drone"
+ENV TELEMETRY_IP="0.0.0.0"
+ENV TELEMETRY_PORT="12345"
+ENV ANNOTATIONS_IP="mediamtx_server"
+ENV ANNOTATIONS_PORT="8554"
+ENV ANNOTATIONS_NAME="annot"
+ENV ALERTS_IP="10.91.222.62"
+ENV ALERTS_PORT="54321"
 
 # Input ports:
 # 1935/tcp: For RTMP input (not exposed, handled by the mediamtx server)

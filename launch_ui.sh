@@ -10,7 +10,7 @@ CONTAINER_NAME="agrarian-ui"
 HOST_TCP_PORT="54321"
 TCP_PORT="54321"
 HOST_STREAMLIT_PORT="8501"
-MEDIAMTX_WEBRTC_URL="http://127.0.0.1:8889"
+MEDIAMTX_WEBRTC_URL="http://10.91.222.62:8889"
 STREAM_NAME="annot"
 STUN_SERVER="stun:stun.l.google.com:19302"
 DETACHED="false"
@@ -33,7 +33,7 @@ OPTIONS:
     -p, --tcp-port PORT                 Host TCP port mapping (default: 54321)
     -s, --streamlit-port PORT           Host Streamlit port mapping (default: 8501)
     --internal-tcp-port PORT            Internal TCP port (default: 54321)
-    -m, --mediamtx-url URL              MediaMTX WebRTC URL (default: http://127.0.0.1:8889)
+    -m, --mediamtx-url URL              MediaMTX WebRTC URL (default: http://10.91.222.62:8889)
     --stream-name NAME                  Stream name (default: annot)
     --stun-server SERVER                STUN server (default: stun:stun.l.google.com:19302)
     -d, --detached                      Run in detached mode

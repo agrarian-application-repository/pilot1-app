@@ -62,4 +62,4 @@
 
 "$rtmp_stream_url"
 
-    "Output URL": This is the destination URL for the stream. It's an RTMP URL, like rtmp://127.0.0.1:1935/drone. FFmpeg will push the encoded video data to this address. The double quotes (") are good practice to ensure the variable content is treated as a single argument, even if it contained spaces (though RTMP URLs typically don't).
+    "Output URL": This is the destination URL for the stream. It's an RTMP URL, like rtmp://10.91.222.62:1935/drone. FFmpeg will push the encoded video data to this address. The double quotes (") are good practice to ensure the variable content is treated as a single argument, even if it contained spaces (though RTMP URLs typically don't).

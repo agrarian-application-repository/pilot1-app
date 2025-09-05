@@ -27,7 +27,7 @@ def main():
     parser.add_argument(
         '--ip', 
         type=str, 
-        default="127.0.0.1", 
+        default="10.91.222.62", 
         help="IP address to send telemetry data to."
     )
     parser.add_argument(

@@ -27,7 +27,7 @@ TELEMETRY_PORT="12345"
 ANNOTATIONS_IP="mediamtx_server"
 ANNOTATIONS_PORT="8554"
 ANNOTATIONS_NAME="annot"
-ALERTS_IP="127.0.0.1"
+ALERTS_IP="10.91.222.62"
 ALERTS_PORT="54321"
 
 DETACHED="false"
@@ -55,7 +55,7 @@ OPTIONS:
     --telemetry_ip      URL(IP)                 IP where to receive the telemetry packets (default: 0.0.0.0 - listen on all interfaces)
     --telemetry_port    URL(PORT)               Port where to receive the UDP packets (exposed Dockerfile: 12345/udp)
     --annotations_name  URL(NAME)               Name of the annotated stream (default: annot)
-    --alerts_ip         URL(IP)                 IP of the machine where to send the alerts TPC packets (default: 127.0.0.1)
+    --alerts_ip         URL(IP)                 IP of the machine where to send the alerts TPC packets (default: 10.91.222.62)
     --alerts_port       URL(PORT)               Port where to send the alerts TCP packets
 
     -d, --detached                              Run in detached mode
