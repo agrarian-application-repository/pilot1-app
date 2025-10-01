@@ -18,8 +18,8 @@ iou: 0.3
 # All images/videos will be resized to this height before being given to the model (doesn't affect output image/video size).
 # Range: Any positive integer >= 32.
 imgsz:
-  - 1088 # height
-  - 1920 # width
+  - 736 # height
+  - 1280 # width
 
 # bool: Enable half-precision (FP16) inference.
 # Can increase inference speed on supported GPUs with minimal accuracy loss.

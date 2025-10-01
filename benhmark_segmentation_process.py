@@ -10,7 +10,7 @@ print(torch.backends.cudnn.version())
 def main():
 
     print("started")
-    queue_lenght = 200
+    queue_lenght = 500
     segmentation_in_queue = mp.Queue()
     segmentation_results_queue = mp.Queue()
 
@@ -18,7 +18,8 @@ def main():
         segmentation_in_queue.put(
             CombinedFrametelemetryQueueObject(
                 frame_id=i,
-                frame=np.random.randint(0, 256, (1920, 1080, 3), dtype=np.uint8),
+                frame=np.random.randint(0, 256, (1080, 1920, 3), dtype=np.uint8),
+                #frame=np.random.randint(0, 256, (720, 1280, 3), dtype=np.uint8),
                 telemetry=None,
                 timestamp=time()
 

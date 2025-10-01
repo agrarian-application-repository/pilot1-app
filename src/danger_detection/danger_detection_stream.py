@@ -23,9 +23,10 @@ def perform_danger_detection(
         drone_args: dict[str, Any],
 ) -> None:
     
+    # impose processing of 1280x720 videos (HD)
     video_info_dict = {
-        "frame_width": drone_args.pop("frame_width"),
-        "frame_height": drone_args.pop("frame_height"),
+        "frame_width": 1280,
+        "frame_height": 720,
         "fps": drone_args.pop("fps"),
     }
 

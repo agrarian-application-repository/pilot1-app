@@ -45,6 +45,9 @@ def check_drone_args(args: dict[str, Any]) -> dict[str, Any]:
     assert isinstance(args['frame_height'], int) and args['frame_height'] >= 32, \
         f"'frame_height' must be a positive integer >= 32. Got {args['frame_height']}"
     
+    assert abs(args['frame_width']/args['frame_height'] - 16.0/9.0) < 1e-2, \
+        f"the expected aspect ratio between frame width and height is 16:9. Ensure your values match this requirement"
+    
     assert isinstance(args['fps'], int) and args['fps'] > 0, \
         f"'fps' must be a positive integer. Got {args['fps']}"
 

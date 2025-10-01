@@ -15,8 +15,10 @@ sensor_width_pixels: 5280 # standard Effective 20MP for 4/3 CMOS sensor
 # positive int: height of the camera sensor in pixels
 sensor_height_pixels: 3956  # standard Effective 20MP for 4/3 CMOS sensor
 
-# NOTE: sensor_width_pixels/sensor_height_pixels MUST be equal to sensor_width_mm/sensor_height_mm
+# NOTE: sensor_width_pixels/sensor_height_pixels MUST be equal to sensor_width_mm/sensor_height_mm!!!!
 
+# NOTE: EXPECTED A 16:9 ASPECT RATIO!!!
+# frames will be scalead and processed at 1280x720 resolution
 # These are only used for streams, precise values are used when video files are opened instead
 # integer >= 32: height of the video frame
 frame_height: 1080

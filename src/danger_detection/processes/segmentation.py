@@ -73,17 +73,23 @@ class SegmentationWorker(mp.Process):
                 break
 
             # Perform segmentation using stored arguments
+            predict_start = time()
             roads_mask, vehicles_mask = segmenter.predict(frame_telemetry_object.frame)
-            
+            predict_time = time() - predict_start
+
             # append result on next process queue
+            append_start = time()
             result = SegmentationResult(
                 frame_id=frame_telemetry_object.frame_id,
                 roads_mask=roads_mask,
                 vehicles_mask=vehicles_mask,
             )
-            
             self.result_queue.put(result)
+            append_time = time() - append_start
+
             logger.debug("Appended mask to next process queue")
 
+            logger.debug(f"frame {frame_telemetry_object.frame_id} predict completed in {predict_time*1000:.2f} ms")
+            logger.debug(f"frame {frame_telemetry_object.frame_id} append completed in {append_time*1000:.2f} ms")
             logger.debug(f"frame {frame_telemetry_object.frame_id} completed in {(time()-iter_start)*1000:.2f} ms")
 
