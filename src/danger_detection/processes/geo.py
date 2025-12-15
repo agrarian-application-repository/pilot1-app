@@ -1,4 +1,6 @@
 import multiprocessing as mp
+from queue import Empty
+
 import logging
 import numpy as np
 from shapely import Polygon
@@ -11,6 +13,8 @@ from src.danger_detection.utils import (close_tifs, compute_slope_mask_horn,
                                  map_window_onto_drone_frame)
 from src.danger_detection.processes.messages import GeoResult
 from src.shared.processes.messages import CombinedFrameTelemetryQueueObject
+from src.shared.processes.constants import POISON_PILL, QUEUE_GET_TIMEOUT
+
 from time import time
 
 # ================================================================
@@ -28,11 +32,9 @@ if not logger.handlers:  # Avoid duplicate handlers
 
 class GeoWorker(mp.Process):
 
-    def __init__(self, input_args, drone_args, input_queue, result_queue, video_info_dict):
+    def __init__(self, input_queue, result_queue, input_args, drone_args):
 
         super().__init__()
-
-        self.video_info_dict = video_info_dict
 
         self.input_queue = input_queue
         self.result_queue = result_queue
@@ -41,37 +43,63 @@ class GeoWorker(mp.Process):
         self.drone_args = drone_args
 
     def run(self):
-        """Main loop of the process: instantiate files and then and processes frames."""
+        """
+        Main loop of the process: 
+        - instantiate files
+        - processes frames.
+        - Shuts down when it receives a poison pill, forwarding the termination signal to the next process in the sequence
+        """
+        
         logger.info("Geo-handling process started.")
-
-        frame_width = self.video_info_dict["frame_width"]
-        frame_height = self.video_info_dict["frame_height"]
 
         # Open the DEM, if provided
         # open the DEM mask, if provided and DEM provided
-        dem_tif, dem_mask_tif = open_dem_tifs(dem_path=self.input_args["dem"], dem_mask_path=self.input_args["dem_mask"])
+        dem_tif, dem_mask_tif = open_dem_tifs(
+            dem_path=self.input_args["dem"], 
+            dem_mask_path=self.input_args["dem_mask"]
+        )
 
-        # set the col/row identifier of the frame corners (x,y)
-        frame_corners = np.array([
-            [0, 0],  # upper left  (0,   0   )
-            [frame_width - 1, 0],  # upper right (C-1, 0   )
-            [frame_width - 1, frame_height - 1],  # lower right (C-1, R-1 )
-            [0, frame_height - 1],  # lower left  (0,   R-1 )
-        ])
+        # placeholders, will be set based on first frame shape
+        frame_width = None
+        frame_height = None
+        frame_corners = None
+        
         logger.info("Running...")
 
 
         while True:
+
             iter_start = time()
 
-            frame_telemetry_object: CombinedFrameTelemetryQueueObject = self.input_queue.get()
-            
-            if frame_telemetry_object is None:
-                self.result_queue.put(None)  # Signal end of processing
-                close_tifs([dem_tif, dem_mask_tif])     # close tif files
-                logger.info("Found sentinel value on queue. Terminating geo data handling process.")
-                break
+            try:
+                # frame_telemetry_object is either a CombinedFrameTelemetryQueueObject or the POISON_PILL
+                frame_telemetry_object: CombinedFrameTelemetryQueueObject  = self.input_queue.get(timeout=QUEUE_GET_TIMEOUT)
+            except Empty:
+                logger.warning(f"Input queue timed out ({QUEUE_GET_TIMEOUT} secsonds). Upstream producer may be stalled. Retrying...")
+                continue # Go back and try to get again
 
+            if frame_telemetry_object == POISON_PILL:
+                logger.info("Found sentinel value on queue.")
+                # Signal end of processing to the next process in the chain
+                # Ensure the poison pill is passed on by using a blocking put (will wait until queue is free) 
+                self.result_queue.put(POISON_PILL)  
+                logger.info("Sentinel value has been passed on to the next process. Terminating geo data handling process...")
+                break
+            
+            # setup frame dimensions and corners based on the first frame received
+            if frame_width is None and frame_height is None and frame_corners is None:
+                frame_height, frame_width, _ = frame_telemetry_object.frame
+                frame_corners = np.array([
+                    [0, 0],  # upper left  (0,   0   )
+                    [frame_width - 1, 0],  # upper right (C-1, 0   )
+                    [frame_width - 1, frame_height - 1],  # lower right (C-1, R-1 )
+                    [0, frame_height - 1],  # lower left  (0,   R-1 )
+                ])
+                logger.debug(f"Geo-data handler got frame WxH = {frame_width} x {frame_height}")
+
+
+            # If there is no telemetry associated with the frame, then no processing can be performed. 
+            # Assume no dangers and return clean danger masks.
             if frame_telemetry_object.telemetry is None:
                 result = GeoResult(
                     frame_id=frame_telemetry_object.frame_id,
@@ -80,11 +108,15 @@ class GeoWorker(mp.Process):
                     geofencing_mask=np.zeros((frame_height, frame_width), dtype=np.uint8),
                     slope_mask=np.zeros((frame_height, frame_width), dtype=np.uint8),
                 )
+                # blocking put ensures the result is put on the target queue eventually (when space becomes available)
+                # cannot discard this processing since the AI modules results must be combined later, and all resuls must be present
                 self.result_queue.put(result)
-                logger.warning("No telemetry match found, skipping GEo step")
+                logger.warning("No telemetry match found, skipping GEO step")
                 logger.debug(f"completed in {(time()-iter_start)*1000:.2f} ms")
                 continue
+                # iteration concluded, move on to the next one
 
+            # OTHERWISE, continue processing based on telemetry info
             # load frame flight data
             frame_flight_data = frame_telemetry_object.telemetry
 
@@ -201,9 +233,18 @@ class GeoWorker(mp.Process):
                 geofencing_mask=geofencing_danger_mask,
                 slope_mask=slope_danger_mask,
             )
+            # blocking put ensures the result is put on the target queue eventually (when space becomes available)
+            # cannot discard this processing since the AI modules results must be combined later, and all resuls must be present
             self.result_queue.put(result)
 
             logger.debug(f"completed in {(time()-iter_start)*1000:.2f} ms")
+
+
+        # end of process, cleanup and log conclusion
+        close_tifs([dem_tif, dem_mask_tif])     # close tif files
+        logger.info("Geo data handling process terminated successfully.")
+
+        
 
 
 
