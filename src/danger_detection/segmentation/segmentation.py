@@ -94,10 +94,14 @@ def preprocess_segmentation_data(frame: np.ndarray, input_shape):
     expected_img_shape = tuple(input_shape[2:])    # (H,W)
     true_img_shape = frame.shape[:2]    # (H,W)
 
-    if expected_img_shape != true_img_shape:
-        resized, padding_info = resize_with_padding(frame_rgb, target_size=expected_img_shape)
-    else:
-        resized, padding_info = frame_rgb, (0, 0, frame.shape[1], frame.shape[0])   # (0,0,W,H)
+    assert expected_img_shape == true_img_shape, f"shape mistmatch in segmentation {expected_img_shape}-{true_img_shape}"
+    resized = frame_rgb
+    padding_info=(0, 0, frame.shape[1], frame.shape[0])
+
+    #if expected_img_shape != true_img_shape:
+    #    resized, padding_info = resize_with_padding(frame_rgb, target_size=expected_img_shape)
+    #else:
+    #    resized, padding_info = frame_rgb, (0, 0, frame.shape[1], frame.shape[0])   # (0,0,W,H)
 
     # normalization
     normalized = resized.astype(np.float32)
@@ -127,7 +131,8 @@ def postprocess_segmentation_output(mask: list, original_shape: tuple, padding_i
 
     mask = mask[0].squeeze()    # get first result, suppress channel dim
 
-    mask = restore_original_mask(mask, original_shape, padding_info)
+    # no resizing (working directly with 1280x720 always)
+    # mask = restore_original_mask(mask, original_shape, padding_info)
 
     if suppress_classes:
         suppress_mask = np.isin(mask, suppress_classes)
@@ -155,18 +160,27 @@ def perform_segmentation(session: ort.InferenceSession, input_name, input_shape,
     """
 
     # Preprocess the frame
+    print("--------------")
+    t1 = time()
     preprocessed_frame, padding_info = preprocess_segmentation_data(frame, input_shape)
+    print(f"{(time()-t1)*1000}")
 
     # Run inference
+    t1 = time()
     mask = session.run(None, {input_name: preprocessed_frame})
+    print(f"{(time()-t1)*1000}")
 
     # Postprocess result
+    t1 = time()
     roads_mask, vehicles_mask = postprocess_segmentation_output(
         mask=mask,
         original_shape=frame.shape[:2],
         padding_info=padding_info,
         suppress_classes=segmentation_args["suppress_classes"]
     )
+    print(f"{(time()-t1)*1000}")
+    print("--------------")
+
 
     # onnx model returns class labels
     return roads_mask, vehicles_mask

@@ -1,5 +1,5 @@
 # str: Name of the directory where the results of the analysis will be saved
-output_dir: 'pr1_danger'
+output_dir: 'test_danger_detection_stream_dd_hd'
 
 # str: Name of the files on which alerts will be saved
 alert_file_name: 'alerts_stream'

@@ -8,7 +8,7 @@ import numpy as np
 def main():
 
     print("started")
-    queue_lenght = 200
+    queue_lenght = 500
     detection_in_queue = mp.Queue()
     detection_results_queue = mp.Queue()
 
@@ -16,7 +16,7 @@ def main():
         detection_in_queue.put(
             CombinedFrametelemetryQueueObject(
                 frame_id=i,
-                frame=np.random.randint(0, 256, (1920, 1080, 3), dtype=np.uint8),
+                frame=np.random.randint(0, 256, (720, 1280, 3), dtype=np.uint8),
                 telemetry=None,
                 timestamp=time()
 

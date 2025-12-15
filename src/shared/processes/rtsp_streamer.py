@@ -40,6 +40,37 @@ class RTSPStreamer:
             '-rtsp_transport', 'tcp',  # More reliable than UDP
             self.rtsp_url
         ]
+
+        #cmd = [
+        #    'ffmpeg', '-y',
+        #    '-f', 'rawvideo',
+        #    '-vcodec', 'rawvideo', 
+        #    '-s', f'{self.width//2}x{self.height//2}',
+        #    '-r', str(self.fps),
+        #    '-pix_fmt', 'bgr24',    # depending on input (rgb24)
+        #    '-i', '-',
+        #    '-vf', 'yadif=1:0:1',
+        #    '-c:v', 'libx264',
+        #    '-pix_fmt', 'yuv420p',
+        #    '-preset', 'medium',
+        #    '-tune', 'zerolatency',
+        #    '-profile:v', 'high',
+        #    '-level', '4.1',
+        #    '-g', str(self.fps*2),  # GOP size = framerate for 1 second keyframes
+        #    '-keyint_min', str(self.fps),
+        #    '-b:v', '8M',  # Adjust based on your needs
+        #    '-maxrate', '10M',
+        #    '-bufsize', '16M',  # Much larger buffer
+        #    '-rc_lookahead', '40',
+        #    '-refs', '5',
+        #    '-crf', '20',
+        #    '-vsync', 'cfr', 
+        #    '-fps_mode', 'cfr',
+        #    '-x264-params', 'nal-hrd=cbr:force-cfr=1:bframes=2',
+        #    '-f', 'rtsp',
+        #    '-rtsp_transport', 'tcp',  # More reliable than UDP
+        #    self.rtsp_url
+        #]
         
         self.ffmpeg_process = subprocess.Popen(
             cmd, 

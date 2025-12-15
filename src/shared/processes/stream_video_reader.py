@@ -17,6 +17,9 @@ if not logger.handlers:  # Avoid duplicate handlers
 # ================================================================
 
 
+target_ratio = 16.0/9.0
+target_tolerance = 1e-2
+
 class StreamVideoReader(mp.Process):
     """Reads video frames and pushes them to the frame queue."""
     
@@ -61,9 +64,9 @@ class StreamVideoReader(mp.Process):
         cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, self.reading_timeout_s * 1000)  # timeout for reading frame
 
         # Set video info
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.video_info_dict["frame_width"])
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.video_info_dict["frame_height"])
-        cap.set(cv2.CAP_PROP_FPS, self.video_info_dict["fps"])
+        # cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.video_info_dict["frame_width"])
+        # cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.video_info_dict["frame_height"])
+        # cap.set(cv2.CAP_PROP_FPS, self.video_info_dict["fps"])
         
         return cap
 
@@ -147,6 +150,12 @@ class StreamVideoReader(mp.Process):
             if frame is None or frame.size == 0:
                 logger.warning("Received empty frame, skipping")
                 continue
+            
+            frame_height, frame_width, _ = frame.shape
+            assert abs(frame_width/frame_height - target_ratio) < target_tolerance
+            # resize to desired frame size
+            #frame = cv2.resize(frame, (1280,720), interpolation=cv2.INTER_LINEAR)
+            frame = cv2.resize(frame, (1280,720), interpolation=cv2.INTER_AREA)
 
             # Package the frame with its unique frame ID
             frame_object = FrameQueueObject(
