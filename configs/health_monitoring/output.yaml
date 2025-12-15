@@ -1,5 +1,5 @@
 # str: Name of the directory where the results of the analysis will be saved
-output_dir: 'experiments/test_health_monitoring'
+output_dir: 'experiments/pr1_health'
 
 # str: Name of the files on which alerts will be saved
 alert_file_name: 'alerts'

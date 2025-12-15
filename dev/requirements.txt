@@ -9,6 +9,7 @@ numpy
 onnx
 onnxruntime-gpu
 opencv-python-headless
+paho-mqtt
 Pillow
 pyYAML
 pytest

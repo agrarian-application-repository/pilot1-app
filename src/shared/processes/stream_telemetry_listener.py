@@ -6,7 +6,6 @@ import multiprocessing as mp
 from src.shared.processes.messages import TelemetryQueueObject
 
 # ================================================================
-
 logger = logging.getLogger("main.stream_telemetry_in")
 
 if not logger.handlers:  # Avoid duplicate handlers
@@ -14,7 +13,6 @@ if not logger.handlers:  # Avoid duplicate handlers
     video_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(video_handler)
     logger.setLevel(logging.DEBUG)
-
 # ================================================================
 
 class StreamTelemetryListener(mp.Process):
