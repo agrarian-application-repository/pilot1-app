@@ -5,6 +5,7 @@ import logging
 
 logger = logging.getLogger("main.video_out")
 
+
 class RTSPStreamer:
     def __init__(self, rtsp_url, width, height, fps):
         self.rtsp_url = rtsp_url

@@ -1,6 +1,6 @@
 from src.configs.utils import read_yaml_config
 from src.danger_detection.processes.detection import DetectionWorker
-from src.shared.processes.messages import CombinedFrametelemetryQueueObject
+from src.shared.processes.messages import CombinedFrameTelemetryQueueObject
 import multiprocessing as mp
 from time import time
 import numpy as np
@@ -14,7 +14,7 @@ def main():
 
     for i in range(queue_lenght):
         detection_in_queue.put(
-            CombinedFrametelemetryQueueObject(
+            CombinedFrameTelemetryQueueObject(
                 frame_id=i,
                 frame=np.random.randint(0, 256, (720, 1280, 3), dtype=np.uint8),
                 telemetry=None,

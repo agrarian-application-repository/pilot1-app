@@ -3,7 +3,7 @@ import logging
 from src.danger_detection.segmentation.segmentation import create_onnx_segmentation_session, perform_segmentation
 
 from src.danger_detection.processes.messages import SegmentationResult
-from src.shared.processes.messages import CombinedFrametelemetryQueueObject
+from src.shared.processes.messages import CombinedFrameTelemetryQueueObject
 from time import time
 
 # ================================================================
@@ -66,7 +66,7 @@ class SegmentationWorker(mp.Process):
         # start processing frames
         while True:
             iter_start = time()
-            frame_telemetry_object: CombinedFrametelemetryQueueObject = self.input_queue.get()
+            frame_telemetry_object: CombinedFrameTelemetryQueueObject = self.input_queue.get()
             if frame_telemetry_object is None:
                 self.result_queue.put(None)  # Signal end of processing
                 logger.info("Found sentinel value on queue. Terminating segmentation process.")

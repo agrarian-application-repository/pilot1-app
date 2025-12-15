@@ -10,7 +10,7 @@ from src.danger_detection.utils import (close_tifs, compute_slope_mask_horn,
                                  get_window_size_m,
                                  map_window_onto_drone_frame)
 from src.danger_detection.processes.messages import GeoResult
-from src.shared.processes.messages import CombinedFrametelemetryQueueObject
+from src.shared.processes.messages import CombinedFrameTelemetryQueueObject
 from time import time
 
 # ================================================================
@@ -64,7 +64,7 @@ class GeoWorker(mp.Process):
         while True:
             iter_start = time()
 
-            frame_telemetry_object: CombinedFrametelemetryQueueObject = self.input_queue.get()
+            frame_telemetry_object: CombinedFrameTelemetryQueueObject = self.input_queue.get()
             
             if frame_telemetry_object is None:
                 self.result_queue.put(None)  # Signal end of processing

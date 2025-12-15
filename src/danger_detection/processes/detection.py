@@ -4,7 +4,7 @@ from src.danger_detection.detection.detection import postprocess_detection_resul
 from ultralytics import YOLO
 
 from src.danger_detection.processes.messages import DetectionResult
-from src.shared.processes.messages import CombinedFrametelemetryQueueObject
+from src.shared.processes.messages import CombinedFrameTelemetryQueueObject
 from time import time
 import logging
 
@@ -59,7 +59,7 @@ class DetectionWorker(mp.Process):
 
         while True:
             iter_start = time()
-            frame_telemetry_object: CombinedFrametelemetryQueueObject = self.input_queue.get()
+            frame_telemetry_object: CombinedFrameTelemetryQueueObject = self.input_queue.get()
             
             if frame_telemetry_object is None:
                 self.result_queue.put(None)  # Signal end of processing

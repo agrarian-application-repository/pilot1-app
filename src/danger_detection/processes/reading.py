@@ -3,7 +3,7 @@ import logging
 import cv2
 import time
 from pathlib import Path
-from src.shared.processes.messages import CombinedFrametelemetryQueueObject
+from src.shared.processes.messages import CombinedFrameTelemetryQueueObject
 from src.shared.drone_utils.flight_logs import parse_drone_flight_data
 
 # ================================================================
@@ -88,7 +88,7 @@ class VideoTelemetryFilesReader(mp.Process):
             frame_flight_data = parse_drone_flight_data(flight_data_file, frame_id)
 
             # Package the frame with its unique frame ID
-            frame_telemetry_object = CombinedFrametelemetryQueueObject(
+            frame_telemetry_object = CombinedFrameTelemetryQueueObject(
                 frame_id=frame_id, 
                 frame=frame,
                 telemetry=frame_flight_data,

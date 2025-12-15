@@ -30,7 +30,7 @@ class TelemetryQueueObject:
 
 
 @dataclass
-class CombinedFrametelemetryQueueObject:
+class CombinedFrameTelemetryQueueObject:
     """
     A dataclass to represent the match between a frame and a telemetry packet based on timestamp.
 
