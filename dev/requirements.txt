@@ -1,3 +1,4 @@
+aiomqtt
 black
 isort
 geopy
@@ -22,8 +23,12 @@ scikit-image
 scipy
 setuptools
 shapely
+sqlalchemy
 streamlit
+torch
+torchvision
 transformers
 tqdm
 ultralytics
 wandb
+websockets

@@ -1,6 +1,7 @@
 import numpy as np
 from dataclasses import dataclass
 
+
 @dataclass
 class DetectionResult:
     """
@@ -16,6 +17,7 @@ class DetectionResult:
         boxes_corner1 (np.ndarray): An array of the top-left corner coordinates of each bounding box.
         boxes_corner2 (np.ndarray): An array of the bottom-right corner coordinates of each bounding box.
         timestamp (float): The timestamp of reception (of the frame).
+        original_wh tuple(int, int): The original shape of the image
     """
     frame_id: int
     frame: np.ndarray
@@ -26,6 +28,7 @@ class DetectionResult:
     boxes_corner1: np.ndarray
     boxes_corner2: np.ndarray
     timestamp: float
+    original_wh: tuple[int, int]
 
 
 @dataclass
@@ -80,6 +83,7 @@ class DangerDetectionResults:
         intersection_mask (np.ndarray): A mask showing the intersection of detection and geo-analysis.
         danger_types (str): A list of string describing the types of danger detected.
         timestamp (float): The timestamp of reception (of the frame).
+        original_wh tuple(int, int): The original shape of the image
     """
     frame_id: int
     frame: np.ndarray
@@ -94,3 +98,5 @@ class DangerDetectionResults:
     intersection_mask: np.ndarray
     danger_types: str
     timestamp: float
+    original_wh: tuple[int, int]
+

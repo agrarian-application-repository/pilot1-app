@@ -105,6 +105,8 @@ class AnnotationWorker(mp.Process):
                 timestamp=previous_step_results.timestamp
             )
 
+            # TODO: modify. always send to video stream queue, oldy send to notification queue when an alerts exists (and cooldown has apssed)
+
             # Send result to both streaming queues
             for stream_queue in self.stream_queues:
                 stream_queue.put(result)
