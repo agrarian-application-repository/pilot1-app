@@ -8,6 +8,7 @@ from time import time
 from src.shared.processes.messages import TelemetryQueueObject
 import multiprocessing as mp
 from src.shared.processes.constants import (
+    MQTTS_PORT,
     MQTT_CERT_VALIDATION,
     MQTT_RECONNECT_DELAY,
     MQTT_TOPICS_TO_SUBSCRIBE,
@@ -40,7 +41,7 @@ class MqttCollectorProcess(mp.Process):
             stop_event: mp.Event,                       # stop event used to stop gracefully
             error_event: mp.Event,                      # error event used to stop gracefully on processing error
             broker_host: str = "test.mosquitto.org",    # Example public broker that supports TLS
-            broker_port: int = 8883,                    # Standard secure MQTTS port
+            broker_port: int = MQTTS_PORT,              # Standard secure MQTTS port
             username: str = None,
             password: str = None,
             qos_level: int = MQTT_QOS_LEVEL,

@@ -24,14 +24,11 @@ if not logger.handlers:  # Avoid duplicate handlers
 class VideoStreamWriter(mp.Process):
     def __init__(
             self, 
-            video_info_dict, 
-            input_queue: mp.Queue, 
-            output_dir: str, 
-            output_url: str, 
+            input_queue: mp.Queue,
+            error_event: mp.Event,
         ):
 
         super().__init__()
-        self.video_info_dict = video_info_dict
         self.input_queue = input_queue
         self.output_dir = Path(output_dir)
         self.output_url = output_url

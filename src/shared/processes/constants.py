@@ -41,6 +41,9 @@ VIDEO_READING_OUT_QUEUE_PUT_TIMEOUT = 0.02     # block for up to 20 ms to put da
 
 # -------------------------- MQTT READER --------------------------
 
+# Standard MQTTS port
+MQTTS_PORT = 8883
+
 # If the DJI broker requires a specific root certificate, download it and
 # specify its path here. If using a public broker with a standard certificate,
 # setting 'cert_reqs' to CERT_REQUIRED is often enough, but you may need 'ca_certs'.
@@ -80,3 +83,34 @@ MQTT_MSG_WAIT_TIMEOUT = 1.0
 
 # size of the input messages queue
 MQTT_MAX_INCOMING_MESSAGES = 2_000
+
+
+# -------------------------- ALERTS WRITER --------------------------
+
+MAX_ALERTS_STORED = 20
+WS_COMMON_PORT = 8765
+WS_PORT = 80
+WSS_PORT = 443
+JPEG_COMPRESSION_QUALITY = 85
+ALERTS_GET_TIMEOUT = 0.5
+
+WS_MANAGER_QUEUE_WAIT_TIMEOUT = 0.02
+WS_MANAGER_STOP_EVENT_CHECK_PERIOD = 0.1
+WS_MANAGER_THREAD_CLOSE_TIMEOUT = 5.0
+
+#DB_USER = os.getenv("DB_USER", "default_user")
+#DB_PASS = os.getenv("DB_PASS", "")     # TODO handle special characters
+#DB_HOST = os.getenv("DB_HOST", "localhost")
+#DB_NAME = os.getenv("DB_NAME", "alert_system")
+#db_url = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}/{DB_NAME}"
+
+DB_POOL_SIZE = 5
+DB_MAX_OVERFLOW = 10
+
+DB_MANAGER_QUEUE_WAIT_TIMEOUT = 0.1
+DB_MANAGER_THREAD_CLOSE_TIMEOUT = 5.0
+
+DB_MANAGER_QUEUE_SIZE = 100
+
+
+
