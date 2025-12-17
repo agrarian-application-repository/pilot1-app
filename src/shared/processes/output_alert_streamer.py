@@ -41,7 +41,6 @@ class NotificationsStreamWriter(mp.Process):
     """
     A multiprocessing process that:
     - receives AnnotationResults objects with anomalies
-    - maintains recent alerts
     - exposes WebSocket API and pushes alerts to clients (optional)
     - saves alerts to a SQL database (optional)
     - logs alerts to file. (optional)
@@ -65,7 +64,6 @@ class NotificationsStreamWriter(mp.Process):
         Args:
             input_queue: Queue receiving AnnotationResults objects
             error_event: Event to signal process termination, processing error
-            max_alerts: Maximum number of recent alerts to maintain
             websocket_host: Host for WebSocket server
             websocket_port: Port for WebSocket server
             log_file: Path to log file (None to disable logging)
@@ -75,14 +73,9 @@ class NotificationsStreamWriter(mp.Process):
         super().__init__()
         self.input_queue = input_queue
         self.error_event = error_event
-        self.max_alerts = max_alerts
         self.log_file_path = log_file_path
         self.jpeg_quality = jpeg_quality
         self.alerts_get_timeout = alerts_get_timeout
-
-        # Recent alerts buffer (placeholder, instantiated in run)
-        self.recent_alerts = None
-        self.recent_alerts_lock = threading.Lock()
 
         # Initialize log file (placeholder, instantiated in run)
         self.log_file = None
@@ -205,11 +198,6 @@ class NotificationsStreamWriter(mp.Process):
             'compression': 'jpeg',
         }
 
-        # Add to recent alerts (dequeue automatically remove old alerts when is full)
-        with self.recent_alerts_lock:
-            self.recent_alerts.append(alert_data)
-        logger.debug(f"Alert added to recent alerts buffer (size: {len(self.recent_alerts)})")
-
         # Log alert to file using the handle
         if self.log_file:
             self._log_alert(alert.frame_id, alert.alert_msg, alert.timestamp, alert_datetime)
@@ -254,9 +242,6 @@ class NotificationsStreamWriter(mp.Process):
         # Instantiate output managers
         # ---------------------------------
 
-        # Initialize recent alerts buffer
-        self.recent_alerts = deque(maxlen=self.max_alerts)
-
         # Initialize log file manager
         try:
             self.log_file = open(self.log_file_path, 'a', buffering=1, encoding='utf-8') if self.log_file_path else None
@@ -282,12 +267,9 @@ class NotificationsStreamWriter(mp.Process):
             if self.websocket_host:
                 # Instantiate object
                 self.ws_manager = WebSocketManager(
-                    error_event=self.error_event,
                     host=self.websocket_host,
                     port=self.websocket_port,
                 )
-                # Set recent alerts dequeue reference for WebSocket manager
-                self.ws_manager.set_recent_alerts(self.recent_alerts, self.recent_alerts_lock)
                 # Start WebSocket server
                 self.ws_manager.start()
             else:
@@ -302,10 +284,9 @@ class NotificationsStreamWriter(mp.Process):
             self.error_event.set()
             logger.error(
                 "Error event set: "
-                "No available system (Websocket, DB) for providing alerts. "
-                "Shutting down application ..."
+                "No available system (WebSocket, DB) for providing alerts. "
+                "Shutting down the application ..."
             )
-            logger.info("NotificationsStreamWriter process terminated.")
 
         # ---------------------------------
         # Alerts Processing
