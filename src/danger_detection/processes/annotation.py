@@ -98,6 +98,8 @@ class AnnotationWorker(mp.Process):
                     color_intersect_frame,
             )
 
+            # TODO RESIZE
+
             result = AnnotationResults(
                 frame_id=previous_step_results.frame_id,
                 annotated_frame=annotated_frame,

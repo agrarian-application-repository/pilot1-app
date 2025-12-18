@@ -14,7 +14,7 @@ from src.shared.processes.constants import (
     VIDEO_STREAM_READER_BUFFER_SIZE,
     VIDEO_STREAM_READER_EXPECTED_ASPECT_RATIO,
     VIDEO_STREAM_READER_PROCESSING_SHAPE,
-    VIDEO_READING_OUT_QUEUE_PUT_TIMEOUT,
+    VIDEO_STREAM_READER_QUEUE_PUT_TIMEOUT,
     DOWNSAMPLING_MODE,
     POISON_PILL,
     POISON_PILL_TIMEOUT,
@@ -45,7 +45,7 @@ class StreamVideoReader(mp.Process):
     def __init__(
             self,
             frame_queue: mp.Queue,
-            stop_event: mp.Event,  # stop event used to stop gracefully
+            stop_event: mp.Event,   # stop event used to stop gracefully
             error_event: mp.Event,  # error event used to stop gracefully on processing error
             video_stream_url: str,
             connect_open_timeout_s: float = VIDEO_STREAM_READER_CONNECTION_OPEN_TIMEOUT_S,
@@ -57,7 +57,8 @@ class StreamVideoReader(mp.Process):
             buffer_size: int = VIDEO_STREAM_READER_BUFFER_SIZE,
             expected_aspect_ratio: float = VIDEO_STREAM_READER_EXPECTED_ASPECT_RATIO,
             processing_shape: tuple[int, int] = VIDEO_STREAM_READER_PROCESSING_SHAPE,
-            out_put_timeout: float = VIDEO_READING_OUT_QUEUE_PUT_TIMEOUT,
+            queue_out_put_timeout: float = VIDEO_STREAM_READER_QUEUE_PUT_TIMEOUT,
+            poison_pill_timeout: float = POISON_PILL_TIMEOUT,
     ):
         
         super().__init__()
@@ -94,7 +95,8 @@ class StreamVideoReader(mp.Process):
         self.processing_shape = processing_shape
 
         # Output configuration
-        self.out_put_timeout = out_put_timeout
+        self.queue_out_put_timeout = queue_out_put_timeout
+        self.poison_pill_timeout = poison_pill_timeout
 
     def _setup_capture(self) -> cv2.VideoCapture:
         """
@@ -144,11 +146,11 @@ class StreamVideoReader(mp.Process):
                     logger.info("Setting up VideoCapture Object ...")
                     cap = self._setup_capture()
                     logger.info("VideoCapture Object setup complete")
-                except Exception:
+                except Exception as e:
                     total_connection_failures += 1
                     consecutive_connection_failures += 1
                     logger.warning(
-                        f"Unable to setup videocapture for video source {self.video_stream_url}"
+                        f"Unable to setup videocapture for video source {self.video_stream_url}: {e}"
                         f"N. Consecutive connection failures: {consecutive_connection_failures} "
                         f"(max: {self.connect_max_consecutive_failures}). "
                         f"N. Total connection failures: {total_connection_failures}. "
@@ -213,10 +215,13 @@ class StreamVideoReader(mp.Process):
                 while cap.isOpened() and not (self.stop_event.is_set() or self.error_event.is_set()):
                     # continue to read frame until the connection is live and no halting events are set
                     # if loop exists due to connection breakdown, the outer loop retries to establish the connection
-                    # if loop exits due to halting event, outer loop exists as well, and the final cleanup code is executed
+                    # if loop exits due to halting event, outer loop exists as well,
+                    # and the final cleanup code is executed
 
                     success, frame = cap.read()
                     frame_id += 1
+                    # cap.read() is a blocking operation !!!!
+                    # still, if nothing has arrived in the timeout time, wait a  bit to retry.
 
                     # --------- read failure ---------
                     if (not success) or (frame is None) or (frame.size == 0):
@@ -224,7 +229,8 @@ class StreamVideoReader(mp.Process):
                         consecutive_read_failures += 1
                         logger.warning(
                             f"Frame {frame_id} read failed. "
-                            f"N. Consecutive read failures: {consecutive_read_failures} (max: {self.frame_read_max_consecutive_failures}). "
+                            f"N. Consecutive read failures: {consecutive_read_failures} "
+                            f"(max: {self.frame_read_max_consecutive_failures}). "
                             f"N. Total read failures: {total_read_failures}. "
                         )
 
@@ -304,7 +310,7 @@ class StreamVideoReader(mp.Process):
 
                     # Try to put output object in output queue
                     try:
-                        self.frame_queue.put(frame_object, timeout=self.out_put_timeout)
+                        self.frame_queue.put(frame_object, timeout=self.queue_out_put_timeout)
                         logger.debug(f"Added frame {frame_id} to queue.")
 
                     # Catch exception for queue full specifically
@@ -327,6 +333,7 @@ class StreamVideoReader(mp.Process):
             except Exception as e:
                 logger.critical(f"Unexpected crash in Video Source Process: {e}", exc_info=True)
                 self.error_event.set()  # Alert the rest of the chain
+                logger.warning("Error event set: force-stop downstream processes.")
                 break
 
         #  =============== Final Cleanup ==========================
@@ -339,27 +346,28 @@ class StreamVideoReader(mp.Process):
                 logger.error(f"Failed to close the VideoCapture object: {e}")
 
         # Propagate termination signal via poison pill if interruption due to stop_event.
-        # In case of error_event, all processes should shut down in the state they currently are,
-        # so there is not really a need to propagate the poison pill (can do it anyway)
-        # Ensure the poison pill is passed on by using a blocking put (will wait until queue is free)
+        # stop event indicates "clean shutdown" due to input stream termination.
+        # In case of error_event, all processes should shut down (cleanly) in the state they currently are,
+        # so there is not really a need to propagate the poison pill.
+        # If process fails to send the poison pill for clean shutdown, then the error event is set to ensure
+        # termination of the application
         if self.stop_event.is_set() and not self.error_event.is_set():
             try:
                 logger.info("Attempting to put sentinel value on output queue ...")
-                self.frame_queue.put(POISON_PILL, timeout=POISON_PILL_TIMEOUT)
+                self.frame_queue.put(POISON_PILL, timeout=self.poison_pill_timeout)
                 logger.info("Sentinel value has been passed on to the next process.")
-            except QueueFullException:
-                logger.warning("Could not send Poison Pill: downstream queue is full and stalled.")
-                self.error_event.set()
-                logger.warning("Error event set: force-stop downstream processes if they are unable to receive the poison pill")
             except Exception as e:
                 logger.error(f"Error sending Poison Pill: {e}")
                 self.error_event.set()
-                logger.warning("Error event set: force-stop downstream processes if they are unable to receive the poison pill")
+                logger.warning(
+                    "Error event set: "
+                    "force-stop downstream processes if they are unable to receive the poison pill"
+                )
         else:
             # error event has been set, all processes will stop where they are.
-            logger.info("Terminating and Skipping Poison Pill due to Error Event.")
+            logger.info("Terminating and Skipping Poison Pill sending. Error Event received.")
 
-        # lof process conclusion
+        # log process conclusion
         logger.info(
             "StreamVideoReader process stopped gracefully."
             f"Stop event: {self.stop_event.is_set()}. "

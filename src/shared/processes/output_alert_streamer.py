@@ -1,9 +1,8 @@
 import multiprocessing as mp
+from queue import Empty as QueueEmptyException
 import json
 import cv2
-import threading
 import numpy as np
-from collections import deque
 from typing import Optional
 import base64
 from datetime import datetime as dtt
@@ -12,16 +11,8 @@ from time import time
 from src.shared.processes.db_manager import DatabaseManager
 from src.shared.processes.websocket_manager import WebSocketManager
 from src.shared.processes.messages import AnnotationResults
-from src.shared.processes.constants import (
-    WS_COMMON_PORT,
-    WS_PORT,
-    WSS_PORT,
-    MAX_ALERTS_STORED,
-    JPEG_COMPRESSION_QUALITY,
-    ALERTS_GET_TIMEOUT,
-    UPSAMPLING_MODE,
-    POISON_PILL,
-)
+from src.shared.processes.constants import *
+
 
 # ================================================================
 
@@ -50,13 +41,26 @@ class NotificationsStreamWriter(mp.Process):
             self,
             input_queue: mp.Queue,
             error_event: mp.Event,
-            max_alerts: int = MAX_ALERTS_STORED,
-            websocket_host: Optional[str] = "localhost",
-            websocket_port: int = WSS_PORT,
-            log_file_path: Optional[str] = "alerts.log",
-            jpeg_quality: int = JPEG_COMPRESSION_QUALITY,
-            database_url: Optional[str] = None,
             alerts_get_timeout: float = ALERTS_GET_TIMEOUT,
+            alerts_max_consecutive_failures: int = ALERTS_MAX_CONSECUTIVE_FAILURES,
+            jpeg_quality: int = ALERTS_JPEG_COMPRESSION_QUALITY,
+            # ------- FILE manager parameters --------
+            log_file_path: Optional[str] = "alerts.log",
+            # ------- WS manager parameters --------
+            websocket_host: Optional[str] = None,
+            websocket_port: int = WSS_PORT,
+            ws_manager_ping_interval: float = WS_MANAGER_PING_INTERVAL,
+            ws_manager_ping_timeout: float = WS_MANAGER_PING_TIMEOUT,
+            ws_manager_broadcast_timeout: float = WS_MANAGER_BROADCAST_TIMEOUT,
+            ws_manager_thread_close_timeout: float = WS_MANAGER_THREAD_CLOSE_TIMEOUT,
+            # ------- DB manager parameters --------
+            database_url: Optional[str] = None,
+            db_manager_pool_size: int = DB_MANAGER_POOL_SIZE,
+            db_manager_max_overflow: int = DB_MANAGER_MAX_OVERFLOW,
+            db_manager_queue_get_timeout: float = DB_MANAGER_QUEUE_WAIT_TIMEOUT,
+            db_manager_thread_close_timeout: float = DB_MANAGER_THREAD_CLOSE_TIMEOUT,
+            db_manager_alerts_queue_size: int = DB_MANAGER_QUEUE_SIZE,
+
     ):
         """
         Initialize the NotificationsStreamWriter process.
@@ -75,7 +79,9 @@ class NotificationsStreamWriter(mp.Process):
         self.error_event = error_event
         self.log_file_path = log_file_path
         self.jpeg_quality = jpeg_quality
+
         self.alerts_get_timeout = alerts_get_timeout
+        self.alerts_max_consecutive_failures = alerts_max_consecutive_failures
 
         # Initialize log file (placeholder, instantiated in run)
         self.log_file = None
@@ -89,22 +95,82 @@ class NotificationsStreamWriter(mp.Process):
         self.websocket_port = websocket_port
         self.ws_manager = None
 
-    @staticmethod
-    def _resize_frame(frame: np.ndarray, original_wh: tuple) -> np.ndarray:
-        """
-        Resize frame back to original dimensions.
+        # WS Manager Config
+        self.ws_manager_ping_interval = ws_manager_ping_interval
+        self.ws_manager_ping_timeout = ws_manager_ping_timeout
+        self.ws_manager_broadcast_timeout = ws_manager_broadcast_timeout
+        self.ws_manager_thread_close_timeout = ws_manager_thread_close_timeout
 
-        Args:
-            frame: The processed frame
-            original_wh: Tuple of (width, height)
+        # DB manager Config
+        self.db_manager_pool_size = db_manager_pool_size
+        self.db_manager_max_overflow = db_manager_max_overflow
+        self.db_manager_queue_get_timeout = db_manager_queue_get_timeout
+        self.db_manager_thread_close_timeout = db_manager_thread_close_timeout
+        self.db_manager_alerts_queue_size = db_manager_alerts_queue_size
 
-        Returns:
-            Resized frame
-        """
-        current_height, current_width, _ = frame.shape
-        width, height = original_wh
-        logger.debug(f"Resizing frame from {({current_width},{current_height})} to {(width, height)}")
-        return cv2.resize(frame, (width, height), interpolation=UPSAMPLING_MODE)
+    def _setup_managers(self):
+
+        # Initialize log file manager
+        try:
+            if self.log_file_path:
+                self.log_file = open(self.log_file_path, 'a', buffering=1, encoding='utf-8')
+            else:
+                # log_file remains None
+                pass
+        except Exception as e:
+            self.log_file = None    # ensure log_file stays None
+            logger.error(f"Failed to open log file {self.log_file_path}: {e}. Continuing without ...")
+
+        # Initialize DB manager
+        try:
+            if self.database_url:
+                # Instantiate object
+                self.db_manager = DatabaseManager(
+                    database_url=self.database_url,
+                    alerts_queue_size=self.db_manager_alerts_queue_size,
+                    pool_size=self.db_manager_pool_size,
+                    max_overflow=self.db_manager_max_overflow,
+                    queue_get_timeout=self.db_manager_queue_get_timeout,
+                    thread_close_timeout=self.db_manager_thread_close_timeout,
+                )
+                # Initialize database
+                self.db_manager.initialize()
+            else:
+                # db_manager remains None
+                pass
+        except Exception as e:
+            self.db_manager = None  # ensure db_manager stays None
+            logger.error(f"Failed to create DB manager: {e}. Continuing without ...")
+
+        # Initialize WebSocket manager
+        try:
+            if self.websocket_host:
+                # Instantiate object
+                self.ws_manager = WebSocketManager(
+                    host=self.websocket_host,
+                    port=self.websocket_port,
+                    ping_interval=self.ws_manager_ping_interval,
+                    ping_timeout=self.ws_manager_ping_timeout,
+                    broadcast_timeout=self.ws_manager_broadcast_timeout,
+                    thread_close_timeout=self.ws_manager_thread_close_timeout,
+                )
+                # Start WebSocket server
+                self.ws_manager.start()
+            else:
+                # ws_manager remains None
+                pass
+        except Exception as e:
+            self.ws_manager = None  # ensure ws_manager stays None
+            logger.error(f"Failed to create websocket server: {e}. Continuing without ...")
+
+        # At least one between Websocket manager and DB manager must have been initialized
+        if not (self.db_manager or self.ws_manager or self.log_file):
+            self.error_event.set()
+            logger.error(
+                "Error event set: "
+                "No available system (File, WebSocket, DB) for providing alerts. "
+                "Shutting down the application ..."
+            )
 
     def _compress_frame(self, frame: np.ndarray) -> tuple:
         """
@@ -120,7 +186,7 @@ class NotificationsStreamWriter(mp.Process):
         jpg_as_text = 'no_ws'
         compressed_bytes = 'no_db'
 
-        if not self.ws_manager and not self.db_manager:
+        if not (self.ws_manager or self.db_manager):
             logger.debug(f"No WS nor DB, skipping compression step.")
             return jpg_as_text, compressed_bytes
 
@@ -150,7 +216,7 @@ class NotificationsStreamWriter(mp.Process):
             frame_id: Frame identifier
             alert_msg: Alert message
             timestamp: Alert timestamp
-            datetime: alert datetime
+            datetime_str: alert datetime
         """
         if not self.log_file:
             return
@@ -171,22 +237,19 @@ class NotificationsStreamWriter(mp.Process):
 
     def _process_alert(self, alert: AnnotationResults):
         """
-        Process a new alert: resize, compress, store, and queue for broadcast.
+        Process a new alert: compress, store, and queue for broadcast.
 
         Args:
             alert: AnnotationResults object
         """
         logger.info(f"Processing alert: frame_id={alert.frame_id}, msg='{alert.alert_msg}'")
 
-        # Resize frame to original dimensions
-        width, height = alert.original_wh
-        resized_frame = self._resize_frame(alert.annotated_frame, alert.original_wh)
-
         # Compress frame
-        compressed_frame, compressed_bytes = self._compress_frame(resized_frame)
+        compressed_frame, compressed_bytes = self._compress_frame(alert.annotated_frame)
 
         # Create alert data structure
         alert_datetime = dtt.fromtimestamp(alert.timestamp).isoformat()
+        height, width, _ = alert.annotated_frame.shape
         alert_data = {
             'frame_id': alert.frame_id,
             'alert_msg': alert.alert_msg,
@@ -218,75 +281,56 @@ class NotificationsStreamWriter(mp.Process):
                 image_height=height,
             )
 
+    def _cleanup(self, alert_count: int, poison_pill_received: bool):
+
+        logger.info("NotificationsStreamWriter process terminating ...")
+        logger.info(f"Total correctly processed alerts: {alert_count}")
+
+        # Close log file
+        if self.log_file:
+            try:
+                self.log_file.close()
+                logger.info("Alert log file closed")
+            except Exception as e:
+                logger.error(f"Failed to close alert log file: {e}")
+
+        # Close database (handles errors internally)
+        if self.db_manager:
+            self.db_manager.close()
+
+        # Stop WebSocket server (handles errors internally)
+        if self.ws_manager:
+            self.ws_manager.stop()
+
+        logger.info(
+            f"NotificationsStreamWriter process terminated. "
+            f"Poison Pill: {poison_pill_received}. "
+            f"Error event: {self.error_event.is_set()}."
+        )
+
     def run(self):
         """Main process loop."""
 
         alert_count = 0
+        consecutive_failures = 0
         poison_pill_received = False
 
-        ws_status = f"ws://{self.websocket_host}:{self.websocket_port}" if self.ws_manager else "disabled"
-        db_status = self.db_manager.database_url if self.db_manager else "disabled"
+        ws_status = f"ws://{self.websocket_host}:{self.websocket_port}" if self.websocket_host else "disabled"
+        db_status = self.database_url if self.database_url else "disabled"
         logfile_status = self.log_file_path if self.log_file_path else 'disabled'
 
-        logger.info("=" * 60)
         logger.info("NotificationsStreamWriter process starting")
         logger.info(f"Configuration:")
-        logger.info(f"  - Max alerts buffer: {self.max_alerts}")
         logger.info(f"  - WebSocket: {ws_status}")
         logger.info(f"  - Database: {db_status}")
         logger.info(f"  - Log file: {logfile_status}")
-        logger.info(f"  - JPEG quality: {self.jpeg_quality}")
-        logger.info("=" * 60)
+        logger.info(f"  - JPEG quality: {self.jpeg_quality}\n")
 
         # ---------------------------------
         # Instantiate output managers
         # ---------------------------------
-
-        # Initialize log file manager
-        try:
-            self.log_file = open(self.log_file_path, 'a', buffering=1, encoding='utf-8') if self.log_file_path else None
-        except Exception as e:
-            logger.error(f"Failed to open log file {self.log_file_path}: {e}. Continuing anyway ...")
-
-        # Initialize DB manager
-        try:
-            if self.database_url:
-                # Instantiate object
-                self.db_manager = DatabaseManager(database_url=self.database_url)
-                # Initialize database
-                self.db_manager.initialize()
-            else:
-                # db_manager remains None
-                pass
-        except Exception as e:
-            self.db_manager = None  # ensure db_manager remains None stays None
-            logger.error(f"Failed to create DB manager: {e}. Continuing ...")
-
-        # Initialize WebSocket manager
-        try:
-            if self.websocket_host:
-                # Instantiate object
-                self.ws_manager = WebSocketManager(
-                    host=self.websocket_host,
-                    port=self.websocket_port,
-                )
-                # Start WebSocket server
-                self.ws_manager.start()
-            else:
-                # ws_manager remains None
-                pass
-        except Exception as e:
-            self.ws_manager = None  # ensure ws_manager stays None
-            logger.error(f"Failed to create websocket server: {e}. Continuing ...")
-
-        # At least one between Websocket manager and DB manager must have been initialized
-        if not (self.db_manager or self.ws_manager):
-            self.error_event.set()
-            logger.error(
-                "Error event set: "
-                "No available system (WebSocket, DB) for providing alerts. "
-                "Shutting down the application ..."
-            )
+        # handles initialization errors internally
+        self._setup_managers()
 
         # ---------------------------------
         # Alerts Processing
@@ -297,7 +341,11 @@ class NotificationsStreamWriter(mp.Process):
             try:
                 # Get alert from queue with timeout
                 alert = self.input_queue.get(timeout=self.alerts_get_timeout)
+            except QueueEmptyException:
+                logger.debug("Input queue empty. Continuing to wait for alerts ... ")
+                continue
 
+            try:
                 # if the alert being processed is the poison pill,
                 # break out of the loop to complete shutdown the process
                 if alert == POISON_PILL:
@@ -307,42 +355,29 @@ class NotificationsStreamWriter(mp.Process):
                 # Process the alert
                 self._process_alert(alert)
                 alert_count += 1
+                # reset counter
+                consecutive_failures = 0
 
-            except mp.queues.Empty:
-                logger.info("Input queue empty. Continuing to wait for alerts ... ")
-                continue
             except Exception as e:
-                logger.error(f"Error processing alert: {e}. Will try to process next ones ...", exc_info=True)
-                continue
+                consecutive_failures += 1
+                if consecutive_failures <= self.alerts_max_consecutive_failures:
+                    logger.warning(
+                        f"Error processing alert: {e}. "
+                        f"Consecutive failures: {consecutive_failures} (max {self.alerts_max_consecutive_failures}). "
+                        f"Will try to process next one ...", exc_info=True)
+                else:
+                    self.error_event.set()
+                    logger.error(
+                        "Error event set: "
+                        "threshold for max number of consecutive alerts failing to be processed has been surpassed. "
+                        "Application will shutdown ..."
+                    )
 
         # ---------------------------------
         # Final cleanup
         # ---------------------------------
+        self._cleanup(alert_count, poison_pill_received)
 
-        logger.info("=" * 60)
-        logger.info("NotificationsStreamWriter process terminating ...")
-        logger.info(f"Total alerts processed: {alert_count}")
-
-        # Close log file
-        if self.log_file:
-            logger.info("Closing alert log file...")
-            self.log_file.close()
-            logger.info("Alert log file closed")
-
-        # Close database
-        if self.db_manager:
-            self.db_manager.close()
-
-        # Stop WebSocket server
-        if self.ws_manager:
-            self.ws_manager.stop()
-
-        logger.info(
-            f"NotificationsStreamWriter process terminated. "
-            f"Poison Pill: {poison_pill_received}. "
-            f"Error event: {self.error_event.is_set()}."
-        )
-        logger.info("=" * 60)
 
 
 """

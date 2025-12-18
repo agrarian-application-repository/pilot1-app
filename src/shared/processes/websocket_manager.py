@@ -6,13 +6,7 @@ from typing import Optional, Dict, Set
 import websockets
 from websockets.server import serve
 
-from src.shared.processes.constants import (
-    WSS_PORT,
-    WS_MANAGER_THREAD_CLOSE_TIMEOUT,
-    WS_MANAGER_PING_INTERVAL,
-    WS_MANAGER_PING_TIMEOUT,
-    WS_BROADCAST_TIMEOUT,
-)
+from src.shared.processes.constants import *
 
 # ================================================================
 
@@ -41,9 +35,9 @@ class WebSocketManager:
             self,
             host: str = "localhost",
             port: int = WSS_PORT,
-            ping_interval: int = WS_MANAGER_PING_INTERVAL,
-            ping_timeout: int = WS_MANAGER_PING_TIMEOUT,
-            broadcast_timeout: float = WS_BROADCAST_TIMEOUT,
+            ping_interval: float = WS_MANAGER_PING_INTERVAL,
+            ping_timeout: float = WS_MANAGER_PING_TIMEOUT,
+            broadcast_timeout: float = WS_MANAGER_BROADCAST_TIMEOUT,
             thread_close_timeout: float = WS_MANAGER_THREAD_CLOSE_TIMEOUT,
     ):
         """

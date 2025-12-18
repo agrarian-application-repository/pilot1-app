@@ -6,13 +6,7 @@ from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.exc import SQLAlchemyError
 import queue
 import threading
-from src.shared.processes.constants import (
-    DB_MANAGER_THREAD_CLOSE_TIMEOUT,
-    DB_MANAGER_QUEUE_WAIT_TIMEOUT,
-    DB_POOL_SIZE,
-    DB_MAX_OVERFLOW,
-    DB_MANAGER_QUEUE_SIZE,
-)
+from src.shared.processes.constants import *
 
 
 # ================================================================
@@ -53,12 +47,12 @@ class DatabaseManager:
 
     def __init__(
             self,
-            database_url: Optional[str] = None,
-            pool_size: int = DB_POOL_SIZE,
-            max_overflow: int = DB_MAX_OVERFLOW,
+            database_url: str,
+            alerts_queue_size: int = DB_MANAGER_QUEUE_SIZE,
+            pool_size: int = DB_MANAGER_POOL_SIZE,
+            max_overflow: int = DB_MANAGER_MAX_OVERFLOW,
             queue_get_timeout: float = DB_MANAGER_QUEUE_WAIT_TIMEOUT,
             thread_close_timeout: float = DB_MANAGER_THREAD_CLOSE_TIMEOUT,
-            alerts_queue_size: int = DB_MANAGER_QUEUE_SIZE,
     ):
         """
         Initialize the database manager.

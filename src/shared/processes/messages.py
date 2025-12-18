@@ -58,13 +58,11 @@ class AnnotationResults:
 
     Attributes:
         frame_id (int): The unique identifier of the frame.
-        annotated_frame (np.ndarray): The final image with annotations.
+        annotated_frame (np.ndarray): The final image with annotations at the original resolution.
         alert_msg (str): A string describing the types of danger detected.
         timestamp (float): The timestamp of reception (of the frame).
-        original_wh tuple(int, int): The original shape of the image
     """
     frame_id: int
     annotated_frame: np.ndarray
     alert_msg: str
     timestamp: float
-    original_wh: tuple[int, int]
