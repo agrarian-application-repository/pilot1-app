@@ -2,7 +2,7 @@
 
 # str: Path to the model checkpoint file.
 # Specifies the .pt file for the model to be used during inference.
-model_checkpoint: 'checkpoints/danger_detection/detection.pt'
+model_checkpoint: 'checkpoints/danger_detection/detection_1280_720.pt'
 
 # float: Confidence threshold for detection filtering.
 # Detections with a confidence score below this value will be discarded.

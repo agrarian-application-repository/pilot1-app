@@ -33,7 +33,7 @@ def main():
     results = model.train(**train_args)
 
     # Finish the W&B run
-    wandb.finish()
+    # wandb.finish()
 
 
 if __name__ == "__main__":

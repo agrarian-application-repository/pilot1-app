@@ -28,8 +28,8 @@ class DangerDetectionWorker(mp.Process):
             error_event: mp.Event,
             queue_get_timeout: float = MODELS_QUEUE_GET_TIMEOUT,
             queue_put_timeout: float = MODELS_QUEUE_PUT_TIMEOUT,
+            max_consecutive_failures: int = DANGER_MAX_CONSECUTIVE_FAILURES,
             poison_pill_timeout: float = POISON_PILL_TIMEOUT,
-            max_consecutive_failures: int = ANNOTATION_MAX_CONSECUTIVE_FAILURES,
     ):
         super().__init__()
 
@@ -59,8 +59,8 @@ class DangerDetectionWorker(mp.Process):
             iter_start = time()
 
             # do not collect results until all queues have at least one entry
-            # short sleep in between cehcks
-            any_empty = any([in_queue.Empty] for in_queue in self.input_queues)
+            # short sleep in between checks
+            any_empty = any([in_queue.empty()] for in_queue in self.input_queues)
             if any_empty:
                 logger.debug(f"At least on input queue empty. Retrying in {self.queue_get_timeout} seconds")
                 sleep(self.queue_get_timeout)

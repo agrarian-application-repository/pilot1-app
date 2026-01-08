@@ -22,3 +22,6 @@ bash run_script.sh $args
 
 # qsub -q gpu -l select=1:ncpus=32:ngpus=4,walltime=08:00:00 -v 'ARGS="train.py --config configs/train_config_m_320.yaml"' pbs_run_script.sh
 # qsub -q gpu -l select=1:ncpus=32:ngpus=4,walltime=08:00:00 -v 'ARGS="train.py --config configs/train_config_x_320.yaml"' pbs_run_script.sh
+# qsub -q gpu -l select=1:ncpus=32:ngpus=4,walltime=08:00:00 -v 'ARGS="train.py --config configs/train_config_m_480crops_1280_720.yaml"' pbs_run_script.sh
+
+# qsub -q gpu -l select=1:ncpus=48:ngpus=1,walltime=96:00:00 -v 'ARGS="hyperparameters_search.py --config configs/hs_search_1280_720.yaml"' pbs_run_script.sh

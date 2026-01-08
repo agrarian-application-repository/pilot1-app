@@ -168,5 +168,3 @@ def annotate_and_save_frame(
     if cooldown_has_passed and danger_exists:
         annotated_img_path = Path(output_dir, f"danger_frame_{frame_id}_annotated.jpg")
         cv2.imwrite(annotated_img_path, annotated_frame)
-
-

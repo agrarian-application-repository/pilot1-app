@@ -40,7 +40,7 @@ class MqttCollectorProcess(mp.Process):
             telemetry_queue: mp.Queue, 
             stop_event: mp.Event,                       # stop event used to stop gracefully
             error_event: mp.Event,                      # error event used to stop gracefully on processing error
-            broker_host: str = "test.mosquitto.org",    # Example public broker that supports TLS
+            broker_host: str = MQTT_HOST,    # Example public broker that supports TLS
             broker_port: int = MQTTS_PORT,              # Standard secure MQTTS port
             username: str = None,
             password: str = None,

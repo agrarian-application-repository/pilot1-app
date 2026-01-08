@@ -1,12 +1,13 @@
 from typing import Optional
 import logging
-from sqlalchemy import create_engine, Column, Integer, String, Float, LargeBinary, DateTime
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, LargeBinary, Float
+from sqlalchemy.orm import declarative_base, relationship, sessionmaker, Session
 from sqlalchemy.exc import SQLAlchemyError
 import queue
 import threading
 from src.shared.processes.constants import *
+from datetime import datetime, timezone
+import bcrypt
 
 
 # ================================================================
@@ -22,24 +23,110 @@ if not logger.handlers:  # Avoid duplicate handlers
 # ================================================================
 
 
+"""
+DATABASE SCHEMA
+
+User 1 ────<N Flight 1 ────<N Alert
+
+------
+users
+------
+user_id (PK)
+email
+password
+created_at
+
+-------
+flights
+-------
+flight_id (PK)
+user_id (FK → users.user_id)
+start_time
+
+------
+alerts
+------
+alert_id (PK)
+flight_id (FK → flights.flight_id)
+alert_msg
+frame_id
+timestamp
+datetime
+image_data  # Compressed JPEG
+image_width
+image_height
+"""
+
+
 Base = declarative_base()
 
 
-class Alert(Base):
-    """SQLAlchemy model for storing alerts in the database."""
-    __tablename__ = 'alerts'
+class User(Base):
+    __tablename__ = 'users'
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    frame_id = Column(Integer, nullable=False, index=True)
-    alert_msg = Column(String, nullable=False)
-    timestamp = Column(Float, nullable=False, index=True)
-    datetime = Column(DateTime, nullable=False, index=True)
-    image_data = Column(LargeBinary, nullable=False)  # Compressed JPEG
-    image_width = Column(Integer, nullable=False)
-    image_height = Column(Integer, nullable=False)
+    user_id = Column(Integer, primary_key=True, autoincrement=True)
+    email = Column(String, nullable=False, unique=True)
+    password = Column(String(128), nullable=False)  # HASHED PASSWORD
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))
+
+    # Relationship: One User can have many Flights
+    flights = relationship("Flight", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self):
-        return f"<Alert(id={self.id}, frame_id={self.frame_id}, timestamp={self.timestamp})>"
+        return f"<User(id={self.user_id}, email='{self.email}')>"
+
+    @staticmethod
+    def hash_password(plaintext_password: str) -> str:
+        """Converts a password to a secure hash for storage."""
+        salt = bcrypt.gensalt()
+        hashed = bcrypt.hashpw(plaintext_password.encode('utf-8'), salt)
+        return hashed.decode('utf-8')
+
+    def verify_password(self, plaintext_password: str) -> bool:
+        """Checks if the provided password matches the stored hash."""
+        return bcrypt.checkpw(
+            plaintext_password.encode('utf-8'),
+            self.password.encode('utf-8')
+        )
+
+
+class Flight(Base):
+    __tablename__ = 'flights'
+
+    flight_id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
+    start_time = Column(DateTime, default=datetime.now(timezone.utc))
+
+    # Relationships: One Flight is associated to a single User
+    user = relationship("User", back_populates="flights")
+    # Relationship: One Flight can have many Alerts
+    alerts = relationship("Alert", back_populates="flight", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<Flight(id={self.flight_id}, user_id={self.user_id}, start='{self.start_time}')>"
+
+
+class Alert(Base):
+    __tablename__ = 'alerts'
+
+    alert_id = Column(Integer, primary_key=True, autoincrement=True)
+    flight_id = Column(Integer, ForeignKey('flights.flight_id'), nullable=False)
+    alert_msg = Column(String, nullable=False)
+    frame_id = Column(Integer)
+    timestamp = Column(Float)
+    datetime = Column(DateTime, default=datetime.now(timezone.utc))
+
+    # Image Data
+    image_data = Column(LargeBinary)  # Stores compressed JPEG bytes
+    image_width = Column(Integer)
+    image_height = Column(Integer)
+
+    # Relationship: one Alerts is associated with a single Flight
+    flight = relationship("Flight", back_populates="alerts")
+
+    def __repr__(self):
+        return (f"<Alert(id={self.alert_id}, flight_id={self.flight_id}, "
+                f"msg='{self.alert_msg}...', frame={self.frame_id})>")
 
 
 class DatabaseManager:
@@ -75,7 +162,10 @@ class DatabaseManager:
         self._queue_get_timeout = queue_get_timeout
         self._thread_close_timeout = thread_close_timeout
 
-    def initialize(self):
+        # prepare field for a new flight
+        self.flight_id = None
+
+    def initialize(self, username: str, password: str):
         """Initialize database connection and create tables if they don't exist."""
 
         try:
@@ -88,6 +178,22 @@ class DatabaseManager:
                 echo=False,
             )
             Base.metadata.create_all(self._db_engine)
+
+            SessionFactory = sessionmaker(bind=self._db_engine)
+            with SessionFactory() as session:
+                # 1. Fetch user by email
+                user = session.query(User).filter_by(email=username).first()
+                # 2. check that the user exists and that the password matches
+                if not user or not user.verify_password(password):
+                    err_msg = "Authentication failed: Invalid credentials."
+                    logger.error(err_msg)
+                    raise ValueError(err_msg)
+
+                # 3. Success - Create Flight
+                new_flight = Flight(user_id=user.user_id)
+                session.add(new_flight)
+                session.commit()
+                self.flight_id = new_flight.flight_id
 
             # Start the background worker thread
             self._stop_event.clear()
@@ -108,6 +214,7 @@ class DatabaseManager:
 
         # Drop the data into the queue and return immediately
         try:
+            kwargs["flight_id"] = self.flight_id    # add flight_id to alert parameters
             self._db_queue.put_nowait(kwargs)
             logger.debug(
                 "Alert saved in queue for database write: "
@@ -115,6 +222,7 @@ class DatabaseManager:
                 f"msg: {kwargs.get('alert_msg')}"
             )
             return True
+
         except queue.Full:
             logger.warning(
                 f"Database queue is full (maxsize reached). "
@@ -182,3 +290,18 @@ class DatabaseManager:
                 self._db_queue.task_done()
 
         logger.info("Database background worker finished")
+
+
+"""
+def seed_test_user(engine, email, plaintext_password):
+    SessionFactory = sessionmaker(bind=engine)
+    with SessionFactory() as session:
+        # Check if exists
+        exists = session.query(User).filter_by(email=email).first()
+        if not exists:
+            hashed = User.hash_password(plaintext_password)
+            test_user = User(email=email, password=hashed)
+            session.add(test_user)
+            session.commit()
+            print(f"Test user {email} created with secure hash.")
+"""

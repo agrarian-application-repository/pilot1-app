@@ -20,29 +20,35 @@ WORKDIR /app
 COPY docker/ui/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Make additional directories
-RUN mkdir -p /app/{logs,assets,src,src/ui}
-
-# Copy the application script inside /app
-COPY assets /app/assets
-COPY src/ui /app/src/ui
-
-# copy main file
-COPY ui.py .
+# Copy project structure (filtered by docker/ui/.dockerignore)
+COPY . .
 
 # Set permissions for entire /app directory at once
 RUN chmod -R 777 /app
 
 # set default environmental variables
-ENV TCP_PORT=54321
-ENV MEDIAMTX_WEBRTC_URL="http://10.91.222.62:8889"
-ENV STREAM_NAME="annot"
-ENV STUN_SERVER="stun:stun.l.google.com:19302"
+ENV WEBRTC_HOST="0.0.0.0"
+ENV WEBRTC_PORT=8889
+ENV WEBRTC_STREAM_NAME="annot"
+ENV WEBRTC_STUN_SERVER="stun:stun.l.google.com:19302"
+
+ENV WEBSOCKET_HOST="0.0.0.0"
+ENV WEBSOCKET_PORT=443
+ENV WEBSOCKET_RECONNECTION_DELAY=5
+ENV WEBSOCKET_PING_INTERVAL=30
+ENV WEBSOCKET_PING_TIMEOUT=10
+
+ENV ALERTS_REFRESH=1.0
+ENV ALERTS_BOX_COLOR_TIMEDIFF=5.0
+ENV ALERTS_MAX_QUEUE_SIZE=20
+ENV ALERTS_MAX_DISPLAYED=5
+
+ENV LOGO_WIDTH=200
+ENV HTML_HEIGHT=600
+ENV ALERT_HEIGHT=600
 
 # Input port:
-# 54321/tcp: custom TCP output for receiving alerts
 # 8501/tcp: streamlit web UI
-EXPOSE 54321/tcp
 EXPOSE 8501/tcp
 
 # Run the application

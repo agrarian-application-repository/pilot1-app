@@ -2,6 +2,28 @@ import ssl  # Needed for creating SSL context parameters
 import cv2
 
 
+# REQUEST TO USER (CREDENTIALS):
+# - AGRARIAN_USERNAME
+# - AGRARIAN_PASSWORD
+# - DB_USERNAME
+# - DB_PASSWORD
+# - MQTT_USERNAME
+# - MQTT_PASSWORD
+# - MQTT_HOST
+# - RTMP_STREAM_KEY
+# - RTMP_HOST
+
+# REQUEST TO USERS (FILES, mount)
+# - MQTT_CERT
+# - DEM
+# - DEM_MASK
+# - DRONE_CONFIG_FILE
+# - INPUT_CONFIG_FILE
+
+# WHAT THE USER WILL GET TO KNOW:
+# IP/PORT OF WEBCOKET SERVER
+# IP/PORT TO RETRIEVE THE STREAM
+
 # -------------------------- GENERAL --------------------------
 
 FPS = 30
@@ -58,6 +80,9 @@ VIDEO_STREAM_READER_QUEUE_PUT_TIMEOUT = 0.02                              # 20 m
 
 
 # -------------------------- MQTT READER --------------------------
+
+# testing host
+MQTT_HOST = "test.mosquitto.org"
 
 # Standard MQTTS port
 MQTTS_PORT = 8883
@@ -119,7 +144,13 @@ FRAMETELCOMB_QUEUE_PUT_BACKOFF = 0.005              # 5 ms  (15 ms over 3 retrie
 MODELS_QUEUE_GET_TIMEOUT = 0.02                     # 20 ms
 MODELS_QUEUE_PUT_TIMEOUT = 0.02                     # 20 ms
 
+DANGER_MAX_CONSECUTIVE_FAILURES = 5
+
+ANNOTATION_QUEUE_GET_TIMEOUT = 0.02
+ANNOTATION_QUEUE_PUT_TIMEOUT = 0.02
 ANNOTATION_MAX_CONSECUTIVE_FAILURES = 5
+ANNOTATION_MAX_PUT_ALERT_CONSECUTIVE_FAILURES = 3
+ANNOTATION_MAX_PUT_VIDEO_CONSECUTIVE_FAILURES = FPS
 
 # -------------------------------------------------------------------
 # -------------------------- ALERTS WRITER --------------------------

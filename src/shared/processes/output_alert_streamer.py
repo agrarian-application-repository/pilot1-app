@@ -43,7 +43,7 @@ class NotificationsStreamWriter(mp.Process):
             error_event: mp.Event,
             alerts_get_timeout: float = ALERTS_GET_TIMEOUT,
             alerts_max_consecutive_failures: int = ALERTS_MAX_CONSECUTIVE_FAILURES,
-            jpeg_quality: int = ALERTS_JPEG_COMPRESSION_QUALITY,
+            alerts_jpeg_quality: int = ALERTS_JPEG_COMPRESSION_QUALITY,
             # ------- FILE manager parameters --------
             log_file_path: Optional[str] = "alerts.log",
             # ------- WS manager parameters --------
@@ -71,14 +71,14 @@ class NotificationsStreamWriter(mp.Process):
             websocket_host: Host for WebSocket server
             websocket_port: Port for WebSocket server
             log_file: Path to log file (None to disable logging)
-            jpeg_quality: JPEG compression quality (0-100)
+            alerts_jpeg_quality: JPEG compression quality (0-100)
             database_url: SQLAlchemy database URL
         """
         super().__init__()
         self.input_queue = input_queue
         self.error_event = error_event
         self.log_file_path = log_file_path
-        self.jpeg_quality = jpeg_quality
+        self.alerts_jpeg_quality = alerts_jpeg_quality
 
         self.alerts_get_timeout = alerts_get_timeout
         self.alerts_max_consecutive_failures = alerts_max_consecutive_failures
@@ -193,7 +193,7 @@ class NotificationsStreamWriter(mp.Process):
         compression_start = time()
 
         # Encode as JPEG
-        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), self.jpeg_quality]
+        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), self.alerts_jpeg_quality]
         _, buffer = cv2.imencode('.jpg', frame, encode_param)
 
         # Convert to base64 for WebSocket transmission
@@ -324,7 +324,7 @@ class NotificationsStreamWriter(mp.Process):
         logger.info(f"  - WebSocket: {ws_status}")
         logger.info(f"  - Database: {db_status}")
         logger.info(f"  - Log file: {logfile_status}")
-        logger.info(f"  - JPEG quality: {self.jpeg_quality}\n")
+        logger.info(f"  - JPEG quality: {self.alerts_jpeg_quality}\n")
 
         # ---------------------------------
         # Instantiate output managers
@@ -394,7 +394,7 @@ if __name__ == "__main__":
         max_alerts=50,
         websocket_port=8765,
         log_file="alerts.log",
-        jpeg_quality=85,
+        alerts_jpeg_quality=85,
         database_url="sqlite:///alerts.db"  # Use SQLite for example
         # For PostgreSQL: "postgresql://user:password@localhost:5432/alerts_db"
         # For MySQL: "mysql+pymysql://user:password@localhost:3306/alerts_db"

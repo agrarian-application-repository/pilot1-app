@@ -1,5 +1,6 @@
 # Datasets and Results
 experiments/
+experiments_agrarian_hs/
 outputs/
 runs/
 wandb/
