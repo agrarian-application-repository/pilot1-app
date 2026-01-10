@@ -1,9 +1,11 @@
 import multiprocessing as mp
 import logging
+from queue import Empty as QueueEmptyException
+from queue import Full as QueueFullException
 from src.danger_detection.utils import create_dangerous_intersections_masks
-from src.danger_detection.processes.messages import DangerDetectionResults, DetectionResult, SegmentationResult, GeoResult
+from src.danger_detection.processes.messages import DangerDetectionResults, ModelsAlignmentResult
 from src.shared.processes.constants import *
-from time import time, sleep
+from time import time
 
 
 # ================================================================
@@ -23,17 +25,16 @@ class DangerDetectionWorker(mp.Process):
 
     def __init__(
             self,
-            input_queues: list[mp.Queue],
+            input_queue: mp.Queue,
             result_queue: mp.Queue,
             error_event: mp.Event,
             queue_get_timeout: float = MODELS_QUEUE_GET_TIMEOUT,
             queue_put_timeout: float = MODELS_QUEUE_PUT_TIMEOUT,
-            max_consecutive_failures: int = DANGER_MAX_CONSECUTIVE_FAILURES,
             poison_pill_timeout: float = POISON_PILL_TIMEOUT,
     ):
         super().__init__()
 
-        self.input_queues = input_queues
+        self.input_queue = input_queue
         self.result_queue = result_queue
         self.error_event = error_event
 
@@ -41,7 +42,7 @@ class DangerDetectionWorker(mp.Process):
         self.queue_put_timeout = queue_put_timeout
         self.poison_pill_timeout = poison_pill_timeout
 
-        self.max_consecutive_failures = max_consecutive_failures
+        self.work_finished = mp.Event()
 
     def run(self):
 
@@ -54,60 +55,49 @@ class DangerDetectionWorker(mp.Process):
         failures = 0
         consecutive_failures = 0
 
-        while not self.error_event.is_set():
-            
-            iter_start = time()
+        try:
 
-            # do not collect results until all queues have at least one entry
-            # short sleep in between checks
-            any_empty = any([in_queue.empty()] for in_queue in self.input_queues)
-            if any_empty:
-                logger.debug(f"At least on input queue empty. Retrying in {self.queue_get_timeout} seconds")
-                sleep(self.queue_get_timeout)
-                continue
-            
-            # Collect one result from each model's result queue
-            detection_result: DetectionResult = self.input_queues[0].get_nowait()
-            segmentation_result: SegmentationResult = self.input_queues[1].get_nowait()
-            geo_result: GeoResult = self.input_queues[2].get_nowait()
+            while not self.error_event.is_set():
 
-            # check whether any of the results is a poison pill
-            one_is_poison_pill = (
-                    detection_result == POISON_PILL or
-                    segmentation_result == POISON_PILL or
-                    geo_result == POISON_PILL
-            )
+                iter_start = time()
 
-            # if it is, propagate it and leave the loop
-            if one_is_poison_pill:
-                poison_pill_received = True
-                logger.info("Found sentinel value on queue.")
                 try:
-                    logger.info("Attempting to put sentinel value on output queue ...")
-                    self.result_queue.put(POISON_PILL, timeout=self.poison_pill_timeout)
-                    logger.info("Sentinel value has been passed on to the next process.")
-                except Exception as e:
-                    logger.error(f"Error propagating Poison Pill: {e}")
-                    self.error_event.set()
-                    logger.warning(
-                        "Error event set: "
-                        "force-stop downstream processes since they are unable to receive the poison pill."
+                    # previous_step_results is either a ModelsAlignmentResult or the poison_pill
+                    previous_step_results: ModelsAlignmentResult | str = self.input_queue.get(timeout=self.queue_get_timeout)
+                except QueueEmptyException:
+                    logger.debug(
+                        "Input queue empty, retrying data fetch ... "
+                        "(Previous process too slow or stuck?)"
                     )
-                break
+                    continue  # Go back and try to read again from input queue, also check the error event condition
 
-            # check whether the frames are not ID aligned (critical error, set error event and terminate)
-            not_frame_id_aligned = not (
-                detection_result.frame_id == segmentation_result.frame_id == geo_result.frame_id
-            )
-            if not_frame_id_aligned:
-                logger.critical(f"Model results are not frame aligned")
-                self.error_event.set()
-                logger.warning("Error event set: force-stopping the application")
+                if isinstance(previous_step_results, str) and previous_step_results == POISON_PILL:
+                    poison_pill_received = True
+                    logger.info("Found sentinel value on queue.")
+                    try:
+                        logger.info("Attempting to put sentinel value on output queue ...")
+                        self.result_queue.put(POISON_PILL, timeout=self.poison_pill_timeout)
+                        logger.info("Sentinel value has been passed on to the next process.")
+                    except Exception as e:
+                        logger.error(f"Error propagating Poison Pill: {e}")
+                        self.error_event.set()
+                        logger.warning(
+                            "Error event set: "
+                            "force-stop downstream processes since they are unable to receive the poison pill."
+                        )
+                    break
+                    # exit the outer loop and terminate the process execution
 
-            if frame_height is None and frame_width is None:
-                frame_height, frame_width, _ = detection_result.frame.shape
+                # rename for readability
+                detection_result = previous_step_results.detection_result
+                segmentation_result = previous_step_results.segmentation_result
+                geo_result = previous_step_results.geo_result
 
-            try:
+                # lazy-init on first frame
+                if frame_height is None and frame_width is None:
+                    frame_height, frame_width, _ = detection_result.frame.shape
+
+                # models outputs combining and processing
                 danger_mask, intersection_mask, danger_types = create_dangerous_intersections_masks(
                     frame_height=frame_height,
                     frame_width=frame_width,
@@ -139,31 +129,31 @@ class DangerDetectionWorker(mp.Process):
                     original_wh=detection_result.original_wh,
                 )
 
-                self.result_queue.put(result, timeout=self.queue_put_timeout)
-                logger.debug(f"frame {detection_result.frame_id} processed in {(time() - iter_start) * 1000:.2f} ms")
-                consecutive_failures = 0
-
-            except Exception as e:
-                failures += 1
-                consecutive_failures += 1
-                logger.error(f"Failed to generate result or to put it in queue: {e}")
-                if consecutive_failures <= self.max_consecutive_failures:
-                    logger.warning(
-                        f"Consecutive failures: {consecutive_failures} "
-                        f"(max {self.max_consecutive_failures}). "
-                        f"Total failures: {failures}. "
-                        f"Attempting processing of next frame ..."
+                try:
+                    self.result_queue.put(result, timeout=self.queue_put_timeout)
+                    logger.debug(
+                        f"Put danger identification results for frame {detection_result.frame_id} on output queue"
                     )
-                    continue
-                else:
-                    logger.critical("Max consecutive processing failures threshold passed")
-                    self.error_event.set()
-                    logger.warning("Error event set: force-stopping the application ")
-                    break   # just to be sure, would start and exit the loop immediately anyway
+                except QueueFullException:
+                    logger.error(
+                        f"Failed to put danger identification result for frame {detection_result.frame_id} on output queue. "
+                        "Output queue is full, consumer too slow? "
+                        "Discarding frame."
+                    )
 
-        # log process conclusion
-        logger.info(
-            "Danger detection process terminated successfully."
-            f"Poison pill received: {poison_pill_received}. "
-            f"Error event: {self.error_event.is_set()}."
-        )
+                logger.debug(f"frame {detection_result.frame_id} processed in {(time() - iter_start) * 1000:.2f} ms")
+
+        except Exception as e:
+            logger.critical(f"An unexpected critical error happened in danger identification process: {e}")
+            self.error_event.set()
+            logger.warning("Error event set: force-stopping the application")
+
+        finally:
+            # log process conclusion
+            logger.info(
+                "Danger identification process terminated successfully."
+                f"Poison pill received: {poison_pill_received}. "
+                f"Error event: {self.error_event.is_set()}."
+            )
+            self.work_finished.set()
+

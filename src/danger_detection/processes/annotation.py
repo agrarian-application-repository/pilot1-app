@@ -101,6 +101,8 @@ class AnnotationWorker(mp.Process):
 
         self.poison_pill_timeout = poison_pill_timeout
 
+        self.work_finished = mp.Event()
+
     def run(self):
 
         logger.info("Annotation process started.")
@@ -303,7 +305,7 @@ class AnnotationWorker(mp.Process):
                 )
 
         except Exception as e:
-            logger.critical(f"An unexpected critical error happended in process: {e}")
+            logger.critical(f"An unexpected critical error happened in annotation process: {e}")
             self.error_event.set()
             logger.warning("Error event set: force-stopping the application")
 
@@ -314,3 +316,5 @@ class AnnotationWorker(mp.Process):
                 f"Poison pill received: {poison_pill_received}. "
                 f"Error event: {self.error_event.is_set()}."
             )
+            self.work_finished.set()
+

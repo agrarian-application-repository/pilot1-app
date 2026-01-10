@@ -7,23 +7,14 @@ from aiomqtt import Client, TLSParameters
 from time import time
 from src.shared.processes.messages import TelemetryQueueObject
 import multiprocessing as mp
-from src.shared.processes.constants import (
-    MQTTS_PORT,
-    MQTT_CERT_VALIDATION,
-    MQTT_RECONNECT_DELAY,
-    MQTT_TOPICS_TO_SUBSCRIBE,
-    MQTT_QOS_LEVEL,
-    MQTT_TOPICS_TO_TELEMETRY_MAPPING,
-    MQTT_MSG_WAIT_TIMEOUT,
-    MQTT_MAX_INCOMING_MESSAGES,
-    TEMPLATE_TELEMETRY,
-)
+from src.shared.processes.constants import *
+from src.shared.processes.consumer import Consumer
 
 # ================================================================
 logger = logging.getLogger("main.mqtt_telemetry_listener")
 
 if not logger.handlers:  # Avoid duplicate handlers
-    video_handler = logging.FileHandler('/app/logs/mqtt_telemetry_listener.log', mode='w')
+    video_handler = logging.FileHandler('./logs/mqtt_telemetry_listener.log', mode='w')
     video_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(video_handler)
     logger.setLevel(logging.DEBUG)
@@ -80,6 +71,8 @@ class MqttCollectorProcess(mp.Process):
 
         self.max_msg_wait = max_msg_wait
         self.max_incoming_messages = max_incoming_messages
+
+        self.work_finished = mp.Event()
 
         # Configuration for the MQTT client (static)
         self.client_id = None  # placeholder
@@ -219,7 +212,6 @@ class MqttCollectorProcess(mp.Process):
             # if the message is lost, so be it.
             # Just log the warning, then continue on with the listening loop
             except QueueFullException:
-
                 logger.warning(
                     f"Output queue is full. Consumer too slow? "
                     f"Telemetry dropped. Continuing ..."
@@ -236,15 +228,15 @@ class MqttCollectorProcess(mp.Process):
         It must contain the setup for the asyncio event loop.
         """
         self.client_id = f"mqtts-subscriber-{self.pid or 'init'}"  # PID is available after start()
-
         logger.info(f"MQTT Telemetry Listener Process started. PID: {self.pid}")
+
         try:
             # Start the asyncio event loop and run the main worker coroutine
             asyncio.run(self._mqtt_subscriber_worker())
         except Exception as e:
             # If the process crashes outside of the worker loop
             logger.critical(
-                f"MQTT Telemtry listener Process crashed fatally: {e}."
+                f"MQTT Telemetry listener Process crashed fatally: {e}."
                 f"The application will continue to run without telemetry. "
             )
             # Processing can continue without telemetry
@@ -255,48 +247,27 @@ class MqttCollectorProcess(mp.Process):
                 f"Stop event: {self.stop_event.is_set()}. "
                 f"Error event: {self.error_event.is_set()}."
             )
+            self.work_finished.set()
 
 
 # --- Main Application Example ---
 
 if __name__ == "__main__":
 
-    # 1. Setup Logging for Multiprocessing
-    logging.basicConfig(level=logging.INFO,
-                        format='%(asctime)s - %(levelname)s - (%(processName)s) - %(message)s')
+    broker_host = "0.0.0.0"
+    broker_port = MQTTS_PORT
 
-    # 2. Initialize Shared Objects
     telemetry_queue = mp.Queue()
-    stop_signal = mp.Event()
+    stop_event = mp.Event()
+    error_event = mp.Event()
 
-    # 3. Instantiate the Process
-    collector = MqttCollectorProcess(telemetry_queue, stop_signal)
+    collector = MqttCollectorProcess(telemetry_queue, stop_event, error_event, broker_host=broker_host, broker_port=broker_port)
+    consumer = Consumer(telemetry_queue)
 
-    # 4. Start the Process
+    consumer.start()
     collector.start()
-    logger.info(f"Collector Process initiated (PID: {collector.pid}).")
 
-    # 5. Example of Main Loop (e.g., retrieving data)
-    try:
-        while True:
-            # Main thread does other work or pulls data from the queue
-            if not telemetry_queue.empty():
-                latest_data = telemetry_queue.get()
-                logger.info(
-                    f"Main App received update at {latest_data.timestamp}. Lat: {latest_data.telemetry['latitude']}")
+    collector.join()
+    consumer.stop()
+    consumer.join()
 
-            # Sleep briefly to avoid 100% CPU usage
-            asyncio.sleep(0.1)
-
-    except KeyboardInterrupt:
-        logger.warning("Keyboard Interrupt received. Initiating graceful shutdown...")
-    finally:
-        # 6. Graceful Shutdown
-        stop_signal.set()  # Set the event to signal the child process to stop its while True loop
-        collector.join(timeout=10)  # Wait up to 10 seconds for the process to finish
-
-        if collector.is_alive():
-            logger.error("Process did not shut down cleanly. Forcing termination.")
-            collector.terminate()
-
-        logger.info("Application successfully terminated.")

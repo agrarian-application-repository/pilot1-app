@@ -19,7 +19,7 @@ from src.shared.processes.constants import *
 logger = logging.getLogger("main.alert_out")
 
 if not logger.handlers:  # Avoid duplicate handlers
-    video_handler = logging.FileHandler('/app/logs/alert_out.log', mode='w')
+    video_handler = logging.FileHandler('./logs/alert_out.log', mode='w')
     video_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(video_handler)
     logger.setLevel(logging.DEBUG)
@@ -107,6 +107,8 @@ class NotificationsStreamWriter(mp.Process):
         self.db_manager_queue_get_timeout = db_manager_queue_get_timeout
         self.db_manager_thread_close_timeout = db_manager_thread_close_timeout
         self.db_manager_alerts_queue_size = db_manager_alerts_queue_size
+
+        self.work_finished = mp.Event()
 
     def _setup_managers(self):
 
@@ -377,7 +379,7 @@ class NotificationsStreamWriter(mp.Process):
         # Final cleanup
         # ---------------------------------
         self._cleanup(alert_count, poison_pill_received)
-
+        self.work_finished.set()
 
 
 """

@@ -19,7 +19,7 @@ from src.shared.processes.constants import (
 logger = logging.getLogger("main.video_out.stream")
 
 if not logger.handlers:  # Avoid duplicate handlers
-    video_handler = logging.FileHandler('/app/logs/video_out_stream.log', mode='w')
+    video_handler = logging.FileHandler('./logs/video_out_stream.log', mode='w')
     video_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(video_handler)
     logger.setLevel(logging.DEBUG)

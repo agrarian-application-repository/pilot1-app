@@ -12,7 +12,7 @@ from src.shared.processes.constants import (
 logger = logging.getLogger("main.video_out.storage")
 
 if not logger.handlers:  # Avoid duplicate handlers
-    video_handler = logging.FileHandler('/app/logs/video_out_storage.log', mode='w')
+    video_handler = logging.FileHandler('./logs/video_out_storage.log', mode='w')
     video_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(video_handler)
     logger.setLevel(logging.DEBUG)
@@ -41,6 +41,8 @@ class VideoPersistenceProcess(mp.Process):
 
         self.max_retries = max_retries
         self.retry_backoff = retry_backoff
+
+        self.work_finished = mp.Event()
         
     def _cleanup_local_file(self, video_file_path: str):
         """Safely removes the local file on upload success, if configured to do so."""
@@ -128,6 +130,9 @@ class VideoPersistenceProcess(mp.Process):
                     "Continuing to wait for the next video to upload or the poison pill."
                 )
                 continue
+
+        self.work_finished.set()
+
 
 
 

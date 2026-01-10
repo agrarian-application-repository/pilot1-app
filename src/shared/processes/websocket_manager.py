@@ -13,7 +13,7 @@ from src.shared.processes.constants import *
 logger = logging.getLogger("main.alert_out.ws")
 
 if not logger.handlers:  # Avoid duplicate handlers
-    video_handler = logging.FileHandler('/app/logs/alert_out_ws.log', mode='w')
+    video_handler = logging.FileHandler('./logs/alert_out_ws.log', mode='w')
     video_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(video_handler)
     logger.setLevel(logging.DEBUG)

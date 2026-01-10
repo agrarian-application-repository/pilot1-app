@@ -3,6 +3,7 @@ import cv2
 import logging
 from time import time, sleep
 from queue import Full as QueueFullException
+from src.shared.processes.consumer import Consumer
 from src.shared.processes.messages import FrameQueueObject
 from src.shared.processes.constants import (
     VIDEO_STREAM_READER_CONNECTION_OPEN_TIMEOUT_S,
@@ -26,7 +27,7 @@ from src.shared.processes.constants import (
 logger = logging.getLogger("main.stream_video_in")
 
 if not logger.handlers:  # Avoid duplicate handlers
-    video_handler = logging.FileHandler('/app/logs/stream_video_in.log', mode='w')
+    video_handler = logging.FileHandler('./logs/stream_video_in.log', mode='w')
     video_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(video_handler)
     logger.setLevel(logging.DEBUG)
@@ -98,6 +99,8 @@ class StreamVideoReader(mp.Process):
         self.queue_out_put_timeout = queue_out_put_timeout
         self.poison_pill_timeout = poison_pill_timeout
 
+        self.work_finished = mp.Event()
+
     def _setup_capture(self) -> cv2.VideoCapture:
         """
         Set up video capture with appropriate settings for video streams.
@@ -129,11 +132,11 @@ class StreamVideoReader(mp.Process):
         # placeholder for videoCapture connection
         cap = None
 
-        # Use a non-blocking check to see if we should stop.
-        while not (self.stop_event.is_set() or self.error_event.is_set()):
+        # try/except wrapper to catch any unforeseen errors
+        try:
 
-            # try/except wrapper to catch any unforeseen errors
-            try:
+            # Use a non-blocking check to see if we should stop.
+            while not (self.stop_event.is_set() or self.error_event.is_set()):
 
                 # --------------------------------------------------------------
                 # setup videocapture
@@ -150,14 +153,14 @@ class StreamVideoReader(mp.Process):
                     total_connection_failures += 1
                     consecutive_connection_failures += 1
                     logger.warning(
-                        f"Unable to setup videocapture for video source {self.video_stream_url}: {e}"
+                        f"Unable to setup videocapture for video source {self.video_stream_url}: {e}. "
                         f"N. Consecutive connection failures: {consecutive_connection_failures} "
                         f"(max: {self.connect_max_consecutive_failures}). "
                         f"N. Total connection failures: {total_connection_failures}. "
                     )
 
                     # when the max number of connection attempts has not been surpassed yet, retry to connect
-                    if consecutive_connection_failures <= self.connect_max_consecutive_failures:
+                    if consecutive_connection_failures < self.connect_max_consecutive_failures:
                         logger.warning(f"Retrying to setup VideoCapture in {self.connect_retry_delay_s} seconds ...")
                         sleep(self.connect_retry_delay_s)
                         continue
@@ -181,14 +184,14 @@ class StreamVideoReader(mp.Process):
                     total_connection_failures += 1
                     consecutive_connection_failures += 1
                     logger.warning(
-                        f"Unable to open video source {self.video_stream_url}"
+                        f"Unable to open video source {self.video_stream_url}. "
                         f"N. Consecutive connection failures: {consecutive_connection_failures} "
                         f"(max: {self.connect_max_consecutive_failures}). "
                         f"N. Total connection failures: {total_connection_failures}. "
                     )
 
                     # when the max number of connection attempts has not been surpassed yet, retry to connect
-                    if consecutive_connection_failures <= self.connect_max_consecutive_failures:
+                    if consecutive_connection_failures < self.connect_max_consecutive_failures:
                         logger.warning(f"Retrying to connect in {self.connect_retry_delay_s} seconds ...")
                         sleep(self.connect_retry_delay_s)
                         continue
@@ -247,6 +250,8 @@ class StreamVideoReader(mp.Process):
                             self.error_event.set()
                             logger.info("Error event set")
                             break
+                            # breaks out of both loops, since the inner loop is the last block
+                            # error event being set causes exit from outer loop as well
 
                     # --------- read successful, check aspect ration and resize ---------
 
@@ -312,7 +317,6 @@ class StreamVideoReader(mp.Process):
                     try:
                         self.frame_queue.put(frame_object, timeout=self.queue_out_put_timeout)
                         logger.debug(f"Added frame {frame_id} to queue.")
-
                     # Catch exception for queue full specifically
                     # no need to sleep since already waited during put timeout
                     except QueueFullException:
@@ -323,53 +327,72 @@ class StreamVideoReader(mp.Process):
                             f"Trying to read a new frame ..."
                         )
 
-                    # handles all other exceptions
-                    except Exception as e:
-                        logger.warning(f"Failed to put frame in queue: {e}")
-
                     # end of successful read of frame
                     # move on to read next frame
 
-            except Exception as e:
-                logger.critical(f"Unexpected crash in Video Source Process: {e}", exc_info=True)
-                self.error_event.set()  # Alert the rest of the chain
-                logger.warning("Error event set: force-stop downstream processes.")
-                break
+            # Propagate termination signal via poison pill if interruption due to stop_event.
+            # stop event indicates "clean shutdown" due to input stream termination.
+            # In case of error_event, all processes should shut down (cleanly) in the state they currently are,
+            # so there is not really a need to propagate the poison pill.
+            # If process fails to send the poison pill for clean shutdown, then the error event is set to ensure
+            # termination of the application
+            if self.stop_event.is_set() and not self.error_event.is_set():
+                try:
+                    logger.info("Attempting to put sentinel value on output queue ...")
+                    self.frame_queue.put(POISON_PILL, timeout=self.poison_pill_timeout)
+                    logger.info("Sentinel value has been passed on to the next process.")
+                except Exception as e:
+                    logger.error(f"Error sending Poison Pill: {e}")
+                    self.error_event.set()
+                    logger.warning(
+                        "Error event set: "
+                        "force-stop downstream processes if they are unable to receive the poison pill"
+                    )
+            else:
+                # error event has been set, all processes will stop where they are.
+                logger.info("Terminating and Skipping Poison Pill sending. Error Event received.")
 
-        #  =============== Final Cleanup ==========================
-        if cap is not None:
-            try:
-                logger.info("Closing VideoCapture object ...")
-                cap.release()
-                logger.info("VideoCapture object closed")
-            except Exception as e:
-                logger.error(f"Failed to close the VideoCapture object: {e}")
+        except Exception as e:
+            logger.critical(f"An unexpected error happened in Video reader process: {e}")
+            self.error_event.set()
+            logger.warning("Error event set: force-stopping the application")
 
-        # Propagate termination signal via poison pill if interruption due to stop_event.
-        # stop event indicates "clean shutdown" due to input stream termination.
-        # In case of error_event, all processes should shut down (cleanly) in the state they currently are,
-        # so there is not really a need to propagate the poison pill.
-        # If process fails to send the poison pill for clean shutdown, then the error event is set to ensure
-        # termination of the application
-        if self.stop_event.is_set() and not self.error_event.is_set():
-            try:
-                logger.info("Attempting to put sentinel value on output queue ...")
-                self.frame_queue.put(POISON_PILL, timeout=self.poison_pill_timeout)
-                logger.info("Sentinel value has been passed on to the next process.")
-            except Exception as e:
-                logger.error(f"Error sending Poison Pill: {e}")
-                self.error_event.set()
-                logger.warning(
-                    "Error event set: "
-                    "force-stop downstream processes if they are unable to receive the poison pill"
-                )
-        else:
-            # error event has been set, all processes will stop where they are.
-            logger.info("Terminating and Skipping Poison Pill sending. Error Event received.")
+        finally:
 
-        # log process conclusion
-        logger.info(
-            "StreamVideoReader process stopped gracefully."
-            f"Stop event: {self.stop_event.is_set()}. "
-            f"Error event: {self.error_event.is_set()}."
-        )
+            #  Final Cleanup
+
+            if cap is not None:
+                try:
+                    logger.info("Closing VideoCapture object ...")
+                    cap.release()
+                    logger.info("VideoCapture object closed")
+                except Exception as e:
+                    logger.error(f"Failed to close the VideoCapture object: {e}")
+
+            # log process conclusion
+            logger.info(
+                "StreamVideoReader process stopped gracefully. "
+                f"Stop event: {self.stop_event.is_set()}. "
+                f"Error event: {self.error_event.is_set()}."
+            )
+            self.work_finished.set()
+
+
+
+if __name__ == "__main__":
+
+    frame_queue = mp.Queue()
+    stop_event = mp.Event()
+    error_event = mp.Event()
+
+    video_stream_url = "http://0.0.0.0:8889/annot"
+
+    stream_reader = StreamVideoReader(frame_queue, stop_event, error_event, video_stream_url)
+    consumer = Consumer(frame_queue)
+
+    consumer.start()
+    stream_reader.start()
+
+    stream_reader.join()
+    consumer.stop()
+    consumer.join()

@@ -14,6 +14,7 @@ RUN apt update && apt install -y \
     libxext6 \
     libxrender-dev \
     libglib2.0-0 \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Set the working directory in the container

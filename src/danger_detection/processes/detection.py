@@ -1,5 +1,6 @@
 import multiprocessing as mp
-from queue import Empty
+from queue import Empty as QueueEmptyException
+from queue import Full as QueueFullException
 
 from src.danger_detection.detection.detection import postprocess_detection_results
 from ultralytics import YOLO
@@ -7,7 +8,7 @@ from ultralytics import YOLO
 from src.danger_detection.processes.messages import DetectionResult
 from src.shared.processes.messages import CombinedFrameTelemetryQueueObject
 from src.shared.processes.constants import *
-from time import time
+from time import time, sleep
 import logging
 
 # ================================================================
@@ -65,6 +66,8 @@ class DetectionWorker(mp.Process):
         self.queue_put_timeout = queue_put_timeout
         self.poison_pill_timeout = poison_pill_timeout
 
+        self.work_finished = mp.Event()
+
     def run(self):
         """
         Main loop of the process: initializes the detector and processes frames.
@@ -74,53 +77,51 @@ class DetectionWorker(mp.Process):
         poison_pill_received = False
 
         try:
+
+            # instantiate the detection model
             detection_model_checkpoint = self.detection_args.pop("model_checkpoint")
             model = YOLO(detection_model_checkpoint, task="detect")
             detector = DetectorWrapper(model=model, predict_args=self.detection_args)
             logger.info("Animal detection model loaded.")
+
             # prepare detection classes names and number
             classes_names = model.names  # Dictionary of class names
             num_classes = len(classes_names)
-        except Exception as e:
-            logger.critical(f"Failed to initialize the Object detection model: {e}")
-            self.error_event.set()
-            logger.warning("Error event set: Force-stopping all processes")
 
-        while not self.error_event.is_set():
-            
-            iter_start = time()
+            while not self.error_event.is_set():
 
-            try:
-                # frame_telemetry_object is either a CombinedFrameTelemetryQueueObject or the POISON_PILL
-                frame_telemetry_object: CombinedFrameTelemetryQueueObject = self.input_queue.get(timeout=self.queue_get_timeout)
-            except Empty:
-                logger.debug(f"Input queue timed out. Upstream producer may be stalled. Retrying...")
-                continue  # Go back and try to get again
-            
-            if frame_telemetry_object == POISON_PILL:
-                poison_pill_received = True
-                logger.info("Found sentinel value on queue.")
+                iter_start = time()
+
                 try:
-                    logger.info("Attempting to put sentinel value on output queue ...")
-                    self.result_queue.put(POISON_PILL, timeout=self.poison_pill_timeout)
-                    logger.info("Sentinel value has been passed on to the next process.")
-                except Exception as e:
-                    logger.error(f"Error propagating Poison Pill: {e}")
-                    self.error_event.set()
-                    logger.warning(
-                        "Error event set: force-stop application since downstream processes "
-                        "are unable to receive the poison pill."
-                    )
-                break
+                    # frame_telemetry_object is either a CombinedFrameTelemetryQueueObject or the POISON_PILL
+                    frame_telemetry_object: CombinedFrameTelemetryQueueObject | str = self.input_queue.get(timeout=self.queue_get_timeout)
+                except QueueEmptyException:
+                    logger.debug(f"Input queue timed out. Upstream producer may be stalled. Retrying...")
+                    continue  # Go back and try to get again
 
-            get_time = time() - iter_start
+                if isinstance(frame_telemetry_object, str) and frame_telemetry_object == POISON_PILL:
+                    poison_pill_received = True
+                    logger.info("Found sentinel value on queue.")
+                    try:
+                        logger.info("Attempting to put sentinel value on output queue ...")
+                        self.result_queue.put(POISON_PILL, timeout=self.poison_pill_timeout)
+                        logger.info("Sentinel value has been passed on to the next process.")
+                    except Exception as e:
+                        logger.error(f"Error propagating Poison Pill: {e}")
+                        self.error_event.set()
+                        logger.warning(
+                            "Error event set: force-stop application since downstream processes "
+                            "are unable to receive the poison pill."
+                        )
+                    break
 
-            try:
+                get_time = time() - iter_start
+
                 # Perform detection using stored arguments
                 predict_start = time()
                 classes, boxes_centers, boxes_corner1, boxes_corner2 = detector.predict(frame_telemetry_object.frame)
                 predict_time = time() - predict_start
-                
+
                 result = DetectionResult(
                     frame_id=frame_telemetry_object.frame_id,
                     frame=frame_telemetry_object.frame,
@@ -139,9 +140,11 @@ class DetectionWorker(mp.Process):
                 try:
                     self.result_queue.put(result, timeout=self.queue_put_timeout)
                     logger.debug("Put detection results on output queue")
-                except Exception as e:
+                except QueueFullException:
                     logger.error(
-                        f"Failed to put detection results on output queue: {e}. "
+                        f"Failed to put detection results on output queue: queue is full. "
+                        f"Consumer too slow or stuck?. "
+                        f"Skipping detection results. "
                         "This might break sync between models in the next process and cause an global error event"
                     )
                 append_time = time() - append_start
@@ -157,16 +160,143 @@ class DetectionWorker(mp.Process):
                 )
                 # iteration completed correctly, move on to process next frame
 
-            except Exception as e:
-                logger.error(
-                    f"Unforeseen detection error: {e}. "
-                    "This might break sync between models in the next process and cause an global error event"
-                )
-                # continue on to next frame, next process will handle any sync error
+        except Exception as e:
+            logger.critical(f"An unexpected critical error happened in the animal detection process: {e}")
+            self.error_event.set()
+            logger.warning("Error event set: force-stopping the application")
 
-        # log process conclusion
-        logger.info(
-            "Animal detection process terminated successfully."
-            f"Poison pill received: {poison_pill_received}. "
-            f"Error event: {self.error_event.is_set()}."
+        finally:
+
+            logger.info(
+                "Animal detection process terminated successfully. "
+                f"Poison pill received: {poison_pill_received}. "
+                f"Error event: {self.error_event.is_set()}."
+            )
+            self.work_finished.set()
+
+
+            """
+            logger.info("Finally block")
+            # Always signal that this process is done writing to the queue
+            self.result_queue.close()
+            logger.info("Queue closed")
+
+            if self.error_event.is_set():
+                # Case A: We know there is an error.
+                # Drop everything and leave.
+                # Prevents process from getting stuck while waiting for a (possibly) dead consumer to consume data
+                # from the queue (might never happen if downstream process is truly dead)
+                logger.info("Error event is set, cancelling output queue feeder thread data flushing...")
+                self.result_queue.cancel_join_thread()
+
+            else:
+                # Case B: We think everything is fine, and the POISON PILL  was put in the output queue
+                # HOWEVER: the consumer might still die before reading the poison pill, in that case this process will
+                # hang forever waiting for the output queue to drain, which will never happen
+
+                # THEREFORE:
+                # Explicitly wait for the buffer to flush,
+                # BUT keep an eye on the error_event while we wait.
+                feeder_thread = getattr(self.result_queue, '_thread', None)
+                if feeder_thread is not None and feeder_thread.is_alive():
+                    logger.info("No error event receiver. Waiting for output queue feeder thread to flush...")
+                    while feeder_thread.is_alive() and (not self.error_event.is_set()):
+                        logger.info(f"error event: {self.error_event.is_set()}")
+                        logger.info(f"feeder alive: {feeder_thread.is_alive()}")
+                        sleep(0.5)
+
+                    # If an error happened while we were waiting to flush,
+                    # stop waiting and drop the buffer, just exit.
+                    if self.error_event.is_set():
+                        self.result_queue.cancel_join_thread()
+                        logger.info(
+                            "Error event was set while flushing. "
+                            "Cancelling output queue feeder thread data flushing..."
+                        )
+                    else:
+                        logger.info("Flushing of data to the output queue complete. ")
+
+                else:
+                    # If feeder_thread is None, the queue was never used.
+                    # No need to wait or cancel; we can just exit.
+                    logger.info(
+                        "Output queue was never used or is already flushed. "
+                    )
+                    
+            # log process conclusion
+            logger.info(
+                "Animal detection process terminated successfully. "
+                f"Poison pill received: {poison_pill_received}. "
+                f"Error event: {self.error_event.is_set()}."
+            )
+            """
+
+
+
+if __name__ == "__main__":
+
+    import numpy as np
+    from src.shared.processes.consumer import Consumer
+    from src.shared.processes.producer import Producer
+    from src.configs.utils import read_yaml_config
+
+    VSLOW = 1
+    SLOW = 10
+    FAST = 50
+    REAL = 30
+
+    CONSUMER_QUEUE_MAX = 10
+
+    detection_args = read_yaml_config("configs/danger_detection/detector.yaml")
+
+    def generate_frame_telemetry_queue_object():
+        ts = time()
+        return CombinedFrameTelemetryQueueObject(
+            frame_id=int(ts*100),
+            frame=np.random.randint(0, 256, size=(720, 1280, 3), dtype=np.uint8),
+            telemetry=None,
+            timestamp=ts,
+            original_wh=(1920, 1080),
         )
+
+    frame_telemetry_queue = mp.Queue()
+    stop_event = mp.Event()
+    error_event = mp.Event()
+
+    out_queue = mp.Queue(maxsize=CONSUMER_QUEUE_MAX)
+
+    producer = Producer(frame_telemetry_queue, error_event, generate_frame_telemetry_queue_object, frequency_hz=SLOW)
+    consumer = Consumer(out_queue, error_event, frequency_hz=SLOW)
+
+    detector = DetectionWorker(frame_telemetry_queue, out_queue, error_event, detection_args)
+
+    print("CONSUMERS STARTED")
+    consumer.start()
+
+    sleep(3)
+
+    print("DETECTOR STARTED")
+    detector.start()
+
+    sleep(3)
+
+    print("PRODUCER STARTED")
+    producer.start()
+
+    sleep(5)
+
+    #print("PRODUCER STOPPED")
+    #producer.stop()
+    print("ERROR EVENT SET")
+    error_event.set()
+
+    sleep(5)
+
+    producer.join(timeout=5)
+    print("producer joined")
+
+    detector.join()
+    print("detector joined")
+
+    consumer.join()
+    print("consumer joined")

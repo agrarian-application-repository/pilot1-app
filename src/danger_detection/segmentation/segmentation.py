@@ -110,7 +110,7 @@ def perform_segmentation(
     """
 
     # Preprocess the frame
-    preprocessed_frame, padding_info = preprocess_segmentation_data(frame)
+    preprocessed_frame = preprocess_segmentation_data(frame)
 
     # Run inference
     mask = session.run(None, {input_name: preprocessed_frame})
@@ -120,6 +120,6 @@ def perform_segmentation(
         mask=mask,
         suppress_classes=segmentation_args["suppress_classes"]
     )
-
+    logger.debug("return")
     # onnx model returns class labels
     return roads_mask, vehicles_mask

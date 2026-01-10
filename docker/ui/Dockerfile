@@ -11,6 +11,7 @@ RUN apt update && apt install -y \
     libavformat-dev \
     libavutil-dev \
     libswscale-dev \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Set the working directory
@@ -40,7 +41,6 @@ ENV WEBSOCKET_PING_TIMEOUT=10
 
 ENV ALERTS_REFRESH=1.0
 ENV ALERTS_BOX_COLOR_TIMEDIFF=5.0
-ENV ALERTS_MAX_QUEUE_SIZE=20
 ENV ALERTS_MAX_DISPLAYED=5
 
 ENV LOGO_WIDTH=200

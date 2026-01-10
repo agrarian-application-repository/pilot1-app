@@ -21,7 +21,7 @@ gpu_per_trial: 1
 # Type: int
 # Default: 10
 # Allowed values: >= 1
-iterations: 250
+iterations: 150
 
 # ----------------------
 
@@ -61,7 +61,7 @@ patience: 20
 # Type: int/float
 # Default: 16
 # Allowed values: int >= 1 or int == -1 or float in (0.0, 1.0] 
-batch: 16
+batch: 12
 
 # Target image size for training. All images are resized to this dimension.
 # Type: int or list[int]
@@ -94,7 +94,7 @@ device: 3
 # Type: int
 # Default: 8
 # Allowed values: >= -1
-workers: 12
+workers: 8
 
 # Name of the project directory where training outputs are saved.
 # Type: str
@@ -104,7 +104,7 @@ project: experiments_agrarian_hs
 # Name of the training run. Used for creating a subdirectory within the project folder.
 # Type: str
 # Allowed values: Any valid string
-name: hs_search_1280_720
+name: hs_search_1280_720_m
 
 # If true, allows overwriting of an existing project/name directory.
 # Type: bool

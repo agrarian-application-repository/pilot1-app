@@ -1,5 +1,6 @@
 import multiprocessing as mp
-from queue import Empty
+from queue import Empty as QueueEmptyException
+from queue import Full as QueueFullException
 
 import logging
 from src.danger_detection.segmentation.segmentation import create_onnx_segmentation_session, perform_segmentation
@@ -8,7 +9,7 @@ from src.danger_detection.processes.messages import SegmentationResult
 from src.shared.processes.messages import CombinedFrameTelemetryQueueObject
 from src.shared.processes.constants import *
 
-from time import time
+from time import time, sleep
 
 # ================================================================
 
@@ -35,7 +36,6 @@ class SegmenterWrapper:
         segment_results = perform_segmentation(
             session=self.onnx_session,
             input_name=self.onnx_input_name,
-            input_shape=self.onnx_input_shape,
             frame=frame,
             segmentation_args=self.predict_args
         )
@@ -74,6 +74,8 @@ class SegmentationWorker(mp.Process):
         self.queue_put_timeout = queue_put_timeout
         self.poison_pill_timeout = poison_pill_timeout
 
+        self.work_finished = mp.Event()
+
     def run(self):
         """
         Main loop of the process: initializes the detector and processes frames.
@@ -89,41 +91,36 @@ class SegmentationWorker(mp.Process):
             logger.info("ONNX session created")
             segmenter = SegmenterWrapper(segmenter_session, segmenter_input_name, segmenter_input_shape, self.segmentation_args)
             logger.info("Initialized segmentation model")
-        except Exception as e:
-            logger.critical(f"Failed to initialize the Segmentation model: {e}")
-            self.error_event.set()
-            logger.warning("Error event set: Force-stopping all processes")
 
-        while not self.error_event.is_set():
+            while not self.error_event.is_set():
 
-            iter_start = time()
+                iter_start = time()
 
-            try:
-                # frame_telemetry_object is either a CombinedFrameTelemetryQueueObject or the POISON_PILL
-                frame_telemetry_object: CombinedFrameTelemetryQueueObject = self.input_queue.get(timeout=self.queue_get_timeout)
-            except Empty:
-                logger.debug(f"Input queue timed out. Upstream producer may be stalled. Retrying...")
-                continue    # Go back and try to get again
-            
-            if frame_telemetry_object == POISON_PILL:
-                poison_pill_received = True
-                logger.info("Found sentinel value on queue.")
                 try:
-                    logger.info("Attempting to put sentinel value on output queue ...")
-                    self.result_queue.put(POISON_PILL, timeout=self.poison_pill_timeout)
-                    logger.info("Sentinel value has been passed on to the next process.")
-                except Exception as e:
-                    logger.error(f"Error propagating Poison Pill: {e}")
-                    self.error_event.set()
-                    logger.warning(
-                        "Error event set: force-stop application since downstream processes "
-                        "are unable to receive the poison pill."
-                    )
-                break
+                    # frame_telemetry_object is either a CombinedFrameTelemetryQueueObject or the POISON_PILL
+                    frame_telemetry_object: CombinedFrameTelemetryQueueObject | str = self.input_queue.get(timeout=self.queue_get_timeout)
+                except QueueEmptyException:
+                    logger.debug(f"Input queue timed out. Upstream producer may be stalled. Retrying...")
+                    continue    # Go back and try to get again
 
-            get_time = time() - iter_start
+                if isinstance(frame_telemetry_object, str) and frame_telemetry_object == POISON_PILL:
+                    poison_pill_received = True
+                    logger.info("Found sentinel value on queue.")
+                    try:
+                        logger.info("Attempting to put sentinel value on output queue ...")
+                        self.result_queue.put(POISON_PILL, timeout=self.poison_pill_timeout)
+                        logger.info("Sentinel value has been passed on to the next process.")
+                    except Exception as e:
+                        logger.error(f"Error propagating Poison Pill: {e}")
+                        self.error_event.set()
+                        logger.warning(
+                            "Error event set: force-stop application since downstream processes "
+                            "are unable to receive the poison pill."
+                        )
+                    break
 
-            try:
+                get_time = time() - iter_start
+
                 # Perform segmentation using stored arguments
                 predict_start = time()
                 roads_mask, vehicles_mask = segmenter.predict(frame_telemetry_object.frame)
@@ -141,9 +138,11 @@ class SegmentationWorker(mp.Process):
                 try:
                     self.result_queue.put(result, timeout=self.queue_put_timeout)
                     logger.debug("Put segmentation results on output queue")
-                except Exception as e:
+                except QueueFullException:
                     logger.error(
-                        f"Failed to put segmentation results on output queue: {e}. "
+                        f"Failed to put segmentation results on output queue: queue is full. "
+                        f"Consumer too slow or stuck?. "
+                        f"Skipping segmentation results. "
                         "This might break sync between models in the next process and cause an global error event"
                     )
                 append_time = time() - append_start
@@ -159,16 +158,90 @@ class SegmentationWorker(mp.Process):
                 )
                 # iteration completed correctly, move on to process next frame
 
-            except Exception as e:
-                logger.error(
-                    f"Unforeseen segmentation error: {e}. "
-                    "This might break sync between models in the next process and cause an global error event"
-                )
-                # continue on to next frame, next process will handle any sync error
+        except Exception as e:
+            logger.critical(f"An unexpected critical error happened in the segmentation process: {e}",  exc_info=True)
+            self.error_event.set()
+            logger.warning("Error event set: force-stopping the application")
 
-        # log process conclusion
-        logger.info(
-            "Roads & vehicles segmentation process terminated successfully."
-            f"Poison pill received: {poison_pill_received}. "
-            f"Error event: {self.error_event.is_set()}."
+        finally:
+            # log process conclusion
+            logger.info(
+                "Roads & vehicles segmentation process terminated successfully. "
+                f"Poison pill received: {poison_pill_received}. "
+                f"Error event: {self.error_event.is_set()}."
+            )
+            self.work_finished.set()
+
+
+if __name__ == "__main__":
+
+    import numpy as np
+    from src.shared.processes.consumer import Consumer
+    from src.shared.processes.producer import Producer
+    from src.configs.utils import read_yaml_config
+
+    VSLOW = 1
+    SLOW = 10
+    FAST = 50
+    REAL = 30
+
+    CONSUMER_QUEUE_MAX = 2
+
+    segmentation_args = read_yaml_config("configs/danger_detection/segmenter.yaml")
+
+    def generate_frame_telemetry_queue_object():
+        ts = time()
+        return CombinedFrameTelemetryQueueObject(
+            frame_id=int(ts*100),
+            frame=np.random.randint(0, 256, size=(720, 1280, 3), dtype=np.uint8),
+            telemetry=None,
+            timestamp=ts,
+            original_wh=(1920, 1080),
         )
+
+    frame_telemetry_queue = mp.Queue()
+    stop_event = mp.Event()
+    error_event = mp.Event()
+
+    out_queue = mp.Queue(maxsize=CONSUMER_QUEUE_MAX)
+
+    producer = Producer(frame_telemetry_queue, generate_frame_telemetry_queue_object, frequency_hz=FAST)
+    consumer = Consumer(out_queue, frequency_hz=VSLOW)
+
+    segmenter = SegmentationWorker(frame_telemetry_queue, out_queue, error_event, segmentation_args)
+
+    print("CONSUMERS STARTED")
+    consumer.start()
+
+    sleep(3)
+
+    print("DETECTOR STARTED")
+    segmenter.start()
+
+    sleep(3)
+
+    print("PRODUCER STARTED")
+    producer.start()
+
+    sleep(3)
+
+    print("PRODUCER STOPPED")
+    producer.stop()
+
+    sleep(3)
+
+    # print("POISON PILL")
+    # frame_telemetry_queue.put(POISON_PILL)    # option1
+    print("ERROR EVENT")
+    error_event.set()  # option2
+
+    producer.join()
+    print("producer joined")
+    segmenter.join()
+    print("detector joined")
+
+    print("CONSUMER STOPPED")
+    consumer.stop()
+    consumer.join()
+    print("consumer joined")
+

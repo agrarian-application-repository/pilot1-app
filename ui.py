@@ -40,7 +40,6 @@ WEBSOCKET_PING_TIMEOUT = int(os.getenv("WEBSOCKET_PING_TIMEOUT", 10))
 
 ALERTS_REFRESH = float(os.getenv("ALERTS_REFRESH", 1.0))
 ALERTS_BOX_COLOR_TIMEDIFF = float(os.getenv("ALERTS_BOX_COLOR_TIMEDIFF", 5.0))
-ALERTS_MAX_QUEUE_SIZE = int(os.getenv("ALERTS_MAX_QUEUE_SIZE", 20))
 ALERTS_MAX_DISPLAYED = int(os.getenv("ALERTS_MAX_DISPLAYED", 5))
 
 LOGO = "assets/leonardo.png"
@@ -74,7 +73,6 @@ def initialize_services(
         
         # Initialize session state
         st.session_state.alerts_display_dequeue = deque(maxlen=ALERTS_MAX_DISPLAYED)
-        st.session_state.alerts_reception_queue = queue.Queue(maxsize=ALERTS_MAX_QUEUE_SIZE)
         st.session_state.total_alerts = 0
         st.session_state.last_alert_timestamp = None
 
@@ -91,7 +89,7 @@ def initialize_services(
         st.session_state.websocket_receiver = AlertReceiver(
             host=ws_host,
             port=ws_port,
-            shared_queue=st.session_state.alerts_reception_queue,
+            shared_dequeue=st.session_state.alerts_display_dequeue,
             reconnection_delay=WEBSOCKET_RECONNECTION_DELAY,
             ping_interval=WEBSOCKET_PING_INTERVAL,
             ping_timeout=WEBSOCKET_PING_TIMEOUT,
@@ -112,71 +110,24 @@ def initialize_services(
 # ================================================================
 
 @st.fragment(run_every=ALERTS_REFRESH)
-def update_metrics():
-
-    if st.session_state.last_alert_timestamp is None:
-        st.success("No alerts received yet")
-
-    else:
-        current_time = time()
-        logger.debug(f"current time: {current_time}")
-        logger.debug(f"last alert time: {st.session_state.last_alert_timestamp}")
-
-        # compute time difference in UTC time
-        seconds_passed = int(current_time - st.session_state.last_alert_timestamp)
-        logger.info(f"seconds passed: {seconds_passed}")
-        minutes_passed = seconds_passed // 60
-        if minutes_passed > 0:
-            seconds_passed = seconds_passed % 60
-
-        # Convert time to local timestamp for displaying
-        last_alert_local = (
-            datetime.datetime
-                .fromtimestamp(st.session_state.last_alert_timestamp, tz=datetime.timezone.utc)
-                .astimezone()
-                .strftime('%H:%M:%S')
-        )
-
-        logger.info(last_alert_local)
-
-        if seconds_passed < 60:
-            text = f"Alert received {seconds_passed} seconds ago ({last_alert_local})"
-        else:
-            text = f"Alert received {minutes_passed}:{seconds_passed} minutes ago ({last_alert_local})"
-        
-        if seconds_passed > ALERTS_BOX_COLOR_TIMEDIFF:
-            st.warning(text)    # yellow if older
-        else:
-            st.error(text)      # red if very recent
-    
-    st.metric("Total Alerts", st.session_state.total_alerts)
-    st.metric("Displayed Alerts", len(st.session_state.alerts_display_dequeue))
-        
-
-@st.fragment(run_every=ALERTS_REFRESH)
 def process_alerts():
     """Process new alerts in a fragment that runs independently"""
-    # Process new alerts
-    try:
-        while not st.session_state.alerts_reception_queue.empty():
-            alert = st.session_state.alerts_reception_queue.get_nowait()
-            st.session_state.alerts_display_dequeue.appendleft(alert)
-            st.session_state.total_alerts += 1
-    except:
-        pass
-    
+
     # Display alerts
-    if st.session_state.total_alerts > 0:
+    if st.session_state.websocket_receiver.get_total_alerts() > 0:
         # Create a container with fixed height and scrollable content
         with st.container(height=ALERT_HEIGHT):  # Adjust height as needed (in pixels)
             for i, alert in enumerate(st.session_state.alerts_display_dequeue):
 
-                last_alert_timestamp = alert['timestamp']
-                st.session_state.last_alert_timestamp = last_alert_timestamp  # save last alert time() UTC
+                alert_timestamp = alert['timestamp']
+
+                # the leftmost alert is the most recent (appendleft)
+                if i == 0:
+                    st.session_state.last_alert_timestamp = alert_timestamp  # save last alert time() UTC
 
                 alert_local_time = (
                     datetime.datetime
-                        .fromtimestamp(last_alert_timestamp, tz=datetime.timezone.utc)
+                        .fromtimestamp(alert_timestamp, tz=datetime.timezone.utc)
                         .astimezone()
                         .strftime('%Y-%m-%d %H:%M:%S')
                 )
@@ -193,6 +144,48 @@ def process_alerts():
                     st.divider()
     else:
         st.info("📭 No alerts received yet")
+
+
+@st.fragment(run_every=ALERTS_REFRESH)
+def update_metrics():
+
+    if st.session_state.last_alert_timestamp is None:
+        st.success("No alerts received yet")
+
+    else:
+        current_time = time()
+        logger.debug(f"current UTC time: {current_time}")
+        logger.debug(f"last alert UTC time: {st.session_state.last_alert_timestamp}")
+
+        # compute time difference in UTC time
+        seconds_passed = int(current_time - st.session_state.last_alert_timestamp)
+        logger.info(f"seconds passed: {seconds_passed}")
+        minutes_passed = seconds_passed // 60
+        if minutes_passed > 0:
+            seconds_passed = seconds_passed % 60
+
+        # Convert time to local timestamp for displaying
+        last_alert_local = (
+            datetime.datetime
+                .fromtimestamp(st.session_state.last_alert_timestamp, tz=datetime.timezone.utc)
+                .astimezone()
+                .strftime('%H:%M:%S')
+        )
+
+        logger.info(f"last alert local time {last_alert_local}")
+
+        if seconds_passed < 60:
+            text = f"Alert received {seconds_passed} seconds ago ({last_alert_local})"
+        else:
+            text = f"Alert received {minutes_passed}:{seconds_passed} minutes ago ({last_alert_local})"
+
+        if seconds_passed > ALERTS_BOX_COLOR_TIMEDIFF:
+            st.warning(text)  # yellow if older
+        else:
+            st.error(text)  # red if very recent
+
+    st.metric("Total Alerts", st.session_state.websocket_receiver.get_total_alerts())
+    st.metric("Displayed Alerts", len(st.session_state.alerts_display_dequeue))
 
 
 # ================================================================
@@ -218,51 +211,7 @@ def main():
         webrtc_stream=WEBRTC_STREAM_NAME,
         webrtc_stun=WEBRTC_STUN_SERVER,
     )
-    
-    # Sidebar configuration
-    with st.sidebar:
-        st.image(LOGO, width=LOGO_WIDTH)
-        
-        st.subheader("Video stream configuration")
-        st.text_input(
-            "WebRTC stream URL",
-            value=WEBRTC_URL,
-            help="The WebRTC stream URL from media server",
-            disabled=True,
-        )
 
-        st.text_input(
-            "WebRTC stream name",
-            value=WEBRTC_STREAM_NAME,
-            help="The WebRTC stream name",
-            disabled=True,
-        )
-
-        st.text_input(
-            "WebRTC STUN server",
-            value=WEBRTC_STUN_SERVER,
-            help="Enter the WebRTC STUN server address",
-            disabled=True,
-        )
-        
-        st.subheader("Alerts stream configuration")
-        st.text_input(
-            "WEBSOCKET server URL",
-            value=WEBSOCKET_URL,
-            help="The URL of the Websocket server sending alerts",
-            disabled=True,
-        )
-        
-        st.divider()
-
-        # Process alerts metrics in a fragment that runs independently
-        update_metrics()
-
-        if st.button("Clear displayed alerts", type="secondary"):
-            if 'alerts_display_dequeue' in st.session_state:
-                st.session_state.alerts_display_dequeue.clear()
-                logger.info("Alerts cleared")
-    
     # Main content
     left_col, right_col = st.columns([3, 2])
     
@@ -288,6 +237,49 @@ def main():
         st.header("🚨 Alert Feed")
         # Process alerts in a fragment that runs independently
         process_alerts()
+
+    # Sidebar configuration
+    with st.sidebar:
+        st.image(LOGO, width=LOGO_WIDTH)
+
+        st.subheader("Video stream configuration")
+        st.text_input(
+            "WebRTC stream URL",
+            value=WEBRTC_URL,
+            help="The WebRTC stream URL from media server",
+            disabled=True,
+        )
+
+        st.text_input(
+            "WebRTC stream name",
+            value=WEBRTC_STREAM_NAME,
+            help="The WebRTC stream name",
+            disabled=True,
+        )
+
+        st.text_input(
+            "WebRTC STUN server",
+            value=WEBRTC_STUN_SERVER,
+            help="Enter the WebRTC STUN server address",
+            disabled=True,
+        )
+
+        st.subheader("Alerts stream configuration")
+        st.text_input(
+            "WEBSOCKET server URL",
+            value=WEBSOCKET_URL,
+            help="The URL of the Websocket server sending alerts",
+            disabled=True,
+        )
+
+        st.divider()
+
+        # Process alerts metrics in a fragment that runs independently
+        update_metrics()
+
+        if st.button("Clear displayed alerts", type="secondary"):
+            st.session_state.alerts_display_dequeue.clear()
+            logger.info("Alerts cleared")
 
 
 if __name__ == "__main__":

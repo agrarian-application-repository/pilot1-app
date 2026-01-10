@@ -1,6 +1,5 @@
 from ultralytics import YOLO
 
-import wandb
 from src.configs.hyperparameters_search import check_hs_args
 
 from src.configs.utils import parse_config_file, read_yaml_config
@@ -32,8 +31,6 @@ def main():
     task = hs_args.pop("task")
     model = YOLO(model=model_checkpoint, task=task)
 
-    hs_args["resume"] = True
-
     # wandb_api_key = get_wandb_api_key()
     # wandb.login(key=wandb_api_key)
 
@@ -44,7 +41,7 @@ def main():
     results_grid = model.tune(**hs_args)
 
     # Finish the W&B run
-    wandb.finish()
+    # wandb.finish()
 
 
 if __name__ == "__main__":

@@ -84,7 +84,8 @@ VIDEO_STREAM_READER_QUEUE_PUT_TIMEOUT = 0.02                              # 20 m
 # testing host
 MQTT_HOST = "test.mosquitto.org"
 
-# Standard MQTTS port
+# Standard MQTT ports
+MQTT_PORT = 1883
 MQTTS_PORT = 8883
 
 # If the DJI broker requires a specific root certificate, download it and

@@ -9,12 +9,13 @@ from typing import Optional
 
 from src.shared.processes.constants import *
 
+
 # ================================================================
 
 logger = logging.getLogger("main.combiner")
 
 if not logger.handlers:  # Avoid duplicate handlers
-    video_handler = logging.FileHandler('/app/logs/combiner.log', mode='w')
+    video_handler = logging.FileHandler('./logs/combiner.log', mode='w')
     video_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(video_handler)
     logger.setLevel(logging.DEBUG)
@@ -86,20 +87,27 @@ class FrameTelemetryCombiner(mp.Process):
         self.queue_put_backoff = queue_put_backoff
         self.poison_pill_backoff = poison_pill_backoff
 
+        self.work_finished = mp.Event()
+
     def _update_telemetry_buffer(self):
         """Collect all available telemetry data from queue into buffer."""
+        logger.debug(f"initial telemetry buffer length: {len(self.telemetry_buffer)}")
         while True:
             try:
                 telemetry_obj: TelemetryQueueObject = self.telemetry_queue.get_nowait()
                 self.telemetry_buffer.append(telemetry_obj)
             except QueueEmptyException:
-                logger.debug("Telemetry queue empty, stopping fetch.")
-                break
-            except QueueFullException:
-                logger.debug("Telemetry buffer full, stopping fetch. Check frame-telemetry combining performance.")
+                logger.debug(
+                    "Telemetry queue emptied into the local buffer (if not empty already). "
+                    "Stopping fetch for matching to the current frame. "
+                    f"Buffer length: {len(self.telemetry_buffer)}"
+                )
                 break
             except Exception as e:
-                logger.debug(f"Unexpected error in telemetry fetch: {e}. Stopping fetch")
+                logger.debug(
+                    f"Unexpected error in telemetry fetch: {e}. "
+                    f"Stopping fetch for matching to the current frame"
+                )
                 break
 
     def _find_best_match(self, frame_timestamp: float) -> Optional[dict]:
@@ -148,7 +156,9 @@ class FrameTelemetryCombiner(mp.Process):
             # Remove all telemetry up to and including last_too_old_idx
             for _ in range(last_too_old_idx + 1):
                 self.telemetry_buffer.popleft()
-            logger.debug(f"Removed {last_too_old_idx + 1} old telemetry entries")
+            logger.debug(
+                f"Removed {last_too_old_idx + 1} telemetry entries "
+                f"older than the maximum allowed time difference for matching ({self.max_time_diff_s} seconds)")
 
             # Adjust best_idx if we removed items before it
             if best_idx >= 0:
@@ -158,8 +168,11 @@ class FrameTelemetryCombiner(mp.Process):
         if best_diff <= self.max_time_diff_s:
             logger.debug(f"Found telemetry match with time diff: {best_diff:.4f}s")
             # Remove all telemetry older than to the matched one (keep matched one)
+            removed_older = 0
             for _ in range(best_idx):
                 self.telemetry_buffer.popleft()
+                removed_older += 1
+            logger.debug(f"Removed {removed_older} telemetries old than the best match from the buffer")
             return best_match.telemetry
 
         else:
@@ -188,20 +201,21 @@ class FrameTelemetryCombiner(mp.Process):
             obj_type = "poison pill"
         else:
             obj_type = f"frame {combined_obj.frame_id}"
+            if combined_obj.telemetry is not None:
+                obj_type += " + telemetry"
 
         # Check if all queues have space (not full) before attempting to put
         # This provides atomicity guarantee
-        for attempt in range(self.queue_put_max_retries, 1):
+        for attempt in range(1, self.queue_put_max_retries+1):
 
             all_have_space = all([not queue.full() for queue in self.output_queues])
-
             if all_have_space:
                 # All queues have space, proceed with putting
                 for queue in self.output_queues:
                     queue.put_nowait(combined_obj)
 
                 logger.debug(
-                    f"Successfully output {obj_type} "
+                    f"Successfully output [{obj_type}] "
                     f"to all {len(self.output_queues)} processing queues")
                 return True
 
@@ -212,9 +226,9 @@ class FrameTelemetryCombiner(mp.Process):
                     time.sleep(backoff)
 
         logger.warning(
-            f"Failed to output put {obj_type} to model queues: "
-            f"queues full after {self.queue_put_max_retries} attempts. "
-            f"Discarding {obj_type}."
+            f"Failed to output put [{obj_type}] to model queues: "
+            f"At least one queue full after {self.queue_put_max_retries} attempts. "
+            f"Discarding [{obj_type}]."
         )
 
         # if it's the poison pill we were unable to propagate, set the error event to force-stop the application
@@ -235,60 +249,168 @@ class FrameTelemetryCombiner(mp.Process):
         consecutive_failed_matches = 0
         poison_pill_received = False
 
-        # Process runs until the stop event is set
-        while not self.error_event.is_set():
+        try:
 
-            try:
-                # Try to get a frame, waiting for a short time if not available immediately
-                frame_obj: FrameQueueObject = self.frame_queue.get(timeout=QUEUE_GET_TIMEOUT)
-            except QueueEmptyException:
-                logger.debug("Frame queue is empty, retrying fetch ...")
-                continue
+            # Process runs until the stop event is set
+            while not self.error_event.is_set():
 
-            # if the object found is the poison pill, it must be propagated to following processes via
-            # their input queues. Must ensure that all downstream processes receive the pill
-            if frame_obj == POISON_PILL:
-                logger.info("Found sentinel value on queue.")
-                poison_pill_received = True
-                # internally handles setting of error_event if unable to propagate the poison pill to all queues
-                # error_event causes clean shutdown of all processes
-                self._output_to_all_queues(frame_obj, backoff=self.poison_pill_backoff)
-                break
+                try:
+                    # Try to get a frame, waiting for a short time if not available immediately
+                    frame_obj: FrameQueueObject = self.frame_queue.get(timeout=QUEUE_GET_TIMEOUT)
+                except QueueEmptyException:
+                    logger.debug("Frame queue is empty, retrying fetch ...")
+                    continue
 
-            # Collect available telemetry data into buffer
-            # stop when all have been collected and the queue is empty, or the local telemetry data buffer is full
-            self._update_telemetry_buffer()
+                # if the object found is the poison pill, it must be propagated to following processes via
+                # their input queues. Must ensure that all downstream processes receive the pill
+                if frame_obj == POISON_PILL:
+                    logger.info("Found sentinel value on queue.")
+                    poison_pill_received = True
+                    # internally handles setting of error_event if unable to propagate the poison pill to all queues
+                    # error_event causes clean shutdown of all processes
+                    self._output_to_all_queues(frame_obj, backoff=self.poison_pill_backoff)
+                    break
 
-            # Find best matching telemetry
-            matched_telemetry = self._find_best_match(frame_obj.timestamp)
+                # Collect available telemetry data into buffer
+                # stop when all have been collected and the queue is empty, or the local telemetry data buffer is full
+                self._update_telemetry_buffer()
 
-            if matched_telemetry is None:
-                failed_matches += 1
-                consecutive_failed_matches += 1
-                logger.debug(
-                    f"N. Consecutive failed matches: {consecutive_failed_matches}. "
-                    f"N. Total failed matches: {failed_matches}. "
-                    f"Either the delay between frames and telemetry is too large, or telemetry collection has stopped."
+                # Find best matching telemetry
+                matched_telemetry = self._find_best_match(frame_obj.timestamp)
+
+                if matched_telemetry is None:
+                    failed_matches += 1
+                    consecutive_failed_matches += 1
+                    logger.debug(
+                        f"N. Consecutive failed matches: {consecutive_failed_matches}. "
+                        f"N. Total failed matches: {failed_matches}. "
+                        f"Either the delay between frames and telemetry is too large, or telemetry collection has stopped."
+                    )
+                else:
+                    consecutive_failed_matches = 0
+
+                # Create combined object
+                combined_obj = CombinedFrameTelemetryQueueObject(
+                    frame_id=frame_obj.frame_id,
+                    frame=frame_obj.frame,
+                    telemetry=matched_telemetry,
+                    timestamp=frame_obj.timestamp,
+                    original_wh=frame_obj.original_wh,
                 )
-            else:
-                consecutive_failed_matches = 0
 
-            # Create combined object
-            combined_obj = CombinedFrameTelemetryQueueObject(
-                frame_id=frame_obj.frame_id,
-                frame=frame_obj.frame,
-                telemetry=matched_telemetry,
-                timestamp=frame_obj.timestamp,
-                original_wh=frame_obj.original_wh,
+                # Output to all queues (all or none = discard frame)
+                self._output_to_all_queues(combined_obj, backoff=self.queue_put_backoff)
+
+        except Exception as e:
+            logger.critical(f"An unexpected critical error happened in the frame-telemetry combiner process: {e}")
+            self.error_event.set()
+            logger.warning("Error event set: force-stopping the application")
+
+        finally:
+            # log process conclusion
+            logger.info(
+                "FrameTelemetryCombiner process stopped gracefully. "
+                f"Poison pill received: {poison_pill_received}. "
+                f"Error event: {self.error_event.is_set()}."
             )
+            self.work_finished.set()
 
-            # Output to all queues (all or none = discard frame)
-            self._output_to_all_queues(combined_obj, backoff=self.queue_put_backoff)
 
-        # log process conclusion
-        logger.info(
-            "FrameTelemetryCombiner process stopped gracefully."
-            f"Poison pill received: {poison_pill_received}. "
-            f"Error event: {self.error_event.is_set()}."
+
+if __name__ == "__main__":
+
+    import numpy as np
+    import random
+    from src.shared.processes.consumer import Consumer
+    from src.shared.processes.producer import Producer
+
+    VSLOW = 1
+    SLOW = 10
+    FAST = 50
+    REAL = 30
+
+    CONSUMER_QUEUE_MAX = 10
+
+    def generate_frame_queue_object():
+        ts = time.time()
+        return FrameQueueObject(
+            frame_id=int(ts*100),
+            frame=np.random.randint(0, 256, size=(720, 1280, 3), dtype=np.uint8),
+            timestamp=ts,
+            original_wh=(1920, 1080),
         )
 
+    def generate_telemetry_object():
+        return TelemetryQueueObject(
+            telemetry={
+                "latitude": random.uniform(-90.0, 90.0),       # degrees
+                "longitude": random.uniform(-180.0, 180.0),    # degrees
+                "rel_alt": random.uniform(0.0, 100.0),         # meters
+                "gb_yaw": random.uniform(0.0, 360.0),          # degrees
+            },
+            timestamp=time.time()
+        )
+
+    frame_queue = mp.Queue()
+    telemetry_queue = mp.Queue()
+    stop_event = mp.Event()
+    error_event = mp.Event()
+
+    out1 = mp.Queue(maxsize=CONSUMER_QUEUE_MAX)
+    out2 = mp.Queue(maxsize=CONSUMER_QUEUE_MAX)
+    out3 = mp.Queue(maxsize=CONSUMER_QUEUE_MAX)
+    out_queues = [out1, out2, out3]
+
+    stream_reader = Producer(frame_queue, generate_frame_queue_object, frequency_hz=REAL)
+    telemetry_reader = Producer(telemetry_queue, generate_telemetry_object, frequency_hz=FAST)
+
+    consumer1 = Consumer(out1, frequency_hz=FAST)
+    consumer2 = Consumer(out2, frequency_hz=SLOW)
+    consumer3 = Consumer(out3, frequency_hz=FAST)
+
+    combiner = FrameTelemetryCombiner(frame_queue, telemetry_queue, out_queues, error_event)
+
+    print("CONSUMERS STARTED")
+    consumer3.start()
+    consumer2.start()
+    consumer1.start()
+
+    time.sleep(3)
+
+    print("COMBINER STARTED")
+    combiner.start()
+
+    time.sleep(3)
+
+    print("READERS STARTED")
+    stream_reader.start()
+    telemetry_reader.start()
+
+    time.sleep(3)
+
+    print("TELEMETRY STOPPED")
+    telemetry_reader.stop()
+    telemetry_reader.join()
+
+    time.sleep(3)
+
+    print("VIDEO STOPPED")
+    stream_reader.stop()
+    stream_reader.join()
+
+    time.sleep(3)
+
+    #print("POISON PILL")
+    #frame_queue.put(POISON_PILL)    # option1
+    print("ERROR EVENT")
+    error_event.set()              # option2
+
+    combiner.join()
+
+    consumer1.stop()
+    consumer2.stop()
+    consumer3.stop()
+
+    consumer1.join()
+    consumer2.join()
+    consumer3.join()

@@ -17,7 +17,7 @@ from src.shared.processes.constants import *
 logger = logging.getLogger("main.video_out")
 
 if not logger.handlers:  # Avoid duplicate handlers
-    video_handler = logging.FileHandler('/app/logs/video_out.log', mode='w')
+    video_handler = logging.FileHandler('./logs/video_out.log', mode='w')
     video_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(video_handler)
     logger.setLevel(logging.DEBUG)
@@ -92,6 +92,8 @@ class VideoProducerProcess(mp.Process):
 
         # storage manager config
         self.storage_manager_handoff_timeout = storage_manager_handoff_timeout
+
+        self.work_finished = mp.Event()
 
     def _init_writer(self, width: int, height: int):
         fourcc = cv2.VideoWriter_fourcc(*self.video_codec)
@@ -219,3 +221,5 @@ class VideoProducerProcess(mp.Process):
             "All tasks assigned to VideoProducerProcess are terminated."
             "Clean shutdown: complete"
         )
+        self.work_finished.set()
+

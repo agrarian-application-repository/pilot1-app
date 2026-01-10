@@ -15,7 +15,7 @@ import bcrypt
 logger = logging.getLogger("main.alert_out.db")
 
 if not logger.handlers:  # Avoid duplicate handlers
-    video_handler = logging.FileHandler('/app/logs/alert_out_db.log', mode='w')
+    video_handler = logging.FileHandler('./logs/alert_out_db.log', mode='w')
     video_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(video_handler)
     logger.setLevel(logging.DEBUG)
