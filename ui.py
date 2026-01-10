@@ -1,6 +1,5 @@
 import streamlit as st
 from collections import deque
-import queue
 import logging
 import streamlit.components.v1 as components
 import datetime
@@ -12,7 +11,7 @@ from src.ui.video_player import get_video_player
 # ================================================================
 # Logging Configuration
 # ================================================================
-log_path = "./logs/ui.log"
+log_path = "./logs/ui/ui.log"
 
 logging.basicConfig(
     level=logging.INFO,

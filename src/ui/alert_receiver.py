@@ -14,7 +14,7 @@ from matplotlib import pyplot as plt
 # ================================================================
 
 logger = logging.getLogger("ui.receiver")
-log_path = "./logs/ui_receiver.log"
+log_path = "./logs/ui/ui_receiver.log"
 
 if not logger.handlers:  # Avoid duplicate handlers
     alert_handler = logging.FileHandler(log_path, mode='w')

@@ -36,9 +36,7 @@ shscripts/
 simulation/
 src/configs
 src/danger_detection
-src/drone_utils
 src/health_monitoring
-src/in_danger
 src/logging
 src/shared
 tests/
@@ -61,7 +59,6 @@ hyperparameters_search.py
 inference.py
 track.py
 train.py
-ui.py
 
 launch_danger_detection.sh
 launch_mediamtx.sh

@@ -7,18 +7,40 @@
 # Default values
 IMAGE_NAME="agrarian-ui"
 CONTAINER_NAME="agrarian-ui"
+DETACHED="false"
+REMOVE_EXISTING="false"
+ENV_FILE=""
+NETWORK=""
+BUILD="false"
+
+
 HOST_TCP_PORT="54321"
 TCP_PORT="54321"
 HOST_STREAMLIT_PORT="8501"
 MEDIAMTX_WEBRTC_URL="http://10.91.222.62:8889"
 STREAM_NAME="annot"
 STUN_SERVER="stun:stun.l.google.com:19302"
-DETACHED="false"
-REMOVE_EXISTING="false"
-ENV_FILE=""
-NETWORK=""
-BUILD="false"
-CONTAINER="true"
+
+
+WEBRTC_HOST =  "0.0.0.0"
+WEBRTC_PORT = "8889"
+WEBRTC_STREAM_NAME = "annot"
+WEBRTC_STUN_SERVER = "stun:stun.l.google.com:19302"
+
+WEBSOCKET_HOST = "0.0.0.0"
+WEBSOCKET_PORT = "443"
+WEBSOCKET_RECONNECTION_DELAY = "5"
+WEBSOCKET_PING_INTERVAL = "30"
+WEBSOCKET_PING_TIMEOUT = "10"
+
+ALERTS_REFRESH = "1.0"
+ALERTS_BOX_COLOR_TIMEDIFF = "5.0"
+ALERTS_MAX_DISPLAYED = "5"
+
+LOGO = "assets/leonardo.png"
+LOGO_WIDTH = "200"
+HTML_HEIGHT = "600"
+ALERT_HEIGHT = "600"
 
 # Help function
 show_help() {
@@ -27,95 +49,62 @@ Streamlit UI Container Launch Script
 
 Usage: $0 [OPTIONS]
 
-OPTIONS:
-    -i, --image NAME                    Docker image name (default: agrarian-ui)
-    -n, --name NAME                     Container name (default: agrarian-ui)
-    -p, --tcp-port PORT                 Host TCP port mapping (default: 54321)
-    -s, --streamlit-port PORT           Host Streamlit port mapping (default: 8501)
-    --internal-tcp-port PORT            Internal TCP port (default: 54321)
-    -m, --mediamtx-url URL              MediaMTX WebRTC URL (default: http://10.91.222.62:8889)
-    --stream-name NAME                  Stream name (default: annot)
-    --stun-server SERVER                STUN server (default: stun:stun.l.google.com:19302)
-    -d, --detached                      Run in detached mode
-    -r, --remove                        Remove existing container if it exists
-    -f, --env-file FILE                 Load environment variables from file
-    --network NETWORK                   Connect to specific Docker network
-    -b, --build                         Build image before running
-    -h, --help                          Show this help message
+GENERAL OPTIONS:
+    -i, --image NAME                Docker image name (default: $IMAGE_NAME)
+    -n, --name NAME                 Container name (default: $CONTAINER_NAME)
+    -d, --detached                  Run in detached mode
+    -r, --remove                    Remove existing container if it exists
+    -f, --env-file FILE             Load environment variables from file
+    --network NETWORK               Connect to specific Docker network
+    -b, --build                     Build image before running
 
-EXAMPLES:
-    # Basic launch
-    $0
+WEBRTC & WEBSOCKET OPTIONS:
+    --webrtc-host HOST              WebRTC Host (default: $WEBRTC_HOST)
+    --webrtc-port PORT              WebRTC Port (default: $WEBRTC_PORT)
+    --stream-name NAME              Stream name (default: $WEBRTC_STREAM_NAME)
+    --stun-server SERVER            STUN server (default: $WEBRTC_STUN_SERVER)
+    --ws-host HOST                  WebSocket Host (default: $WEBSOCKET_HOST)
+    --ws-port PORT                  WebSocket Port (default: $WEBSOCKET_PORT)
 
-    # Custom ports and stream
-    $0 -p 55555 -s 8502 --stream-name drone
+UI & ALERTS OPTIONS:
+    --logo PATH                     Path to logo (default: $LOGO)
+    --alerts-max NUM                Max alerts displayed (default: $ALERTS_MAX_DISPLAYED)
+    --html-height PX                UI HTML Height (default: $HTML_HEIGHT)
 
-    # Production mode with env file
-    $0 -d -r -f production.env --network my-network
-
-    # Development with rebuild
-    $0 -b -r --stream-name dev-stream
-
-    # Custom MediaMTX connection
-    $0 -m http://192.168.1.100:8889 --stream-name drone
+    -h, --help                      Show this help message
 EOF
 }
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
-        -i|--image)
-            IMAGE_NAME="$2"
-            shift 2
-            ;;
-        -n|--name)
-            CONTAINER_NAME="$2"
-            shift 2
-            ;;
-        -p|--tcp-port)
-            HOST_TCP_PORT="$2"
-            shift 2
-            ;;
-        -s|--streamlit-port)
-            HOST_STREAMLIT_PORT="$2"
-            shift 2
-            ;;
-        --internal-tcp-port)
-            TCP_PORT="$2"
-            shift 2
-            ;;
-        -m|--mediamtx-url)
-            MEDIAMTX_WEBRTC_URL="$2"
-            shift 2
-            ;;
-        --stream-name)
-            STREAM_NAME="$2"
-            shift 2
-            ;;
-        --stun-server)
-            STUN_SERVER="$2"
-            shift 2
-            ;;
-        -d|--detached)
-            DETACHED="true"
-            shift
-            ;;
-        -r|--remove)
-            REMOVE_EXISTING="true"
-            shift
-            ;;
-        -f|--env-file)
-            ENV_FILE="$2"
-            shift 2
-            ;;
-        --network)
-            NETWORK="$2"
-            shift 2
-            ;;
-        -b|--build)
-            BUILD="true"
-            shift
-            ;;
+        -i|--image) IMAGE_NAME="$2"; shift 2 ;;
+        -n|--name)  CONTAINER_NAME="$2"; shift 2 ;;
+        -d|--detached) DETACHED="true"; shift ;;
+        -r|--remove) REMOVE_EXISTING="true"; shift ;;
+        -f|--env-file) ENV_FILE="$2"; shift 2 ;;
+        --network) NETWORK="$2"; shift 2 ;;
+        -b|--build) BUILD="true"; shift ;;
+
+        # WebRTC Mappings
+        --webrtc-host) WEBRTC_HOST="$2"; shift 2 ;;
+        --webrtc-port) WEBRTC_PORT="$2"; shift 2 ;;
+        --stream-name) WEBRTC_STREAM_NAME="$2"; shift 2 ;;
+        --stun-server) WEBRTC_STUN_SERVER="$2"; shift 2 ;;
+
+        # WebSocket Mappings
+        --ws-host) WEBSOCKET_HOST="$2"; shift 2 ;;
+        --ws-port) WEBSOCKET_PORT="$2"; shift 2 ;;
+        --ws-delay) WEBSOCKET_RECONNECTION_DELAY="$2"; shift 2 ;;
+
+        # UI/Alerts Mappings
+        --alerts-refresh) ALERTS_REFRESH="$2"; shift 2 ;;
+        --alerts-max) ALERTS_MAX_DISPLAYED="$2"; shift 2 ;;
+        --logo) LOGO="$2"; shift 2 ;;
+        --logo-width) LOGO_WIDTH="$2"; shift 2 ;;
+        --html-height) HTML_HEIGHT="$2"; shift 2 ;;
+        --alert-height) ALERT_HEIGHT="$2"; shift 2 ;;
+
         -h|--help)
             show_help
             exit 0
@@ -163,19 +152,39 @@ fi
 DOCKER_CMD="$DOCKER_CMD --name $CONTAINER_NAME"
 
 # Add port mappings
-DOCKER_CMD="$DOCKER_CMD -p $HOST_TCP_PORT:$TCP_PORT"
-DOCKER_CMD="$DOCKER_CMD -p $HOST_STREAMLIT_PORT:8501"
+DOCKER_CMD="$DOCKER_CMD -p 8501:8501"
 
 # Add network if specified
 if [[ -n "$NETWORK" ]]; then
     DOCKER_CMD="$DOCKER_CMD --network $NETWORK"
 fi
 
-# Add environment variables
-DOCKER_CMD="$DOCKER_CMD -e TCP_PORT=$TCP_PORT"
-DOCKER_CMD="$DOCKER_CMD -e MEDIAMTX_WEBRTC_URL=$MEDIAMTX_WEBRTC_URL"
-DOCKER_CMD="$DOCKER_CMD -e STREAM_NAME=$STREAM_NAME"
-DOCKER_CMD="$DOCKER_CMD -e STUN_SERVER=$STUN_SERVER"
+# --- Construct Docker Environment Flags ---
+
+# WebRTC Environment Variables
+DOCKER_CMD="$DOCKER_CMD -e WEBRTC_HOST=$WEBRTC_HOST"
+DOCKER_CMD="$DOCKER_CMD -e WEBRTC_PORT=$WEBRTC_PORT"
+DOCKER_CMD="$DOCKER_CMD -e WEBRTC_STREAM_NAME=$WEBRTC_STREAM_NAME"
+DOCKER_CMD="$DOCKER_CMD -e WEBRTC_STUN_SERVER=$WEBRTC_STUN_SERVER"
+
+# WebSocket Environment Variables
+DOCKER_CMD="$DOCKER_CMD -e WEBSOCKET_HOST=$WEBSOCKET_HOST"
+DOCKER_CMD="$DOCKER_CMD -e WEBSOCKET_PORT=$WEBSOCKET_PORT"
+DOCKER_CMD="$DOCKER_CMD -e WEBSOCKET_RECONNECTION_DELAY=$WEBSOCKET_RECONNECTION_DELAY"
+DOCKER_CMD="$DOCKER_CMD -e WEBSOCKET_PING_INTERVAL=$WEBSOCKET_PING_INTERVAL"
+DOCKER_CMD="$DOCKER_CMD -e WEBSOCKET_PING_TIMEOUT=$WEBSOCKET_PING_TIMEOUT"
+
+# Alerts Environment Variables
+DOCKER_CMD="$DOCKER_CMD -e ALERTS_REFRESH=$ALERTS_REFRESH"
+DOCKER_CMD="$DOCKER_CMD -e ALERTS_BOX_COLOR_TIMEDIFF=$ALERTS_BOX_COLOR_TIMEDIFF"
+DOCKER_CMD="$DOCKER_CMD -e ALERTS_MAX_DISPLAYED=$ALERTS_MAX_DISPLAYED"
+
+# UI Configuration Environment Variables
+DOCKER_CMD="$DOCKER_CMD -e LOGO=$LOGO"
+DOCKER_CMD="$DOCKER_CMD -e LOGO_WIDTH=$LOGO_WIDTH"
+DOCKER_CMD="$DOCKER_CMD -e HTML_HEIGHT=$HTML_HEIGHT"
+DOCKER_CMD="$DOCKER_CMD -e ALERT_HEIGHT=$ALERT_HEIGHT"
+
 
 # Map logs folder
 DOCKER_CMD="$DOCKER_CMD -v $(pwd)/logs:/app/logs"
@@ -198,18 +207,29 @@ DOCKER_CMD="$DOCKER_CMD $IMAGE_NAME"
 echo "================================================"
 echo "Streamlit UI Container Configuration"
 echo "================================================"
-echo "Image Name:           $IMAGE_NAME"
-echo "Container Name:       $CONTAINER_NAME"
-echo "Host TCP Port:        $HOST_TCP_PORT"
-echo "Host Streamlit Port:  $HOST_STREAMLIT_PORT"
-echo "Internal TCP Port:    $TCP_PORT"
-echo "MediaMTX URL:         $MEDIAMTX_WEBRTC_URL"
-echo "Stream Name:          $STREAM_NAME"
-echo "STUN Server:          $STUN_SERVER"
-echo "Detached Mode:        $DETACHED"
-echo "Network:              ${NETWORK:-default}"
-echo "Environment File:     ${ENV_FILE:-none}"
+echo "GENERAL SETTINGS:"
+echo "  Image Name:           $IMAGE_NAME"
+echo "  Container Name:       $CONTAINER_NAME"
+echo "  Detached Mode:        $DETACHED"
+echo "  Network:              ${NETWORK:-default}"
+echo "  Environment File:     ${ENV_FILE:-none}"
+echo "  Build Image:          $BUILD"
+echo "------------------------------------------------"
+echo "WEBRTC & WEBSOCKET:"
+echo "  WebRTC Host/Port:     $WEBRTC_HOST:$WEBRTC_PORT"
+echo "  Stream Name:          $WEBRTC_STREAM_NAME"
+echo "  STUN Server:          $WEBRTC_STUN_SERVER"
+echo "  WebSocket:            $WEBSOCKET_HOST:$WEBSOCKET_PORT"
+echo "  WS Reconnect Delay:   ${WEBSOCKET_RECONNECTION_DELAY}s"
+echo "------------------------------------------------"
+echo "ALERTS & UI:"
+echo "  Alerts Refresh:       ${ALERTS_REFRESH}s"
+echo "  Max Displayed:        $ALERTS_MAX_DISPLAYED"
+echo "  Logo Path:            $LOGO"
+echo "  HTML Height:          ${HTML_HEIGHT}px"
+echo "  Alerts Height:        ${ALERT_HEIGHT}px"
 echo "================================================"
+
 
 # Ask for confirmation unless in detached mode
 if [[ "$DETACHED" != "true" ]]; then
