@@ -24,6 +24,7 @@ class Producer(multiprocessing.Process):
         self.interval = 1.0 / frequency_hz
         self.stop_signal = multiprocessing.Event()
         self.error_event = error_event
+        self.stop_with_poison = True
 
         self.work_finished = multiprocessing.Event()
 
@@ -42,14 +43,15 @@ class Producer(multiprocessing.Process):
                 next_time += self.interval
 
                 if self.stop_signal.is_set():
-                    try:
-                        self.output_queue.put(POISON_PILL, timeout=0.01)
-                        print("[Producer] successfully put POISON PILL in queue")
-                    except QueueFullException:
-                        print("[Producer] Failed to put POISON PILL in queue, set error event")
-                        self.error_event.set()
-                    finally:
-                        break
+                    if self.stop_with_poison:
+                        try:
+                            self.output_queue.put(POISON_PILL, timeout=0.01)
+                            print("[Producer] successfully put POISON PILL in queue")
+                        except QueueFullException:
+                            print("[Producer] Failed to put POISON PILL in queue, set error event")
+                            self.error_event.set()
+                    # always break on stop signal
+                    break
 
                 # Generate data
                 data = self.data_fn()

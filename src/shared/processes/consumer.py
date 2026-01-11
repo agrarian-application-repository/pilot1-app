@@ -48,6 +48,9 @@ class Consumer(multiprocessing.Process):
                     if data == POISON_PILL:
                         print("[CONSUMER] poison pill found, terminating")
                         break
+                    
+                    # assert data.frame.shape == (720, 1280, 3), f"Unexpected frame shape: {data.frame.shape}"
+                    # print(data)
 
                     read_time = time.perf_counter() - read_start
                     if read_time < self.interval:

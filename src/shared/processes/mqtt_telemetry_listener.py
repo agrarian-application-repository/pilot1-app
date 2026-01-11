@@ -4,7 +4,7 @@ import ssl  # Needed for creating SSL context parameters
 from queue import Full as QueueFullException
 from aiomqtt.exceptions import MqttError
 from aiomqtt import Client, TLSParameters
-from time import time
+from time import sleep, time
 from src.shared.processes.messages import TelemetryQueueObject
 import multiprocessing as mp
 from src.shared.processes.constants import *
@@ -14,7 +14,7 @@ from src.shared.processes.consumer import Consumer
 logger = logging.getLogger("main.mqtt_telemetry_listener")
 
 if not logger.handlers:  # Avoid duplicate handlers
-    video_handler = logging.FileHandler('./logs/mqtt_telemetry_listener.log', mode='w')
+    video_handler = logging.FileHandler('./mqtt_telemetry_listener.log', mode='w')
     video_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(video_handler)
     logger.setLevel(logging.DEBUG)
@@ -36,7 +36,7 @@ class MqttCollectorProcess(mp.Process):
             username: str = None,
             password: str = None,
             qos_level: int = MQTT_QOS_LEVEL,
-            max_msg_wait: int = MQTT_MSG_WAIT_TIMEOUT,
+            max_msg_wait: float = MQTT_MSG_WAIT_TIMEOUT,
             reconnection_delay: float = MQTT_RECONNECT_DELAY,
             ca_certs_file_path: str = None,             # '/path/to/your/ca.crt' if needed
             cert_validation: int = MQTT_CERT_VALIDATION,
@@ -79,7 +79,7 @@ class MqttCollectorProcess(mp.Process):
         self.tls_params = TLSParameters(
             ca_certs=ca_certs_file_path,
             cert_reqs=cert_validation,
-        )
+        ) if self.broker_port == MQTTS_PORT else None
 
         self.telemetry_state = TEMPLATE_TELEMETRY.copy()
 
@@ -170,8 +170,9 @@ class MqttCollectorProcess(mp.Process):
                 async with asyncio.timeout(self.max_msg_wait):
                     # Get the next message from the iterator manually
                     message = await anext(client.messages)
+                    logger.debug(f"Message received on topic {message.topic.value}")
             except asyncio.TimeoutError:
-                # No message arrived within timeout, loop back to che halting events
+                # No message arrived within timeout, loop back to check halting events
                 logger.warning(f"No messages received for {self.max_msg_wait} seconds. Continuing to listen ...")
                 continue
             except StopAsyncIteration:
@@ -255,19 +256,71 @@ class MqttCollectorProcess(mp.Process):
 if __name__ == "__main__":
 
     broker_host = "0.0.0.0"
-    broker_port = MQTTS_PORT
+    broker_port = MQTT_PORT
 
-    telemetry_queue = mp.Queue()
+    VSLOW = 1
+    SLOW = 10
+    FAST = 50
+    REAL = 30
+    FREAL = 40
+
+    QUEUE_SIZE = 20
+
+    telemetry_queue = mp.Queue(maxsize=QUEUE_SIZE)
     stop_event = mp.Event()
     error_event = mp.Event()
 
-    collector = MqttCollectorProcess(telemetry_queue, stop_event, error_event, broker_host=broker_host, broker_port=broker_port)
-    consumer = Consumer(telemetry_queue)
+    collector = MqttCollectorProcess(telemetry_queue, stop_event, error_event, broker_host=broker_host, broker_port=broker_port, cert_validation=None)
+    
+    consumer = Consumer(telemetry_queue, error_event, frequency_hz=FAST)
 
+    print("CONSUMERS STARTED")
     consumer.start()
+
+    sleep(3)
+
+    print("COLLECTOR STARTED")
     collector.start()
 
-    collector.join()
-    consumer.stop()
-    consumer.join()
+    sleep(5)
 
+    # option 1
+    print("STOP EVENT")
+    stop_event.set()
+    telemetry_queue.put(POISON_PILL)  # ensure consumer knows it must stop (collector does nnot provide POISON PILL)         
+    
+    # option2
+    #print("ERROR EVENT")
+    #error_event.set()              
+
+    processes = [collector, consumer]
+
+    while True:
+
+        # Check if everyone has finished their logic
+        all_finished = all(p.work_finished.is_set() for p in processes)
+
+        # Check if an error occurred anywhere
+        error_occurred = error_event.is_set()
+
+        if all_finished or error_occurred:
+            if error_occurred:
+                print("[Main] Error detected. Terminating chain.")
+            else:
+                print("[Main] All processes finished logic. Cleaning up.")
+            break
+
+        sleep(0.5)
+
+    print(f"[Main] Granting 5s for all processed to cleanly conclude their processing.")
+    sleep(5.0)
+    # The Sweep: Force everyone to join or die
+    for p in processes:
+        # If the logic is finished but the process is still 'alive',
+        # it is 100% stuck in the queue feeder thread.
+        if p.is_alive():
+            print(f"[Main] {p.name} is hanging in cleanup. Work Completed: {p.work_finished.is_set()}. Terminating.")
+            p.terminate()
+
+        p.join()
+        print(f"[Main] {p.name} joined.")

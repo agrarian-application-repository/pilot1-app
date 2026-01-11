@@ -140,7 +140,9 @@ class StreamVideoReader(mp.Process):
 
                 # --------------------------------------------------------------
                 # setup videocapture
-                # failure treated as connection failure, retry after a delay for a max number of times)
+                # - failure treated as connection failure, retry after a delay for a max number of times
+                # ensure connection is actually open if setup failed silently
+                # - failure treated as connection failure, retry after a delay for a max number of times
                 # --------------------------------------------------------------
 
                 # attempt to connect to the video source.
@@ -148,7 +150,12 @@ class StreamVideoReader(mp.Process):
                 try:
                     logger.info("Setting up VideoCapture Object ...")
                     cap = self._setup_capture()
-                    logger.info("VideoCapture Object setup complete")
+                    # Manually trigger the exception if the connection isn't actually "live"
+                    if cap is None or not cap.isOpened():
+                        raise ConnectionError(f"VideoCapture opened but is not functional for {self.video_stream_url}")
+                    logger.info("VideoCapture Object setup complete and stream is open")
+                    consecutive_connection_failures = 0 # Reset on success
+                
                 except Exception as e:
                     total_connection_failures += 1
                     consecutive_connection_failures += 1
@@ -169,38 +176,7 @@ class StreamVideoReader(mp.Process):
                     else:
                         logger.warning(
                             f"Max number of consecutive connection attempts to the video stream source surpassed. "
-                            f"Shutting down the application ..."
-                        )
-                        self.stop_event.set()
-                        logger.info("Stop event set")
-                        break
-                        # after break, jump out of this outer loop to the cleanup code
-
-                # --------------------------------------------------------------
-                # ensure connection is actually open if setup failed silently
-                # failure treated as connection failure, retry after a delay for a max number of times
-                # --------------------------------------------------------------
-                if not cap.isOpened():
-                    total_connection_failures += 1
-                    consecutive_connection_failures += 1
-                    logger.warning(
-                        f"Unable to open video source {self.video_stream_url}. "
-                        f"N. Consecutive connection failures: {consecutive_connection_failures} "
-                        f"(max: {self.connect_max_consecutive_failures}). "
-                        f"N. Total connection failures: {total_connection_failures}. "
-                    )
-
-                    # when the max number of connection attempts has not been surpassed yet, retry to connect
-                    if consecutive_connection_failures < self.connect_max_consecutive_failures:
-                        logger.warning(f"Retrying to connect in {self.connect_retry_delay_s} seconds ...")
-                        sleep(self.connect_retry_delay_s)
-                        continue
-
-                    # otherwise, stop the application
-                    else:
-                        logger.warning(
-                            f"Max number of consecutive connection attempts to the video stream source surpassed. "
-                            f"Shutting down the application ..."
+                            f"Video stream not available. Shutting down the application ..."
                         )
                         self.stop_event.set()
                         logger.info("Stop event set")
@@ -210,9 +186,6 @@ class StreamVideoReader(mp.Process):
                 # --------------------------------------------------------------
                 # connection established
                 # --------------------------------------------------------------
-
-                # reset counter of consecutive failed connection attempts
-                consecutive_connection_failures = 0
 
                 logger.info("Starting video reading loop")
                 while cap.isOpened() and not (self.stop_event.is_set() or self.error_event.is_set()):
@@ -237,7 +210,7 @@ class StreamVideoReader(mp.Process):
                             f"N. Total read failures: {total_read_failures}. "
                         )
 
-                        if consecutive_read_failures <= self.frame_read_max_consecutive_failures:
+                        if consecutive_read_failures < self.frame_read_max_consecutive_failures:
                             logger.warning(f"Attempting new read in {self.frame_read_retry_delay_s} seconds... ")
                             sleep(self.frame_read_retry_delay_s)
                             continue
@@ -245,13 +218,11 @@ class StreamVideoReader(mp.Process):
                         else:
                             logger.error(
                                 f"Max number tolerated consecutive frame read failures has been surpassed. "
-                                f"Shutting down the application ..."
+                                f"Trying to reconnect in {self.connect_retry_delay_s} seconds..."
                             )
-                            self.error_event.set()
-                            logger.info("Error event set")
+                            sleep(self.connect_retry_delay_s)
                             break
-                            # breaks out of both loops, since the inner loop is the last block
-                            # error event being set causes exit from outer loop as well
+                            # breaks out of the inner loop, go back to the outer loop and try to reconnect
 
                     # --------- read successful, check aspect ration and resize ---------
 
@@ -286,7 +257,7 @@ class StreamVideoReader(mp.Process):
                             f"N. Total read failures: {total_read_failures}. "
                         )
 
-                        if consecutive_read_failures <= self.frame_read_max_consecutive_failures:
+                        if consecutive_read_failures < self.frame_read_max_consecutive_failures:
                             logger.warning(f"Attempting new read in {self.frame_read_retry_delay_s} seconds... ")
                             sleep(self.frame_read_retry_delay_s)
                             continue
@@ -317,7 +288,7 @@ class StreamVideoReader(mp.Process):
                     try:
                         self.frame_queue.put(frame_object, timeout=self.queue_out_put_timeout)
                         logger.debug(f"Added frame {frame_id} to queue.")
-                    # Catch exception for queue full specifically
+                    # Catch exception for queue full
                     # no need to sleep since already waited during put timeout
                     except QueueFullException:
                         logger.warning(
@@ -381,18 +352,67 @@ class StreamVideoReader(mp.Process):
 
 if __name__ == "__main__":
 
-    frame_queue = mp.Queue()
+    frame_queue = mp.Queue(maxsize=3)
     stop_event = mp.Event()
     error_event = mp.Event()
 
-    video_stream_url = "http://0.0.0.0:8889/annot"
+    video_stream_url = "rtsp://0.0.0.0:8554/annot"
+
+    VSLOW=1
+    SLOW=10
+    REAL=30
+    FAST=50
 
     stream_reader = StreamVideoReader(frame_queue, stop_event, error_event, video_stream_url)
-    consumer = Consumer(frame_queue)
+    consumer = Consumer(frame_queue, error_event, frequency_hz=FAST)
 
+    print("CONSUMERS STARTED")
     consumer.start()
+
+    sleep(2)
+
+    print("VIDEO READER STARTED")
     stream_reader.start()
 
-    stream_reader.join()
-    consumer.stop()
-    consumer.join()
+    event_set = False
+    start_time = time()
+    block_in = 15.0
+
+    processes = [stream_reader, consumer]
+
+    while True:
+
+        if time()-start_time > block_in and not event_set:
+            event_set=True
+            #print("PRODUCER STOPPED")
+            #producer.stop()
+            print("ERROR EVENT SET")
+            error_event.set()
+
+        # Check if everyone has finished their logic
+        all_finished = all(p.work_finished.is_set() for p in processes)
+
+        # Check if an error occurred anywhere
+        error_occurred = error_event.is_set()
+
+        if all_finished or error_occurred:
+            if error_occurred:
+                print("[Main] Error detected. Terminating chain.")
+            else:
+                print("[Main] All processes finished logic. Cleaning up.")
+            break
+
+        sleep(0.5)
+
+    print(f"[Main] Granting 5s for all processed to cleanly conclude their processing.")
+    sleep(5.0)
+    # The Sweep: Force everyone to join or die
+    for p in processes:
+        # If the logic is finished but the process is still 'alive',
+        # it is 100% stuck in the queue feeder thread.
+        if p.is_alive():
+            print(f"[Main] {p.name} is hanging in cleanup. Work Completed: {p.work_finished.is_set()}. Terminating.")
+            p.terminate()
+
+        p.join()
+        print(f"[Main] {p.name} joined.")

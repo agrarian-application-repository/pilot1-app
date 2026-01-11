@@ -69,3 +69,6 @@ if __name__ == "__main__":
     server_thread = threading.Thread(target=run_server, daemon=True)
     server_thread.start()
     time.sleep(1)  # Give server a moment to start
+
+    while True:
+        time.sleep(10)

@@ -116,7 +116,8 @@ def process_alerts():
     if st.session_state.websocket_receiver.get_total_alerts() > 0:
         # Create a container with fixed height and scrollable content
         with st.container(height=ALERT_HEIGHT):  # Adjust height as needed (in pixels)
-            for i, alert in enumerate(st.session_state.alerts_display_dequeue):
+            dequeue_snapshot = list(st.session_state.alerts_display_dequeue)
+            for i, alert in enumerate(dequeue_snapshot):
 
                 alert_timestamp = alert['timestamp']
 
@@ -139,7 +140,7 @@ def process_alerts():
                         caption=f"Frame {alert['frame_id']} - {alert_local_time}"
                     )
                 
-                if i < len(st.session_state.alerts_display_dequeue) - 1:
+                if i < len(dequeue_snapshot) - 1:
                     st.divider()
     else:
         st.info("📭 No alerts received yet")

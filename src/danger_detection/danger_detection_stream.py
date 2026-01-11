@@ -45,27 +45,47 @@ def perform_danger_detection(
 
     # ============== SETUP QUEUES ===================================
 
-    # TODO SET MAX SIZE
-    # LAYER 1->2
-    frame_reader_out_queue = mp.Queue()
-    telemetry_reader_out_queue = mp.Queue()
-    # LAYER 2->3
-    detection_in_queue = mp.Queue()
-    segmentation_in_queue = mp.Queue()
-    geo_in_queue = mp.Queue()
+    # Layer 1 -> 2
+    max_size_frame_reader_out = fetch_env("MAX_SIZE_FRAME_READER_OUT", MAX_SIZE_FRAME_READER_OUT)
+    max_size_telemetry_reader_out = fetch_env("MAX_SIZE_TELEMETRY_READER_OUT", MAX_SIZE_TELEMETRY_READER_OUT)
+    # Layer 2 -> 3
+    max_size_detection_in = fetch_env("MAX_SIZE_DETECTION_IN", MAX_SIZE_DETECTION_IN)
+    max_size_segmentation_in = fetch_env("MAX_SIZE_SEGMENTATION_IN", MAX_SIZE_SEGMENTATION_IN)
+    max_size_geo_in = fetch_env("MAX_SIZE_GEO_IN", MAX_SIZE_GEO_IN)
+    # Layer 3 -> 4
+    max_size_detection_results = fetch_env("MAX_SIZE_DETECTION_RESULTS", MAX_SIZE_DETECTION_RESULTS)
+    max_size_segmentation_results = fetch_env("MAX_SIZE_SEGMENTATION_RESULTS", MAX_SIZE_SEGMENTATION_RESULTS)
+    max_size_geo_results = fetch_env("MAX_SIZE_GEO_RESULTS", MAX_SIZE_GEO_RESULTS)
+    # Layer 4 -> 5
+    max_size_danger_detection_result = fetch_env("MAX_SIZE_DANGER_DETECTION_RESULT", MAX_SIZE_DANGER_DETECTION_RESULT)
+    # Layer 5 -> 6
+    max_size_video_stream = fetch_env("MAX_SIZE_VIDEO_STREAM", MAX_SIZE_VIDEO_STREAM)
+    max_size_notifications_stream = fetch_env("MAX_SIZE_NOTIFICATIONS_STREAM", MAX_SIZE_NOTIFICATIONS_STREAM)
+    # Layer 6 -> 7
+    max_size_video_storage = fetch_env("MAX_SIZE_VIDEO_STORAGE", MAX_SIZE_VIDEO_STORAGE)
+
+
+    # LAYER 1 -> 2
+    frame_reader_out_queue = mp.Queue(maxsize=max_size_frame_reader_out)
+    telemetry_reader_out_queue = mp.Queue(maxsize=max_size_telemetry_reader_out)
+    # LAYER 2 -> 3
+    detection_in_queue = mp.Queue(maxsize=max_size_detection_in)
+    segmentation_in_queue = mp.Queue(maxsize=max_size_segmentation_in)
+    geo_in_queue = mp.Queue(maxsize=max_size_geo_in)
     models_in_queues = [detection_in_queue, segmentation_in_queue, geo_in_queue]
-    # LAYER 3->4
-    detection_results_queue = mp.Queue()
-    segmentation_results_queue = mp.Queue()
-    geo_results_queue = mp.Queue()
+    # LAYER 3 -> 4
+    detection_results_queue = mp.Queue(maxsize=max_size_detection_results)
+    segmentation_results_queue = mp.Queue(maxsize=max_size_segmentation_results)
+    geo_results_queue = mp.Queue(maxsize=max_size_geo_results)
     models_results_queues = [detection_results_queue, segmentation_results_queue, geo_results_queue]
-    # LAYER LAYER 4->5
-    danger_detection_result_queue = mp.Queue()
-    # LAYER 5->6
-    video_stream_queue = mp.Queue()
-    notifications_stream_queue = mp.Queue()
-    # LAYER 6->7
-    video_storage_queue = mp.Queue()
+    # LAYER 4 -> 5
+    danger_detection_result_queue = mp.Queue(maxsize=max_size_danger_detection_result)
+    # LAYER 5 -> 6
+    video_stream_queue = mp.Queue(maxsize=max_size_video_stream)
+    notifications_stream_queue = mp.Queue(maxsize=max_size_notifications_stream)
+    # LAYER 6 -> 7
+    video_storage_queue = mp.Queue(maxsize=max_size_video_storage)
+
 
     # ============== INSTANTIATE PROCESSES ===================================
 
@@ -193,7 +213,6 @@ def perform_danger_detection(
     danger_identification_process_cfg = {
         "queue_get_timeout": fetch_env("MODELS_QUEUE_GET_TIMEOUT",MODELS_QUEUE_GET_TIMEOUT),
         "queue_put_timeout": fetch_env("MODELS_QUEUE_PUT_TIMEOUT", MODELS_QUEUE_PUT_TIMEOUT),
-        "max_consecutive_failures": fetch_env("DANGER_MAX_CONSECUTIVE_FAILURES", DANGER_MAX_CONSECUTIVE_FAILURES),
         "poison_pill_timeout": fetch_env("POISON_PILL_TIMEOUT", POISON_PILL_TIMEOUT),
     }
 

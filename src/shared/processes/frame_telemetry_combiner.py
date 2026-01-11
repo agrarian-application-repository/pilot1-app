@@ -328,8 +328,9 @@ if __name__ == "__main__":
     SLOW = 10
     FAST = 50
     REAL = 30
+    FREAL = 40
 
-    CONSUMER_QUEUE_MAX = 10
+    QUEUE_MAX = 3
 
     def generate_frame_queue_object():
         ts = time.time()
@@ -351,22 +352,25 @@ if __name__ == "__main__":
             timestamp=time.time()
         )
 
-    frame_queue = mp.Queue()
-    telemetry_queue = mp.Queue()
+    frame_queue = mp.Queue(maxsize=QUEUE_MAX)
+    telemetry_queue = mp.Queue(maxsize=QUEUE_MAX*10)
     stop_event = mp.Event()
     error_event = mp.Event()
 
-    out1 = mp.Queue(maxsize=CONSUMER_QUEUE_MAX)
-    out2 = mp.Queue(maxsize=CONSUMER_QUEUE_MAX)
-    out3 = mp.Queue(maxsize=CONSUMER_QUEUE_MAX)
+    out1 = mp.Queue(maxsize=QUEUE_MAX)
+    out2 = mp.Queue(maxsize=QUEUE_MAX)
+    out3 = mp.Queue(maxsize=QUEUE_MAX)
     out_queues = [out1, out2, out3]
 
-    stream_reader = Producer(frame_queue, generate_frame_queue_object, frequency_hz=REAL)
-    telemetry_reader = Producer(telemetry_queue, generate_telemetry_object, frequency_hz=FAST)
+    stream_reader = Producer(frame_queue, error_event, generate_frame_queue_object, frequency_hz=FREAL)
+    stream_reader.stop_with_poison = False
+    
+    telemetry_reader = Producer(telemetry_queue,error_event, generate_telemetry_object, frequency_hz=SLOW)
+    telemetry_reader.stop_with_poison = False   # telemetry reader without giving notice, it ismply stops and puts noting on output queue
 
-    consumer1 = Consumer(out1, frequency_hz=FAST)
-    consumer2 = Consumer(out2, frequency_hz=SLOW)
-    consumer3 = Consumer(out3, frequency_hz=FAST)
+    consumer1 = Consumer(out1, error_event, frequency_hz=FAST)
+    consumer2 = Consumer(out2, error_event, frequency_hz=FAST)
+    consumer3 = Consumer(out3, error_event, frequency_hz=FAST)
 
     combiner = FrameTelemetryCombiner(frame_queue, telemetry_queue, out_queues, error_event)
 
@@ -388,29 +392,51 @@ if __name__ == "__main__":
 
     time.sleep(3)
 
+    # stop without telling via posion pill nor error event
     print("TELEMETRY STOPPED")
     telemetry_reader.stop()
-    telemetry_reader.join()
 
     time.sleep(3)
 
+    # stop without telling via posion pill nor error event
     print("VIDEO STOPPED")
     stream_reader.stop()
-    stream_reader.join()
 
-    time.sleep(3)
+    time.sleep(1)
 
-    #print("POISON PILL")
-    #frame_queue.put(POISON_PILL)    # option1
-    print("ERROR EVENT")
-    error_event.set()              # option2
+    print("POISON PILL")
+    frame_queue.put(POISON_PILL)    # option1
+    #print("ERROR EVENT")
+    #error_event.set()              # option2
 
-    combiner.join()
+    processes = [stream_reader, telemetry_reader] + [combiner] + [consumer1, consumer2, consumer3]
 
-    consumer1.stop()
-    consumer2.stop()
-    consumer3.stop()
+    while True:
 
-    consumer1.join()
-    consumer2.join()
-    consumer3.join()
+        # Check if everyone has finished their logic
+        all_finished = all(p.work_finished.is_set() for p in processes)
+
+        # Check if an error occurred anywhere
+        error_occurred = error_event.is_set()
+
+        if all_finished or error_occurred:
+            if error_occurred:
+                print("[Main] Error detected. Terminating chain.")
+            else:
+                print("[Main] All processes finished logic. Cleaning up.")
+            break
+
+        time.sleep(0.5)
+
+    print(f"[Main] Granting 5s for all processed to cleanly conclude their processing.")
+    time.sleep(5.0)
+    # The Sweep: Force everyone to join or die
+    for p in processes:
+        # If the logic is finished but the process is still 'alive',
+        # it is 100% stuck in the queue feeder thread.
+        if p.is_alive():
+            print(f"[Main] {p.name} is hanging in cleanup. Work Completed: {p.work_finished.is_set()}. Terminating.")
+            p.terminate()
+
+        p.join()
+        print(f"[Main] {p.name} joined.")

@@ -17,15 +17,15 @@ while true; do
     ffmpeg \
       -re \
       -stream_loop -1 \
-      -i /home/simone/Desktop/DJI_20241024104935_0008_D.MP4 \
+      -i /home/simone/projects/AGRARIAN/simulation/output.mp4 \
       -c:v libx264 \
       -preset veryfast \
       -tune zerolatency \
       -profile:v baseline \
       -s 1920x1080 \
       -pix_fmt yuv420p \
-      -r 30 \
-      -g 60 \
+      -r 35 \
+      -g 70 \
       -x264-params "keyint=60:min-keyint=60:scenecut=0" \
       -b:v 4000k \
       -maxrate 4000k \
