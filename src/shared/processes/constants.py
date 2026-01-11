@@ -181,7 +181,13 @@ WS_MANAGER_THREAD_CLOSE_TIMEOUT = 5.0                   # 5.0 s
 #DB_NAME = os.getenv("DB_NAME", "alert_system")
 #db_url = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}/{DB_NAME}"
 
-DB_MANAGER_QUEUE_SIZE = 20
+
+DB_PORT = 5432
+DB_NAME = "agrarian_db"
+POSTGRESQL_SERVICE = "postgresql"
+MYSQL_SERVICE = "mysql"
+
+DB_MANAGER_QUEUE_SIZE = 5
 
 DB_MANAGER_POOL_SIZE = 5
 DB_MANAGER_MAX_OVERFLOW = 10

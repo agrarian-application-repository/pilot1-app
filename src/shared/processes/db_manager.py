@@ -166,43 +166,43 @@ class DatabaseManager:
         self.flight_id = None
 
     def initialize(self, username: str, password: str):
-        """Initialize database connection and create tables if they don't exist."""
+        """
+        Initialize database connection and create tables if they don't exist.
+        raises Exception on failure (try/except skipped).
+        Also creates a new Flight entry for the current session.
+        """
 
-        try:
-            logger.info(f"Initializing database connection: {self.database_url}")
-            self._db_engine = create_engine(
-                self.database_url,
-                pool_pre_ping=True,                     # Checks if connection is alive before using it
-                pool_size=self.pool_size,               # Number of permanent connections
-                max_overflow=self.max_overflow,         # Allow extra connections during spikes
-                echo=False,
-            )
-            Base.metadata.create_all(self._db_engine)
+        logger.info(f"Initializing database connection: {self.database_url}")
+        self._db_engine = create_engine(
+            self.database_url,
+            pool_pre_ping=True,                     # Checks if connection is alive before using it
+            pool_size=self.pool_size,               # Number of permanent connections
+            max_overflow=self.max_overflow,         # Allow extra connections during spikes
+            echo=False,
+        )
+        Base.metadata.create_all(self._db_engine)
 
-            SessionFactory = sessionmaker(bind=self._db_engine)
-            with SessionFactory() as session:
-                # 1. Fetch user by email
-                user = session.query(User).filter_by(email=username).first()
-                # 2. check that the user exists and that the password matches
-                if not user or not user.verify_password(password):
-                    err_msg = "Authentication failed: Invalid credentials."
-                    logger.error(err_msg)
-                    raise ValueError(err_msg)
+        SessionFactory = sessionmaker(bind=self._db_engine)
+        with SessionFactory() as session:
+            # 1. Fetch user by email
+            user = session.query(User).filter_by(email=username).first()
+            # 2. check that the user exists and that the password matches
+            if not user or not user.verify_password(password):
+                err_msg = "Authentication failed: Invalid credentials."
+                logger.error(err_msg)
+                raise ValueError(err_msg)
 
-                # 3. Success - Create Flight
-                new_flight = Flight(user_id=user.user_id)
-                session.add(new_flight)
-                session.commit()
-                self.flight_id = new_flight.flight_id
+            # 3. Success - Create Flight
+            new_flight = Flight(user_id=user.user_id)
+            session.add(new_flight)
+            session.commit()
+            self.flight_id = new_flight.flight_id
 
-            # Start the background worker thread
-            self._stop_event.clear()
-            self._worker_thread = threading.Thread(target=self._db_worker, daemon=True)
-            self._worker_thread.start()
-            logger.info("Database manager and worker thread initialized")
-
-        except Exception as e:
-            logger.error(f"Error initializing database: {e}", exc_info=True)
+        # Start the background worker thread
+        self._stop_event.clear()
+        self._worker_thread = threading.Thread(target=self._db_worker, daemon=False)
+        self._worker_thread.start()
+        logger.info("Database manager and worker thread initialized")
 
     def save_alert(self, **kwargs) -> bool:
         """
@@ -292,16 +292,88 @@ class DatabaseManager:
         logger.info("Database background worker finished")
 
 
-"""
-def seed_test_user(engine, email, plaintext_password):
-    SessionFactory = sessionmaker(bind=engine)
-    with SessionFactory() as session:
-        # Check if exists
-        exists = session.query(User).filter_by(email=email).first()
-        if not exists:
-            hashed = User.hash_password(plaintext_password)
-            test_user = User(email=email, password=hashed)
-            session.add(test_user)
-            session.commit()
-            print(f"Test user {email} created with secure hash.")
-"""
+
+
+
+if __name__ == "__main__":
+
+    from time import time,sleep, perf_counter
+    import random
+    import datetime as dtt
+    import numpy as np
+    import cv2
+
+
+    VSLOW = 1
+    SLOW = 10
+    FAST = 50
+    REAL = 30
+    FREAL = 40
+
+    speed = REAL
+
+    QUEUE_MAX = 3
+
+    N_ALERTS = 100
+
+
+    db_url="sqlite:///alerts.db"  # SQLite
+    # db_url="postgresql://user:password@localhost:5432/alerts_db"    # PostgreSQL
+    # db_url="mysql+pymysql://user:password@localhost:3306/alerts_db"    # MySQL
+
+    email="testuser@testmail.com"
+    plaintext_password="testpassword"
+
+    def create_test_db(database_url, email="testuser@testmail.com", plaintext_password="testpassword"):
+    
+        db_engine = create_engine(database_url, echo=True)
+        Base.metadata.create_all(db_engine)
+        SessionFactory = sessionmaker(bind=db_engine)
+        with SessionFactory() as session:
+            # Check if exists
+            exists = session.query(User).filter_by(email=email).first()
+            if not exists:
+                hashed = User.hash_password(plaintext_password)
+                test_user = User(email=email, password=hashed)
+                session.add(test_user)
+                session.commit()
+                print(f"Test user {email} created with secure hash.")
+
+    def generate_db_alert_object():
+        ts = time()
+        # Encode as JPEG
+        frame = np.zeros((1080, 1920, 3))
+        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 85]
+        _, buffer = cv2.imencode('.jpg', frame, encode_param)
+        compressed_bytes = buffer.tobytes()
+        return {
+                "frame_id": int(ts*100),
+                "alert_msg": random.choice(["road", "car", "slope"]),
+                "timestamp": ts,
+                "datetime": dtt.datetime.fromtimestamp(ts),
+                "image_data": compressed_bytes,
+                "image_width": 1920,
+                "image_height": 1080,
+        }
+    
+
+    create_test_db(db_url, email, plaintext_password)
+
+    db_manager = DatabaseManager(db_url)
+    # db_manager.initialize(email, plaintext_password+"wrong")   # should fail
+    # db_manager.initialize(email+"wrong", plaintext_password)   # should fail
+    db_manager.initialize(email, plaintext_password)           # should pass
+
+    next = perf_counter() + 1/speed
+
+    for _ in range(N_ALERTS):
+
+        alert = generate_db_alert_object()
+        db_manager.save_alert(**alert)
+
+        perf = perf_counter()
+        if perf < next:
+            sleep(next-perf)
+        next += 1/speed
+
+    db_manager.close()
