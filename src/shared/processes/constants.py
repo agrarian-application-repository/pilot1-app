@@ -26,7 +26,10 @@ import cv2
 
 # -------------------------- GENERAL --------------------------
 
+# target FPS for processing and output
 FPS = 30
+
+ALERTS_COOLDOWN_SECONDS = 1.0                                          # 1 second
 
 # value of the poison pill to stop following processes
 POISON_PILL = "HALT"
@@ -42,7 +45,86 @@ DOWNSAMPLING_MODE = cv2.INTER_LINEAR
 # image upsampling interpolation
 UPSAMPLING_MODE = cv2.INTER_LINEAR
 
-# -------------------------- QUEUES SIZES --------------------------
+# str: Name of the directory where the results of the analysis will be saved
+LOCAL_OUTPUT_DIR = 'processing_results'
+
+# str: Name of the files on which alerts will be saved
+ALERTS_FILE_NAME = 'alerts'
+
+# str: Name of the video showing the annotated original data (with/without sheep count and tracks)
+ANNOTATED_VIDEO_NAME = 'annotated_video'
+
+# agrarian database name
+DB_NAME = "agrarian_db"
+
+# -------------------------- DANGER DETECTION PARAMETERS --------------------------
+
+# float: radius of the of the safety around each sheep/goats, in meters
+SAFETY_RADIUS_M = 2.0                                                      # meters
+
+# float: slope angle after which the portion of terrain is considered dangerous for the animals
+SLOPE_ANGLE_THRESHOLD = 30.0
+
+# set of tuples (longitude, latitude) defining the points marking the vertexes of the geofencing area
+# set to None to deactivate
+GEOFENCING_VERTEXES = None
+
+# -------------------------- HEALTH MONITORING PARAMETERS --------------------------
+
+SLIDING_WINDOW_SIZE_S = 30.0                                                      # seconds
+
+# -------------------------- DRONE HARDWARE PARAMETERS --------------------------
+
+# https://sdk-forum.dji.net/hc/en-us/articles/12325496609689-What-is-the-custom-camera-parameters-for-Mavic-3-Enterprise-series-and-Mavic-3M
+
+# positive float: true focal lenght of the camera in mm
+DRONE_TRUE_FOCAL_LEN_MM = 12.29
+
+# positive float: width of the camera sensor in millimeters
+DRONE_SENSOR_WIDTH_MM = 17.35 # standard for 4/3 CMOS sensor
+
+# positive float: height of the camera sensor in millimeters
+DRONE_SENSOR_HEIGHT_MM = 13.00  # standard for 4/3 CMOS sensor
+
+# positive int: width of the camera sensor in pixels
+DRONE_SENSOR_WIDTH_PIXELS = 5280 # standard Effective 20MP for 4/3 CMOS sensor
+
+# positive int: height of the camera sensor in pixels
+DRONE_SENSOR_HEIGHT_PIXELS = 3956  # standard Effective 20MP for 4/3 CMOS sensor
+
+# NOTE: sensor_width_pixels/sensor_height_pixels MUST be equal to sensor_width_mm/sensor_height_mm!!!!
+
+# -------------------------- PROTOCOLS --------------------------
+
+RTMP = "rtmp"
+RTMPS = "rtmps"
+RTSP = "rtsp"
+RTSPS = "rtsps"
+HTTP = "http"
+HTTPS = "https"
+MQTT = "mqtt"
+MQTTS = "mqtts"
+WEBRTC = "webrtc"
+HLS = "hls"
+WS = "ws"
+WSS = "wss"
+POSTGRESQL = "postgresql"
+MYSQL = "mysql"
+
+HTTP_PORT = 80
+HTTPS_PORT = 443
+MQTT_PORT = 1883
+MQTTS_PORT = 8883
+RTMP_PORT = 1935
+RTMPS_PORT = 443
+RTSP_PORT = 8554
+RTSPS_PORT = 441
+WEBRTC_PORT = 8889
+WS_PORT = 80
+WSS_PORT = 443
+WS_COMMON_PORT = 8765
+
+# -------------------------- PROCESSES QUEUES SIZES --------------------------
 
 MAX_SIZE_FRAME_READER_OUT=3
 MAX_SIZE_TELEMETRY_READER_OUT=20
@@ -65,6 +147,15 @@ MAX_SIZE_VIDEO_STORAGE=3
 # VIDEO_STREAM_URL = "rtsp://[user[:password]@]host[:port]/path"
 # VIDEO_STREAM_URL = "rtsps://[user[:password]@]host[:port]/path"
 
+VIDEO_STREAM_READER_USERNAME = None  # None if no authentication is needed
+VIDEO_STREAM_READER_PASSWORD = None  # None if no authentication is needed
+
+VIDEO_STREAM_READER_HOST = "0.0.0.0"
+VIDEO_STREAM_READER_ALLOWED_PROTOCOLS = (RTSP, RTMP)    # (RTSP, RTMP, RTMPS, RTSPS)
+VIDEO_STREAM_READER_PROTOCOL = RTSP                     # use rtsp by default
+VIDEO_STREAM_READER_PORT = RTSP_PORT                    # use rtsp by default
+VIDEO_STREAM_READER_STREAM_KEY = "drone"
+
 VIDEO_STREAM_READER_CONNECTION_OPEN_TIMEOUT_S = 5.0
 VIDEO_STREAM_READER_RECONNECT_DELAY = 5.0
 VIDEO_STREAM_READER_MAX_CONSECUTIVE_CONNECTION_FAILURES = 5
@@ -73,64 +164,63 @@ VIDEO_STREAM_READER_FRAME_READ_TIMEOUT_S = 0.05                         # 50 ms
 VIDEO_STREAM_READER_FRAME_RETRY_DELAY = 0.05                            # 50 ms
 VIDEO_STREAM_READER_FRAME_MAX_CONSECUTIVE_FAILURES = FPS                # 1 second worth of failures
 
+VIDEO_STREAM_READER_BUFFER_SIZE = 1
+
 VIDEO_STREAM_READER_EXPECTED_ASPECT_RATIO = 16.0/9.0
 VIDEO_STREAM_READER_PROCESSING_SHAPE = (1280, 720)  # (W,H)
-
-VIDEO_STREAM_READER_BUFFER_SIZE = 1
 
 VIDEO_STREAM_READER_QUEUE_PUT_TIMEOUT = 0.02                              # 20 ms
 
 
 # -------------------------- MQTT READER --------------------------
 
-# testing host
-MQTT_HOST = "0.0.0.0"
+TELEMETRY_LISTENER_USERNAME = None              # None if no authentication is needed
+TELEMETRY_LISTENER_PASSWORD = None              # None if no authentication is needed
 
-# Standard MQTT ports
-MQTT_PORT = 1883
-MQTTS_PORT = 8883
+TELEMETRY_LISTENER_HOST = "0.0.0.0"
+TELEMETRY_LISTENER_ALLOWED_PROTOCOLS = (MQTT, MQTTS)
+TELEMETRY_LISTENER_PROTOCOL = MQTT              # use mqtt by default
+TELEMETRY_LISTENER_PORT = MQTT_PORT             # use mqtt by default
+
+# QoS 0 (At most once): no acknowledgment from the receiver
+# QoS 1 (At least once):  ensures that messages are delivered at least once by requiring a PUBACK acknowledgment
+# QoS 2 (Exactly once): guarantees that each message is delivered exactly once by using a four-step handshake
+# (PUBLISH, PUBREC, PUBREL, PUBCOMP)
+TELEMETRY_LISTENER_QOS_LEVEL = 1
 
 # If the DJI broker requires a specific root certificate, download it and
 # specify its path here. If using a public broker with a standard certificate,
 # setting 'cert_reqs' to CERT_REQUIRED is often enough, but you may need 'ca_certs'.
-MQTT_CERT_VALIDATION = ssl.CERT_REQUIRED  # Ensure the broker's certificate is valid
+TELEMETRY_LISTENER_CERT_VALIDATION = ssl.CERT_REQUIRED  # Ensure the broker's certificate is valid
 
 # Seconds to wait before attempting reconnection
-MQTT_RECONNECT_DELAY = 5.0
+TELEMETRY_LISTENER_RECONNECT_DELAY = 5.0
+# max thread blocking message wait, after this, check again wheter a stop signal has been received
+TELEMETRY_LISTENER_MSG_WAIT_TIMEOUT = 1.0
+# size of the input messages queue
+TELEMETRY_LISTENER_MAX_INCOMING_MESSAGES = 100
 
-MQTT_TOPICS_TO_SUBSCRIBE = [
+
+TELEMETRY_LISTENER_TOPICS_TO_SUBSCRIBE = [
     "telemetry/latitude",
     "telemetry/longitude",
     "telemetry/rel_alt",
     "telemetry/gb_yaw",
 ]
-MQTT_QOS_LEVEL = 1
-# QoS 0 (At most once): no acknowledgment from the receiver
-# QoS 1 (At least once):  ensures that messages are delivered at least once by requiring a PUBACK acknowledgment
-# QoS 2 (Exactly once): guarantees that each message is delivered exactly once by using a four-step handshake
-# (PUBLISH, PUBREC, PUBREL, PUBCOMP)
 
-
-MQTT_TOPICS_TO_TELEMETRY_MAPPING = {
+TELEMETRY_LISTENER_TOPICS_TO_TELEMETRY_MAPPING = {
     "telemetry/latitude": "latitude",
     "telemetry/longitude": "longitude",
     "telemetry/rel_alt": "rel_alt",
     "telemetry/gb_yaw": "gb_yaw",
 }
 
-TEMPLATE_TELEMETRY = {
+TELEMETRY_LISTENER_TEMPLATE_TELEMETRY = {
     "latitude": 44.414622942776454,
     "longitude": 8.880484631296774,
     "rel_alt": 40.0,
     "gb_yaw": 270.0,
 }
-
-# max thread blocking message wait, after this, check again wheter a stop signal has been received
-MQTT_MSG_WAIT_TIMEOUT = 1.0
-
-# size of the input messages queue
-MQTT_MAX_INCOMING_MESSAGES = 100
-
 
 # -------------------------------------------------------------------
 # -------------------------- FRAME + TELEMETRY COMBINING ------------
@@ -164,10 +254,6 @@ ALERTS_JPEG_COMPRESSION_QUALITY = 85
 
 # -------------------------- ALERTS WS --------------------------
 
-WS_COMMON_PORT = 8765
-WS_PORT = 80
-WSS_PORT = 443
-
 WS_MANAGER_BROADCAST_TIMEOUT = 2.0
 WS_MANAGER_PING_INTERVAL = 5.0                          # 5.0 s
 WS_MANAGER_PING_TIMEOUT = 20.0                          # 20.0 s
@@ -175,17 +261,14 @@ WS_MANAGER_THREAD_CLOSE_TIMEOUT = 5.0                   # 5.0 s
 
 # -------------------------- ALERTS DB --------------------------
 
-#DB_USER = os.getenv("DB_USER", "default_user")
-#DB_PASS = os.getenv("DB_PASS", "")     # --> TODO: handle special characters
-#DB_HOST = os.getenv("DB_HOST", "localhost")
-#DB_NAME = os.getenv("DB_NAME", "alert_system")
-#db_url = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}/{DB_NAME}"
+DB_USERNAME = None              # None if no authentication is needed
+DB_PASSWORD = None              # None if no authentication is needed
 
+DB_HOST = "0.0.0.0"
+DB_ALLOWED_SERVICES = (None, POSTGRESQL, MYSQL)
+DB_SERVICE = None               # don't use DB by default
+DB_PORT = None                  # don't use DB by default
 
-DB_PORT = 5432
-DB_NAME = "agrarian_db"
-POSTGRESQL_SERVICE = "postgresql"
-MYSQL_SERVICE = "mysql"
 
 DB_MANAGER_QUEUE_SIZE = 5
 

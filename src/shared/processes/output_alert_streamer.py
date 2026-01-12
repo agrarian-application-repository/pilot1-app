@@ -98,9 +98,9 @@ class NotificationsStreamWriter(mp.Process):
 
         self.database_url = None
         if not (database_service and database_host and len(database_username)>0 and len(database_password)>0):
-            if database_service == POSTGRESQL_SERVICE:
+            if database_service == POSTGRESQL:
                 self.database_url = f"postgresql://{database_username}:{database_password}@{database_host}:{database_port}/{DB_NAME}"
-            elif database_service == MYSQL_SERVICE:
+            elif database_service == MYSQL:
                 self.database_url = f"mysql+pymysql://{database_username}:{database_password}@{database_host}:{database_port}/{DB_NAME}"
             else:
                 self.database_url = "sqlite:///alerts.db"

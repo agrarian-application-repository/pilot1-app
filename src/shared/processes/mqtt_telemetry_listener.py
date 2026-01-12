@@ -31,16 +31,16 @@ class MqttCollectorProcess(mp.Process):
             telemetry_queue: mp.Queue, 
             stop_event: mp.Event,                       # stop event used to stop gracefully
             error_event: mp.Event,                      # error event used to stop gracefully on processing error
-            broker_host: str = MQTT_HOST,    # Example public broker that supports TLS
-            broker_port: int = MQTTS_PORT,              # Standard secure MQTTS port
+            broker_host: str = TELEMETRY_LISTENER_HOST,    # Example public broker that supports TLS
+            broker_port: int = TELEMETRY_LISTENER_PORT,              # Standard secure MQTTS port
             username: str = None,
             password: str = None,
-            qos_level: int = MQTT_QOS_LEVEL,
-            max_msg_wait: float = MQTT_MSG_WAIT_TIMEOUT,
-            reconnection_delay: float = MQTT_RECONNECT_DELAY,
+            qos_level: int = TELEMETRY_LISTENER_QOS_LEVEL,
+            max_msg_wait: float = TELEMETRY_LISTENER_MSG_WAIT_TIMEOUT,
+            reconnection_delay: float = TELEMETRY_LISTENER_RECONNECT_DELAY,
             ca_certs_file_path: str = None,             # '/path/to/your/ca.crt' if needed
-            cert_validation: int = MQTT_CERT_VALIDATION,
-            max_incoming_messages: int = MQTT_MAX_INCOMING_MESSAGES,
+            cert_validation: int = TELEMETRY_LISTENER_CERT_VALIDATION,
+            max_incoming_messages: int = TELEMETRY_LISTENER_MAX_INCOMING_MESSAGES,
     ):
 
         # Initialize the base Process class
@@ -81,7 +81,7 @@ class MqttCollectorProcess(mp.Process):
             cert_reqs=cert_validation,
         ) if self.broker_port == MQTTS_PORT else None
 
-        self.telemetry_state = TEMPLATE_TELEMETRY.copy()
+        self.telemetry_state = TELEMETRY_LISTENER_TEMPLATE_TELEMETRY.copy()
 
     def _create_mqtt_client(self):
         """Helper to create and configure the aiomqtt client."""
@@ -118,7 +118,7 @@ class MqttCollectorProcess(mp.Process):
                     logger.info("Secure connection successful. Subscribing to topics...")
 
                     # Subscribe to all topics
-                    for topic_to_subscribe_to in MQTT_TOPICS_TO_SUBSCRIBE:
+                    for topic_to_subscribe_to in TELEMETRY_LISTENER_TOPICS_TO_SUBSCRIBE:
                         await client.subscribe(topic=topic_to_subscribe_to, qos=self.qos_level)
                         logger.info(f"Subscribed to topic '{topic_to_subscribe_to}' with QoS level '{self.qos_level}'")
 
@@ -187,7 +187,7 @@ class MqttCollectorProcess(mp.Process):
             try:
                 # 1. Decode and Update State
                 payload = message.payload.decode()
-                telemetry_key = MQTT_TOPICS_TO_TELEMETRY_MAPPING.get(topic)
+                telemetry_key = TELEMETRY_LISTENER_TOPICS_TO_TELEMETRY_MAPPING.get(topic)
                 if not telemetry_key:
                     logger.warning(f"Received a message from an unexpected topic {topic}. Skipped.")
                     continue  # Ignore topics we don't map

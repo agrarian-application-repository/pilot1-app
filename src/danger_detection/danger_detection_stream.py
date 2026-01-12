@@ -115,10 +115,10 @@ def perform_danger_detection(
     # ---------------------------------
 
     telemetry_reader_process_cfg = {
-        "qos_level": fetch_env("MQTT_QOS_LEVEL", MQTT_QOS_LEVEL),
-        "max_msg_wait": fetch_env("MQTT_MSG_WAIT_TIMEOUT", MQTT_MSG_WAIT_TIMEOUT),
-        "reconnection_delay": fetch_env("MQTT_RECONNECT_DELAY", MQTT_RECONNECT_DELAY),
-        "max_incoming_messages": fetch_env("MQTT_MAX_INCOMING_MESSAGES", MQTT_MAX_INCOMING_MESSAGES),
+        "qos_level": fetch_env("MQTT_QOS_LEVEL", TELEMETRY_LISTENER_QOS_LEVEL),
+        "max_msg_wait": fetch_env("MQTT_MSG_WAIT_TIMEOUT", TELEMETRY_LISTENER_MSG_WAIT_TIMEOUT),
+        "reconnection_delay": fetch_env("MQTT_RECONNECT_DELAY", TELEMETRY_LISTENER_RECONNECT_DELAY),
+        "max_incoming_messages": fetch_env("MQTT_MAX_INCOMING_MESSAGES", TELEMETRY_LISTENER_MAX_INCOMING_MESSAGES),
     }
 
     # Create StreamTelemetryReader process
@@ -126,12 +126,12 @@ def perform_danger_detection(
         telemetry_queue=telemetry_reader_out_queue,
         stop_event=stop_event,
         error_event=error_event,
-        broker_host=fetch_env("MQTT_HOST", MQTT_HOST),
+        broker_host=fetch_env("MQTT_HOST", TELEMETRY_LISTENER_HOST),
         broker_port=fetch_env("MQTT_PORT", MQTTS_PORT),
         username=fetch_env("MQTT_USERNAME", None),
         password=fetch_env("MQTT_PASSWORD", None),
         ca_certs_file_path=fetch_env("MQTT_CERT_VALIDATION", None),
-        cert_validation=fetch_env("MQTT_CERT_VALIDATION", MQTT_CERT_VALIDATION),
+        cert_validation=fetch_env("MQTT_CERT_VALIDATION", TELEMETRY_LISTENER_CERT_VALIDATION),
         **telemetry_reader_process_cfg,
     )
 
