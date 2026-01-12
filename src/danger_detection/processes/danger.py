@@ -52,9 +52,6 @@ class DangerDetectionWorker(mp.Process):
         # lazy init on first valid frame
         frame_height = frame_width = None
 
-        failures = 0
-        consecutive_failures = 0
-
         try:
 
             while not self.error_event.is_set():
@@ -157,3 +154,141 @@ class DangerDetectionWorker(mp.Process):
             )
             self.work_finished.set()
 
+
+if __name__ == "__main__":
+
+    import numpy as np
+    import random
+    from src.shared.processes.consumer import Consumer
+    from src.shared.processes.producer import Producer
+    from time import sleep, time, perf_counter
+    from src.danger_detection.processes.messages import DetectionResult, SegmentationResult, GeoResult
+
+    VSLOW = 1
+    SLOW = 10
+    FAST = 50
+    REAL = 30
+    FREAL = 40
+
+    QUEUE_MAX = 3
+
+    stop_with_poison_pill = True
+    stop_after = 20.0
+
+
+    def generate_queue_object():
+        ts=time()
+        num_animals = random.randint(0,10)
+        boxes_centers = np.array([(random.randint(0,639), random.randint(0,479)) for _ in range(num_animals)])
+        boxes_corner1= boxes_centers - 15
+        boxes_corner2 = boxes_centers + 15
+
+        d = DetectionResult(
+            frame_id=int(ts*100),
+            frame=np.zeros((720,1080,3), dtype=np.uint8),
+            classes_names=["goat", "sheep"],
+            num_classes=2,
+            classes=[random.randint(0,1) for _ in range(num_animals)],
+            boxes_centers=boxes_centers,
+            boxes_corner1=boxes_corner1,
+            boxes_corner2=boxes_corner2,
+            timestamp=ts,
+            original_wh=(1920,1080),
+        )
+        s= SegmentationResult(
+            frame_id=int(ts*100),
+            roads_mask=np.random.randint(0,random.choice([1,2]),size=(720,1080), dtype=np.uint8),
+            vehicles_mask=np.random.randint(0,random.choice([1,2]),size=(720,1080), dtype=np.uint8),
+        )
+        g= GeoResult(
+            frame_id=int(ts*100),
+            safety_radius_pixels=random.randint(10, 100),
+            nodata_dem_mask=np.random.randint(0,random.choice([1,2]),size=(720,1080), dtype=np.uint8),
+            geofencing_mask=np.random.randint(0,random.choice([1,2]),size=(720,1080), dtype=np.uint8),
+            slope_mask=np.random.randint(0,random.choice([1,2]),size=(720,1080), dtype=np.uint8),
+        )
+        return ModelsAlignmentResult(
+            detection_result=d,
+            segmentation_result=s,
+            geo_result=g,
+        )
+
+    queue_in = mp.Queue(maxsize=QUEUE_MAX)
+    queue_out = mp.Queue(maxsize=QUEUE_MAX)
+
+    stop_event = mp.Event()
+    error_event = mp.Event()
+
+    producer = Producer(queue_in, error_event, generate_queue_object, frequency_hz=FAST)
+    
+    worker = DangerDetectionWorker(
+        input_queue=queue_in,
+        result_queue=queue_out,
+        error_event=error_event,
+    )
+    
+    consumer = Consumer(queue_out, error_event, frequency_hz=FAST)
+
+
+    print("CONSUMERS STARTED")
+    consumer.start()
+
+    sleep(1)
+
+    print("WORKER STARTED")
+    worker.start()
+
+    sleep(1)
+
+    sleep(1)
+
+    print("PRODUCER STARTED")
+    producer.start()
+
+    sleep(1)
+
+    start_at = time()
+    stop_at = start_at + stop_after
+
+    processes = [producer, worker, consumer]
+
+    signal_set = False
+
+    while True:
+        
+        if time() > stop_at and not signal_set:
+            signal_set = True
+            if stop_with_poison_pill:
+                print("POISON PILL")
+                producer.stop()
+            else:
+                print("ERROR EVENT")
+                error_event.set()
+
+        # Check if everyone has finished their logic
+        all_finished = all(p.work_finished.is_set() for p in processes)
+
+        # Check if an error occurred anywhere
+        error_occurred = error_event.is_set()
+
+        if all_finished or error_occurred:
+            if error_occurred:
+                print("[Main] Error detected. Terminating chain.")
+            else:
+                print("[Main] All processes finished logic. Cleaning up.")
+            break
+
+        sleep(0.5)
+
+    print(f"[Main] Granting 5s for all processed to cleanly conclude their processing.")
+    sleep(5.0)
+    # The Sweep: Force everyone to join or die
+    for p in processes:
+        # If the logic is finished but the process is still 'alive',
+        # it is 100% stuck in the queue feeder thread.
+        if p.is_alive():
+            print(f"[Main] {p.name} is hanging in cleanup. Work Completed: {p.work_finished.is_set()}. Terminating.")
+            p.terminate()
+
+        p.join()
+        print(f"[Main] {p.name} joined.")

@@ -112,9 +112,6 @@ class AnnotationWorker(mp.Process):
         color_danger_frame = None       # red mask
         color_intersect_frame = None    # yellow mask
 
-        failures = 0
-        consecutive_failures = 0
-
         put_alert_failures = 0
         put_alert_consecutive_failures = 0
 
@@ -136,10 +133,6 @@ class AnnotationWorker(mp.Process):
                 # ==========================================
 
                 fetch_start_time = time()
-
-                # whether to send the alert must be evaluated each frame
-                # thus, flag must be reset for every iteration = every frame (when frame in input queue)
-                send_alert = False
 
                 try:
                     # previous_step_results is either a DangerDetectionResults or the poison_pill
@@ -170,71 +163,49 @@ class AnnotationWorker(mp.Process):
                 # ==========================================
                 # =============== DATA PROCESSING ==========
                 # ==========================================
+                assert isinstance(previous_step_results, DangerDetectionResults)
 
                 processing_start_time = time()
 
                 # lazy initialization of masks on first frame
                 if color_danger_frame is None and color_intersect_frame is None:
-                    frame_shape = previous_step_results.shape
-                    color_danger_frame, color_intersect_frame = get_danger_intersect_colored_frames(shape=frame_shape)
+                    color_danger_frame, color_intersect_frame = get_danger_intersect_colored_frames(shape=previous_step_results.frame.shape)
 
-                try:
-                    annotated_frame = annotate_frame(
-                            frame=previous_step_results.frame,
-                            num_classes=previous_step_results.num_classes,
-                            classes_names=previous_step_results.classes_names,
-                            classes=previous_step_results.classes,
-                            boxes_centers=previous_step_results.boxes_centers,
-                            boxes_corner1=previous_step_results.boxes_corner1,
-                            boxes_corner2=previous_step_results.boxes_corner2,
-                            safety_radius_pixels=previous_step_results.safety_radius_pixels,
-                            danger_mask=previous_step_results.danger_mask,
-                            intersection_mask=previous_step_results.intersection_mask,
-                            color_danger_frame=color_danger_frame,
-                            color_intersect_frame=color_intersect_frame,
-                    )
+                annotated_frame = annotate_frame(
+                        frame=previous_step_results.frame,
+                        num_classes=previous_step_results.num_classes,
+                        classes_names=previous_step_results.classes_names,
+                        classes=previous_step_results.classes,
+                        boxes_centers=previous_step_results.boxes_centers,
+                        boxes_corner1=previous_step_results.boxes_corner1,
+                        boxes_corner2=previous_step_results.boxes_corner2,
+                        safety_radius_pixels=previous_step_results.safety_radius_pixels,
+                        danger_mask=previous_step_results.danger_mask,
+                        intersection_mask=previous_step_results.intersection_mask,
+                        color_danger_frame=color_danger_frame,
+                        color_intersect_frame=color_intersect_frame,
+                )
 
-                    annotated_frame = cv2.resize(
-                        src=annotated_frame,
-                        dsize=previous_step_results.original_wh,    # (w,h)
-                        interpolation=UPSAMPLING_MODE,
-                    )
+                annotated_frame = cv2.resize(
+                    src=annotated_frame,
+                    dsize=previous_step_results.original_wh,    # (w,h)
+                    interpolation=UPSAMPLING_MODE,
+                )
 
-                    result = AnnotationResults(
-                        frame_id=previous_step_results.frame_id,
-                        annotated_frame=annotated_frame,
-                        alert_msg=previous_step_results.danger_types,   # str
-                        timestamp=previous_step_results.timestamp
-                    )
+                result = AnnotationResults(
+                    frame_id=previous_step_results.frame_id,
+                    annotated_frame=annotated_frame,
+                    alert_msg=previous_step_results.danger_types,   # str
+                    timestamp=previous_step_results.timestamp
+                )
 
-                    # Check if alert should be sent
-                    cooldown_has_passed = (previous_step_results.timestamp - last_alert_received_timestamp) > self.cooldown
-                    alert_exist = len(previous_step_results.danger_types) > 0
+                # Check if alert should be sent
+                cooldown_has_passed = (previous_step_results.timestamp - last_alert_received_timestamp) > self.cooldown
+                alert_exist = len(previous_step_results.danger_types) > 0
 
-                    if cooldown_has_passed and alert_exist:
-                        send_alert = True
-                        last_alert_received_timestamp = previous_step_results.timestamp
-
-                    # reset processing consecutive failures counter
-                    consecutive_failures = 0
-
-                except Exception as e:
-                    failures += 1
-                    consecutive_failures += 1
-                    logger.error(f"Failed to annotate the frame: {e}")
-                    if consecutive_failures <= self.max_consecutive_failures:
-                        logger.warning(
-                            f"Consecutive failures: {consecutive_failures} "
-                            f"(max {self.max_consecutive_failures}). "
-                            f"Total failures: {failures}. "
-                            f"Attempting annotation of next frame ..."
-                        )
-                        continue
-                    else:
-                        logger.critical("Max consecutive processing failures threshold passed")
-                        self.error_event.set()
-                        logger.warning("Error event set: force-stopping the application ")
-                        break
+                send_alert = cooldown_has_passed and alert_exist
+                if send_alert:
+                    last_alert_received_timestamp = previous_step_results.timestamp
 
                 processing_time = time() - processing_start_time
 
@@ -255,7 +226,7 @@ class AnnotationWorker(mp.Process):
                     put_alert_failures += 1
                     put_alert_consecutive_failures += 1
                     logger.error(f"Failed to send alert to next process: {e}")
-                    if put_alert_consecutive_failures <= self.max_put_alert_consecutive_failures:
+                    if put_alert_consecutive_failures < self.max_put_alert_consecutive_failures:
                         logger.warning(
                             f"Consecutive failures: {put_alert_consecutive_failures} "
                             f"(max {self.max_put_alert_consecutive_failures}). "
@@ -264,7 +235,7 @@ class AnnotationWorker(mp.Process):
                         )
                         continue
                     else:
-                        logger.critical("Max consecutive alert sending failures threshold passed")
+                        logger.error("Max consecutive alert sending failures threshold passed")
                         self.error_event.set()
                         logger.warning("Error event set: force-stopping the application")
                         break
@@ -272,13 +243,13 @@ class AnnotationWorker(mp.Process):
                 # to the video stream queue, pass all frames
                 # prefer to push the frame without waiting, drop the frame if necessary
                 try:
-                    self.video_stream_queue.put_nowait(annotated_frame)
+                    self.video_stream_queue.put(annotated_frame, timeout=self.queue_put_timeout)
                     put_video_consecutive_failures = 0
                 except Exception as e:
                     put_video_failures += 1
                     put_video_consecutive_failures += 1
                     logger.error(f"Failed to send annotated frame to next process: {e}")
-                    if put_video_consecutive_failures <= self.max_put_video_consecutive_failures:
+                    if put_video_consecutive_failures < self.max_put_video_consecutive_failures:
                         logger.warning(
                             f"Consecutive failures: {put_video_consecutive_failures} "
                             f"(max {self.max_put_video_consecutive_failures}). "
@@ -287,7 +258,7 @@ class AnnotationWorker(mp.Process):
                         )
                         continue
                     else:
-                        logger.critical("Max consecutive frame sending failures threshold passed")
+                        logger.error("Max consecutive frame sending failures threshold passed")
                         self.error_event.set()
                         logger.warning("Error event set: force-stopping the application")
                         break
@@ -305,16 +276,146 @@ class AnnotationWorker(mp.Process):
                 )
 
         except Exception as e:
-            logger.critical(f"An unexpected critical error happened in annotation process: {e}")
+            logger.critical(f"An unexpected critical error happened in annotation process: {e}", exc_info=True)
             self.error_event.set()
             logger.warning("Error event set: force-stopping the application")
 
         finally:
             # log process conclusion
             logger.info(
-                "Danger annotation process terminated successfully."
+                "Danger annotation process terminated successfully. "
                 f"Poison pill received: {poison_pill_received}. "
                 f"Error event: {self.error_event.is_set()}."
             )
             self.work_finished.set()
+
+
+if __name__ == "__main__":
+
+    import numpy as np
+    import random
+    from src.shared.processes.consumer import Consumer
+    from src.shared.processes.producer import Producer
+    from time import sleep, time, perf_counter
+    from src.danger_detection.processes.messages import DangerDetectionResults
+
+    VSLOW = 1
+    SLOW = 10
+    FAST = 50
+    REAL = 30
+    FREAL = 40
+
+    QUEUE_MAX = 3
+
+    stop_with_poison_pill = True
+    stop_after = 20.0
+
+
+    def generate_queue_object():
+        ts=time()
+        num_animals = random.randint(0,10)
+        boxes_centers = np.array([(random.randint(0,639), random.randint(0,479)) for _ in range(num_animals)])
+        boxes_corner1= boxes_centers - 15
+        boxes_corner2 = boxes_centers + 15
+
+        return DangerDetectionResults(
+            frame_id=int(ts*100),
+            frame=np.zeros((720,1080,3), dtype=np.uint8),
+            num_classes=2,
+            classes_names=["goat", "sheep"],
+            classes=[random.randint(0,1) for _ in range(num_animals)],
+            boxes_centers=boxes_centers,
+            boxes_corner1=boxes_corner1,
+            boxes_corner2=boxes_corner2,
+            safety_radius_pixels=random.randint(10, 100),
+            danger_mask=np.random.randint(0,random.choice([1,2]),size=(720,1080), dtype=np.uint8),
+            intersection_mask=np.random.randint(0,random.choice([1,2]),size=(720,1080), dtype=np.uint8),
+            danger_types="danger" if random.random()>0.5 else "",
+            timestamp=ts,
+            original_wh=(1920,1080),
+        )
+
+    queue_in = mp.Queue(maxsize=QUEUE_MAX)
+    
+    video_queue_out = mp.Queue(maxsize=QUEUE_MAX)
+    alert_queue_out = mp.Queue(maxsize=QUEUE_MAX)
+
+    stop_event = mp.Event()
+    error_event = mp.Event()
+
+    producer = Producer(queue_in, error_event, generate_queue_object, frequency_hz=FAST)
+    
+    worker = AnnotationWorker(
+        input_queue=queue_in,
+        video_stream_queue=video_queue_out,
+        alerts_stream_queue=alert_queue_out,
+        error_event=error_event,
+        alerts_cooldown_seconds=2.0,
+    )
+    
+    consumer1 = Consumer(video_queue_out, error_event, frequency_hz=FAST)
+    consumer2 = Consumer(alert_queue_out, error_event, frequency_hz=FAST)
+
+
+    print("CONSUMERS STARTED")
+    consumer1.start()
+    consumer2.start()
+
+    sleep(1)
+
+    print("WORKER STARTED")
+    worker.start()
+
+    sleep(1)
+
+    print("PRODUCER STARTED")
+    producer.start()
+
+    sleep(1)
+
+    start_at = time()
+    stop_at = start_at + stop_after
+
+    processes = [producer, worker, consumer1, consumer2]
+
+    signal_set = False
+
+    while True:
+        
+        if time() > stop_at and not signal_set:
+            signal_set = True
+            if stop_with_poison_pill:
+                print("POISON PILL")
+                producer.stop()
+            else:
+                print("ERROR EVENT")
+                error_event.set()
+
+        # Check if everyone has finished their logic
+        all_finished = all(p.work_finished.is_set() for p in processes)
+
+        # Check if an error occurred anywhere
+        error_occurred = error_event.is_set()
+
+        if all_finished or error_occurred:
+            if error_occurred:
+                print("[Main] Error detected. Terminating chain.")
+            else:
+                print("[Main] All processes finished logic. Cleaning up.")
+            break
+
+        sleep(0.5)
+
+    print(f"[Main] Granting 5s for all processed to cleanly conclude their processing.")
+    sleep(5.0)
+    # The Sweep: Force everyone to join or die
+    for p in processes:
+        # If the logic is finished but the process is still 'alive',
+        # it is 100% stuck in the queue feeder thread.
+        if p.is_alive():
+            print(f"[Main] {p.name} is hanging in cleanup. Work Completed: {p.work_finished.is_set()}. Terminating.")
+            p.terminate()
+
+        p.join()
+        print(f"[Main] {p.name} joined.")
 

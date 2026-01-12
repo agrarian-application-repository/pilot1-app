@@ -24,8 +24,8 @@ while true; do
       -profile:v baseline \
       -s 1920x1080 \
       -pix_fmt yuv420p \
-      -r 35 \
-      -g 70 \
+      -r 30 \
+      -g 60 \
       -x264-params "keyint=60:min-keyint=60:scenecut=0" \
       -b:v 4000k \
       -maxrate 4000k \

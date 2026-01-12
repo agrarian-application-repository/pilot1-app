@@ -8,9 +8,9 @@
 IMAGE_NAME="agrarian-ui"
 CONTAINER_NAME="agrarian-ui"
 DETACHED="false"
-REMOVE_EXISTING="false"
+REMOVE_EXISTING="true"
 ENV_FILE=""
-NETWORK=""
+NETWORK="host"
 BUILD="false"
 
 
@@ -109,10 +109,26 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+DOCKERFILE_PATH="./docker/ui/Dockerfile"
+DOCKERIGNORE_PATH="./docker/ui/.dockerignore"
+REQUIREMENTS_PATH="./docker/ui/requirements.txt"
+ROOT_DOCKERIGNORE_PATH="./.dockerignore"
+ROOT_REQUIREMENTS_PATH="./requirements.txt"
+
+
 # Build image if requested
 if [[ "$BUILD" == "true" ]]; then
     echo "Building Docker image: $IMAGE_NAME"
-    docker build -f "./docker/ui/Dockerfile" -t "$IMAGE_NAME" .
+    # copy .dockerignore to context root for build
+    cp "$DOCKERIGNORE_PATH" "$ROOT_DOCKERIGNORE_PATH"
+    # copy requirements.txt to context root for build
+    cp "$REQUIREMENTS_PATH" "$ROOT_REQUIREMENTS_PATH"
+    # build docker image
+    docker build -f "$DOCKERFILE_PATH" -t "$IMAGE_NAME" .
+    # remove .dockerignore copy from context root
+    rm "$ROOT_DOCKERIGNORE_PATH"
+    # remove requirements.txt copy from context root
+    rm "$ROOT_REQUIREMENTS_PATH"
 fi
 
 # Remove existing container if requested

@@ -254,7 +254,7 @@ def perform_danger_detection(
         "local_video_extension": fetch_env("VIDEO_WRITER_FILE_TYPE_EXTENSION", VIDEO_WRITER_FILE_TYPE_EXTENSION),
         "video_codec": fetch_env("VIDEO_WRITER_CODEC", VIDEO_WRITER_CODEC),
         # -------- STREAM MANAGER -------------
-        "stream_manager_queue_max_size": fetch_env("VIDEO_OUT_STREAM_QUEUE_MAX_SIZE", VIDEO_OUT_STREAM_QUEUE_MAX_SIZE),
+        "stream_manager_queue_max_size": fetch_env("VIDEO_OUT_STREAM_QUEUE_MAX_SIZE", MAX_SIZE_VIDEO_STREAM),
         "stream_manager_queue_get_timeout": fetch_env("VIDEO_OUT_STREAM_QUEUE_GET_TIMEOUT", VIDEO_OUT_STREAM_QUEUE_GET_TIMEOUT),
         "stream_manager_ffmpeg_startup_timeout": fetch_env("VIDEO_OUT_STREAM_FFMPEG_STARTUP_TIMEOUT", VIDEO_OUT_STREAM_FFMPEG_STARTUP_TIMEOUT),
         "stream_manager_ffmpeg_shutdown_timeout": fetch_env("VIDEO_OUT_STREAM_FFMPEG_SHUTDOWN_TIMEOUT", VIDEO_OUT_STREAM_FFMPEG_SHUTDOWN_TIMEOUT),

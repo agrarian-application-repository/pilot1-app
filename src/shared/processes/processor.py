@@ -40,19 +40,22 @@ class Processor(multiprocessing.Process):
                     data = self.input_queue.get(timeout=self.interval)
                 except QueueEmptyException:
                     continue
-
+                
                 try:
-                    self.output_queue.put(data, timeout=0.01)
+                    
                     if data == POISON_PILL:
+                        self.output_queue.put(data, timeout=1.0)
                         print("[PROCESSOR] Propagated POISON PILL. Terminating")
                         break
                 except QueueFullException:
-                    if data == POISON_PILL:
                         print("[PROCESSOR] Unable to propagate POISON PILL. Terminating")
                         self.error_event.set()
                         break
-                    else:
-                        pass
+
+                try:
+                    self.output_queue.put(data, timeout=0.01)
+                except QueueFullException:
+                    continue
 
                 now = time.perf_counter()
                 if now < next_time:

@@ -1,72 +1,71 @@
-# Python-specific
-__pycache__
-*.pyc
-*.pyo
-*.pyd
-.venv
-venv
-.env
-*.env
-dist/
-*.egg-info/
+# Git
+.git
+.gitignore
+.gitattributes
 
 # Operating System specific
 .DS_Store
 
-# PROJECT SPECIFIC
-.git/
+# Byte-compiled / optimized / DLL files
+**/__pycache__/
+**/*.py[cod]
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environment
+.env
+.venv/
+venv/
+
+# IDEs
 .idea/
-.pytest_cache/
+.vscode/
+
+# Project specific directories
 certificates/
-checkpoints/
 configs/
-data/
-DEM/
-dev/
 docker/
+data/
+dev/
 experiments/
-experiments_agrarian_hs/
-logs/danger_detection
-logs/health_monitoring
-logs/mediamtx
-logs/mosquitto
 outputs/
 pyscripts/
 shscripts/
 simulation/
-src/configs
-src/danger_detection
-src/health_monitoring
-src/logging
-src/shared
 tests/
-wandb/
 
-.env
-.gitignore
+# - exclude partially
+logs/*/
+src/*/
+
+# - keep these components
+!logs/ui/
+!src/ui/
+
+
+# Project specific files
 .pre-commit-config.yaml
-benchmark_danger_detection_process.py
-benchmark_stream_reading_process.py
-benchmark_yolo.py
-benhmark_animal_detection_process.py
-benhmark_segmentation_process.py
-danger_detection.py
-danger_detection_stream.py
-evaluation.py
-health_monitoring.py
-health_monitoring_stream.py
-hyperparameters_search.py
-inference.py
-track.py
-train.py
-
-launch_danger_detection.sh
-launch_mediamtx.sh
-launch_ui.sh
-pbs_run_script.sh
-run_script.sh
-
 README.md
+*.py
+*.sh
 
-yolo11m.pt
-yolo11x.pt
+# keep these files:
+!ui.py

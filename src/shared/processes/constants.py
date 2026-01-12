@@ -52,7 +52,7 @@ MAX_SIZE_GEO_IN=3
 MAX_SIZE_DETECTION_RESULTS=3
 MAX_SIZE_SEGMENTATION_RESULTS=3
 MAX_SIZE_GEO_RESULTS=3
-MAX_SIZE_MODELS_COMBINATION_RESULTS=3
+MAX_SIZE_MODELS_COMBINATION_RESULTS=6   # balance many fast with a few slow
 MAX_SIZE_DANGER_DETECTION_RESULT=3
 MAX_SIZE_VIDEO_STREAM=3
 MAX_SIZE_NOTIFICATIONS_STREAM=5
@@ -84,7 +84,7 @@ VIDEO_STREAM_READER_QUEUE_PUT_TIMEOUT = 0.02                              # 20 m
 # -------------------------- MQTT READER --------------------------
 
 # testing host
-MQTT_HOST = "test.mosquitto.org"
+MQTT_HOST = "0.0.0.0"
 
 # Standard MQTT ports
 MQTT_PORT = 1883
@@ -205,7 +205,6 @@ VIDEO_GET_FRAME_TIMEOUT = 0.01                              # 10 ms
 
 # ------------------------- OUT VIDEO STREAM  --------------------------
 
-VIDEO_OUT_STREAM_QUEUE_MAX_SIZE = 3                         # 3 minutes
 VIDEO_OUT_STREAM_QUEUE_GET_TIMEOUT = 0.01                   # 10 ms
 VIDEO_OUT_STREAM_FFMPEG_STARTUP_TIMEOUT = 0.5               # 0.5 s
 VIDEO_OUT_STREAM_FFMPEG_SHUTDOWN_TIMEOUT = 8.0              # 8.0 s
@@ -214,5 +213,7 @@ VIDEO_OUT_STREAM_SHUTDOWN_TIMEOUT = 5.0                     # 5.0 s
 
 # ------------------------- OUT VIDEO STORE  --------------------------
 
+VIDEO_OUT_STORE_DELETE_LOCAL_ON_SUCCESS = True
+VIDEO_OUT_STORE_QUEUE_GET_TIMEOUT = 3.0                     # 3.0 s
 VIDEO_OUT_STORE_MAX_UPLOAD_RETRIES = 3                      # 3 attempts
-VIDEO_OUT_STORE_RETRY_BACKOFF_TIME = 10.0                   # 10 s
+VIDEO_OUT_STORE_RETRY_BACKOFF_TIME = 5.0                   # 10 s

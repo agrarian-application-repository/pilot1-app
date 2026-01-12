@@ -45,7 +45,7 @@ class Consumer(multiprocessing.Process):
                     read_start = time.perf_counter()
                     data = self.input_queue.get(timeout=self.interval)
 
-                    if data == POISON_PILL:
+                    if isinstance(data, str) and data == POISON_PILL:
                         print("[CONSUMER] poison pill found, terminating")
                         break
                     
@@ -80,7 +80,7 @@ class Consumer(multiprocessing.Process):
                     next_t = now
 
         except Exception as e:
-            print("[CONSUMER]: unexpected exception {e}")
+            print(f"[CONSUMER]: unexpected exception {e}")
 
         finally:
 

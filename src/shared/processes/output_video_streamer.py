@@ -40,7 +40,7 @@ class VideoProducerProcess(mp.Process):
             video_codec: str = VIDEO_WRITER_CODEC,
             # -------- STREAM MANAGER -------------
             media_server_url: Optional[str] = None,
-            stream_manager_queue_max_size: int = VIDEO_OUT_STREAM_QUEUE_MAX_SIZE,
+            stream_manager_queue_max_size: int = MAX_SIZE_VIDEO_STREAM,
             stream_manager_queue_get_timeout: float = VIDEO_OUT_STREAM_QUEUE_GET_TIMEOUT,
             stream_manager_ffmpeg_startup_timeout: float = VIDEO_OUT_STREAM_FFMPEG_STARTUP_TIMEOUT,
             stream_manager_ffmpeg_shutdown_timeout: float = VIDEO_OUT_STREAM_FFMPEG_SHUTDOWN_TIMEOUT,
