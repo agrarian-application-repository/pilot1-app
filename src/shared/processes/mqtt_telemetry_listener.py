@@ -9,6 +9,7 @@ from src.shared.processes.messages import TelemetryQueueObject
 import multiprocessing as mp
 from src.shared.processes.constants import *
 from src.shared.processes.consumer import Consumer
+from typing import Optional
 
 # ================================================================
 logger = logging.getLogger("main.mqtt_telemetry_listener")
@@ -31,14 +32,15 @@ class MqttCollectorProcess(mp.Process):
             telemetry_queue: mp.Queue, 
             stop_event: mp.Event,                       # stop event used to stop gracefully
             error_event: mp.Event,                      # error event used to stop gracefully on processing error
+            protocol: str = MQTT,
             broker_host: str = TELEMETRY_LISTENER_HOST,    # Example public broker that supports TLS
             broker_port: int = TELEMETRY_LISTENER_PORT,              # Standard secure MQTTS port
-            username: str = None,
-            password: str = None,
+            username: Optional[str] = None,
+            password: Optional[str] = None,
             qos_level: int = TELEMETRY_LISTENER_QOS_LEVEL,
             max_msg_wait: float = TELEMETRY_LISTENER_MSG_WAIT_TIMEOUT,
             reconnection_delay: float = TELEMETRY_LISTENER_RECONNECT_DELAY,
-            ca_certs_file_path: str = None,             # '/path/to/your/ca.crt' if needed
+            ca_certs_file_path: str = "certificates/mqtt",
             cert_validation: int = TELEMETRY_LISTENER_CERT_VALIDATION,
             max_incoming_messages: int = TELEMETRY_LISTENER_MAX_INCOMING_MESSAGES,
     ):
@@ -76,10 +78,13 @@ class MqttCollectorProcess(mp.Process):
 
         # Configuration for the MQTT client (static)
         self.client_id = None  # placeholder
-        self.tls_params = TLSParameters(
-            ca_certs=ca_certs_file_path,
-            cert_reqs=cert_validation,
-        ) if self.broker_port == MQTTS_PORT else None
+        self.tls_params = None
+        
+        if protocol == MQTTS:
+            self.tls_params = TLSParameters(
+                ca_certs=ca_certs_file_path,
+                cert_reqs=cert_validation,
+            )
 
         self.telemetry_state = TELEMETRY_LISTENER_TEMPLATE_TELEMETRY.copy()
 

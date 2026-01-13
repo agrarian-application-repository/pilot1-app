@@ -1,30 +1,9 @@
 import ssl  # Needed for creating SSL context parameters
 import cv2
 
-
-# REQUEST TO USER (CREDENTIALS):
-# - AGRARIAN_USERNAME
-# - AGRARIAN_PASSWORD
-# - DB_USERNAME
-# - DB_PASSWORD
-# - MQTT_USERNAME
-# - MQTT_PASSWORD
-# - MQTT_HOST
-# - RTMP_STREAM_KEY
-# - RTMP_HOST
-
-# REQUEST TO USERS (FILES, mount)
-# - MQTT_CERT
-# - DEM
-# - DEM_MASK
-# - DRONE_CONFIG_FILE
-# - INPUT_CONFIG_FILE
-
-# WHAT THE USER WILL GET TO KNOW:
-# IP/PORT OF WEBCOKET SERVER
-# IP/PORT TO RETRIEVE THE STREAM
-
 # -------------------------- GENERAL --------------------------
+
+NOT_SPECIFIED = "not_specified"
 
 # target FPS for processing and output
 FPS = 30
@@ -36,9 +15,6 @@ POISON_PILL = "HALT"
 POISON_PILL_TIMEOUT = 5.0                                               # 5.0 s
 SHUTDOWN_TIMEOUT = 10.0                                                 # 10.0 s
 
-# how long to wait to get message from input queue
-QUEUE_GET_TIMEOUT = 0.01                                                # 10 ms
-
 # image downsampling interpolation
 DOWNSAMPLING_MODE = cv2.INTER_LINEAR
 
@@ -49,13 +25,14 @@ UPSAMPLING_MODE = cv2.INTER_LINEAR
 LOCAL_OUTPUT_DIR = 'processing_results'
 
 # str: Name of the files on which alerts will be saved
-ALERTS_FILE_NAME = 'alerts'
+ALERTS_FILE_NAME = 'alerts.txt'
 
 # str: Name of the video showing the annotated original data (with/without sheep count and tracks)
-ANNOTATED_VIDEO_NAME = 'annotated_video'
+ANNOTATED_VIDEO_NAME = 'annotated_video.mp4'
+CODEC = 'mp4v'
 
 # agrarian database name
-DB_NAME = "agrarian_db"
+DB_NAME = "agrarian.db"
 
 # -------------------------- DANGER DETECTION PARAMETERS --------------------------
 
@@ -67,7 +44,7 @@ SLOPE_ANGLE_THRESHOLD = 30.0
 
 # set of tuples (longitude, latitude) defining the points marking the vertexes of the geofencing area
 # set to None to deactivate
-GEOFENCING_VERTEXES = None
+GEOFENCING_VERTEXES = NOT_SPECIFIED
 
 # -------------------------- HEALTH MONITORING PARAMETERS --------------------------
 
@@ -96,6 +73,8 @@ DRONE_SENSOR_HEIGHT_PIXELS = 3956  # standard Effective 20MP for 4/3 CMOS sensor
 
 # -------------------------- PROTOCOLS --------------------------
 
+ALL_INTERFACES = "0.0.0.0"
+
 RTMP = "rtmp"
 RTMPS = "rtmps"
 RTSP = "rtsp"
@@ -108,8 +87,14 @@ WEBRTC = "webrtc"
 HLS = "hls"
 WS = "ws"
 WSS = "wss"
+
 POSTGRESQL = "postgresql"
 MYSQL = "mysql"
+SQLITE = "sqlite"
+
+AZURE = "azure"
+AWS = "aws"
+GOOGLE = "google"
 
 HTTP_PORT = 80
 HTTPS_PORT = 443
@@ -123,6 +108,7 @@ WEBRTC_PORT = 8889
 WS_PORT = 80
 WSS_PORT = 443
 WS_COMMON_PORT = 8765
+DB_COMMON_PORT = 5432
 
 # -------------------------- PROCESSES QUEUES SIZES --------------------------
 
@@ -134,7 +120,7 @@ MAX_SIZE_GEO_IN=3
 MAX_SIZE_DETECTION_RESULTS=3
 MAX_SIZE_SEGMENTATION_RESULTS=3
 MAX_SIZE_GEO_RESULTS=3
-MAX_SIZE_MODELS_COMBINATION_RESULTS=6   # balance many fast with a few slow
+MAX_SIZE_MODELS_ALIGNMENT_RESULTS=6   # balance many fast with a few slow
 MAX_SIZE_DANGER_DETECTION_RESULT=3
 MAX_SIZE_VIDEO_STREAM=3
 MAX_SIZE_NOTIFICATIONS_STREAM=5
@@ -147,11 +133,11 @@ MAX_SIZE_VIDEO_STORAGE=3
 # VIDEO_STREAM_URL = "rtsp://[user[:password]@]host[:port]/path"
 # VIDEO_STREAM_URL = "rtsps://[user[:password]@]host[:port]/path"
 
-VIDEO_STREAM_READER_USERNAME = None  # None if no authentication is needed
-VIDEO_STREAM_READER_PASSWORD = None  # None if no authentication is needed
+VIDEO_STREAM_READER_USERNAME = NOT_SPECIFIED  
+VIDEO_STREAM_READER_PASSWORD = NOT_SPECIFIED
 
-VIDEO_STREAM_READER_HOST = "0.0.0.0"
-VIDEO_STREAM_READER_ALLOWED_PROTOCOLS = (RTSP, RTMP)    # (RTSP, RTMP, RTMPS, RTSPS)
+VIDEO_STREAM_READER_HOST = ALL_INTERFACES
+VIDEO_STREAM_READER_ALLOWED_PROTOCOLS = (RTSP, RTMP, RTMPS, RTSPS)
 VIDEO_STREAM_READER_PROTOCOL = RTSP                     # use rtsp by default
 VIDEO_STREAM_READER_PORT = RTSP_PORT                    # use rtsp by default
 VIDEO_STREAM_READER_STREAM_KEY = "drone"
@@ -172,12 +158,12 @@ VIDEO_STREAM_READER_PROCESSING_SHAPE = (1280, 720)  # (W,H)
 VIDEO_STREAM_READER_QUEUE_PUT_TIMEOUT = 0.02                              # 20 ms
 
 
-# -------------------------- MQTT READER --------------------------
+# -------------------------- TELEMETRY READER --------------------------
 
-TELEMETRY_LISTENER_USERNAME = None              # None if no authentication is needed
-TELEMETRY_LISTENER_PASSWORD = None              # None if no authentication is needed
+TELEMETRY_LISTENER_USERNAME = NOT_SPECIFIED
+TELEMETRY_LISTENER_PASSWORD = NOT_SPECIFIED
 
-TELEMETRY_LISTENER_HOST = "0.0.0.0"
+TELEMETRY_LISTENER_HOST = ALL_INTERFACES
 TELEMETRY_LISTENER_ALLOWED_PROTOCOLS = (MQTT, MQTTS)
 TELEMETRY_LISTENER_PROTOCOL = MQTT              # use mqtt by default
 TELEMETRY_LISTENER_PORT = MQTT_PORT             # use mqtt by default
@@ -191,7 +177,7 @@ TELEMETRY_LISTENER_QOS_LEVEL = 1
 # If the DJI broker requires a specific root certificate, download it and
 # specify its path here. If using a public broker with a standard certificate,
 # setting 'cert_reqs' to CERT_REQUIRED is often enough, but you may need 'ca_certs'.
-TELEMETRY_LISTENER_CERT_VALIDATION = ssl.CERT_REQUIRED  # Ensure the broker's certificate is valid
+TELEMETRY_LISTENER_CERT_VALIDATION = ssl.CERT_REQUIRED  # for mqtts, ensure the broker's certificate is valid
 
 # Seconds to wait before attempting reconnection
 TELEMETRY_LISTENER_RECONNECT_DELAY = 5.0
@@ -239,20 +225,22 @@ MODELS_QUEUE_PUT_TIMEOUT = 0.02                     # 20 ms
 
 ANNOTATION_QUEUE_GET_TIMEOUT = 0.02
 ANNOTATION_QUEUE_PUT_TIMEOUT = 0.02
-ANNOTATION_MAX_CONSECUTIVE_FAILURES = 5
 ANNOTATION_MAX_PUT_ALERT_CONSECUTIVE_FAILURES = 3
-ANNOTATION_MAX_PUT_VIDEO_CONSECUTIVE_FAILURES = FPS
+ANNOTATION_MAX_PUT_VIDEO_CONSECUTIVE_FAILURES = FPS * 2
 
 # -------------------------------------------------------------------
 # -------------------------- ALERTS WRITER --------------------------
 # -------------------------------------------------------------------
 
-ALERTS_GET_TIMEOUT = 0.1                                # 100 ms
+ALERTS_QUEUE_GET_TIMEOUT = 0.1                                # 100 ms
 
 ALERTS_MAX_CONSECUTIVE_FAILURES = 5
 ALERTS_JPEG_COMPRESSION_QUALITY = 85
 
 # -------------------------- ALERTS WS --------------------------
+
+WEBSOCKET_HOST = "localhost"
+WEBSOCKET_PORT = HTTPS_PORT
 
 WS_MANAGER_BROADCAST_TIMEOUT = 2.0
 WS_MANAGER_PING_INTERVAL = 5.0                          # 5.0 s
@@ -261,14 +249,13 @@ WS_MANAGER_THREAD_CLOSE_TIMEOUT = 5.0                   # 5.0 s
 
 # -------------------------- ALERTS DB --------------------------
 
-DB_USERNAME = None              # None if no authentication is needed
-DB_PASSWORD = None              # None if no authentication is needed
+DB_USERNAME = NOT_SPECIFIED              
+DB_PASSWORD = NOT_SPECIFIED              
 
-DB_HOST = "0.0.0.0"
-DB_ALLOWED_SERVICES = (None, POSTGRESQL, MYSQL)
-DB_SERVICE = None               # don't use DB by default
-DB_PORT = None                  # don't use DB by default
-
+DB_HOST = ALL_INTERFACES
+DB_ALLOWED_SERVICES = (NOT_SPECIFIED, SQLITE, POSTGRESQL, MYSQL)
+DB_SERVICE = NOT_SPECIFIED                # don't use DB by default
+DB_PORT = DB_COMMON_PORT                  
 
 DB_MANAGER_QUEUE_SIZE = 5
 
@@ -283,10 +270,19 @@ DB_MANAGER_THREAD_CLOSE_TIMEOUT = 5.0                   # 5.0 s
 # -------------------------- OUT VIDEO WRITER --------------------------
 # -------------------------------------------------------------------
 
-VIDEO_WRITER_FPS = FPS
-VIDEO_GET_FRAME_TIMEOUT = 0.01                              # 10 ms
+VIDEO_WRITER_GET_FRAME_TIMEOUT = 0.01                              # 10 ms
+VIDEO_WRITER_HANDOFF_TIMEOUT = 1.0
 
 # ------------------------- OUT VIDEO STREAM  --------------------------
+
+VIDEO_OUT_STREAM_USERNAME = NOT_SPECIFIED
+VIDEO_OUT_STREAM_PASSWORD = NOT_SPECIFIED
+
+VIDEO_OUT_STREAM_HOST = ALL_INTERFACES
+VIDEO_OUT_STREAM_ALLOWED_PROTOCOLS = (RTMP)    # (RTMP, RTMPS)
+VIDEO_OUT_STREAM_PROTOCOL = RTMP                     # use rtmp by default
+VIDEO_OUT_STREAM_PORT = RTMP_PORT                    # use rtmp by default
+VIDEO_OUT_STREAM_STREAM_KEY = "annot"
 
 VIDEO_OUT_STREAM_QUEUE_GET_TIMEOUT = 0.01                   # 10 ms
 VIDEO_OUT_STREAM_FFMPEG_STARTUP_TIMEOUT = 0.5               # 0.5 s
@@ -295,6 +291,14 @@ VIDEO_OUT_STREAM_STARTUP_TIMEOUT = 2.0                      # 2.0 s
 VIDEO_OUT_STREAM_SHUTDOWN_TIMEOUT = 5.0                     # 5.0 s
 
 # ------------------------- OUT VIDEO STORE  --------------------------
+
+VIDEO_OUT_STORE_USERNAME = NOT_SPECIFIED
+VIDEO_OUT_STORE_PASSWORD = NOT_SPECIFIED
+
+VIDEO_OUT_STORE_HOST = ALL_INTERFACES
+VIDEO_OUT_STORE_ALLOWED_SERVICES = (AWS, AZURE, GOOGLE)    
+VIDEO_OUT_STORE_SERVICE = AZURE                            # use azure by default
+VIDEO_OUT_STORE_PORT = HTTPS_PORT                           # use azure by default
 
 VIDEO_OUT_STORE_DELETE_LOCAL_ON_SUCCESS = True
 VIDEO_OUT_STORE_QUEUE_GET_TIMEOUT = 3.0                     # 3.0 s

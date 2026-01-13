@@ -53,11 +53,13 @@ simulation/
 tests/
 
 # - exclude partially
+checkpoints/*/
 configs/*/
 logs/*/
 src/*/
 
 # - keep these components
+!checkpoints/danger_detection/
 !configs/danger_detection/
 !logs/danger_detection/
 !src/danger_detection/

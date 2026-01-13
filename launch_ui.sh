@@ -10,7 +10,7 @@ CONTAINER_NAME="agrarian-ui"
 DETACHED="false"
 REMOVE_EXISTING="true"
 ENV_FILE=""
-NETWORK="host"
+NETWORK=""
 BUILD="false"
 
 

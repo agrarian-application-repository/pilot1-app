@@ -32,12 +32,12 @@ class VideoProducerProcess(mp.Process):
             input_queue: mp.Queue,
             output_queue: mp.Queue,
             error_event: mp.Event,
-            fps: int = VIDEO_WRITER_FPS,
+            fps: int = FPS,
             get_frame_timeout: float = VIDEO_WRITER_GET_FRAME_TIMEOUT,
+            poison_pill_timeout: float = POISON_PILL_TIMEOUT,
             # -------- LOCAL SAVE -------------
-            local_video_name: str = "recording",
-            local_video_extension: str = VIDEO_WRITER_FILE_TYPE_EXTENSION,
-            video_codec: str = VIDEO_WRITER_CODEC,
+            local_video_name: str = ANNOTATED_VIDEO_NAME,
+            video_codec: str = CODEC,
             # -------- STREAM MANAGER -------------
             media_server_url: Optional[str] = None,
             stream_manager_queue_max_size: int = MAX_SIZE_VIDEO_STREAM,
@@ -47,7 +47,7 @@ class VideoProducerProcess(mp.Process):
             stream_manager_startup_timeout: float = VIDEO_OUT_STREAM_STARTUP_TIMEOUT,
             stream_manager_shutdown_timeout: float = VIDEO_OUT_STREAM_SHUTDOWN_TIMEOUT,
             # -------- STORAGE_MANAGER ------------
-            storage_manager_handoff_timeout: float = VIDEO_WRITER_HANDOFF_TIMEOUT
+            storage_manager_handoff_timeout: float = VIDEO_WRITER_HANDOFF_TIMEOUT,
     ):
         """
          A process that pulls message objects containing video frames from a 
@@ -77,7 +77,7 @@ class VideoProducerProcess(mp.Process):
 
         # local file save config
         self.writer: Optional[cv2.VideoWriter] = None
-        self.local_video_filename = f"{local_video_name}.{local_video_extension}"
+        self.local_video_filename = local_video_name
         self.video_codec = video_codec
 
         # stream manager config
@@ -92,6 +92,8 @@ class VideoProducerProcess(mp.Process):
 
         # storage manager config
         self.storage_manager_handoff_timeout = storage_manager_handoff_timeout
+
+        self.poison_pill_timeout = poison_pill_timeout
 
         self.work_finished = mp.Event()
 
@@ -210,7 +212,7 @@ class VideoProducerProcess(mp.Process):
                 logger.info("Video save failed: path to video not passed to persistence process")
 
             # in any case, the Persistence Process must stop, so we pass the POISON_PILL
-            self.output_queue.put(POISON_PILL, timeout=self.storage_manager_handoff_timeout)
+            self.output_queue.put(POISON_PILL, timeout=self.poison_pill_timeout)
             logger.info("Passed poison pill on to video persistence process")
 
         except Exception as e:

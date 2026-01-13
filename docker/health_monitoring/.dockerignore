@@ -54,11 +54,13 @@ simulation/
 tests/
 
 # - exclude partially
+checkpoints/*/
 configs/*/
 logs/*/
 src/*/
 
 # - keep these components
+!checkpoints/health_monitoring/
 !configs/health_monitoring/
 !logs/health_monitoring/
 !src/health_monitoring/

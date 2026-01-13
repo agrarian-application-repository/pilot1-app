@@ -72,7 +72,6 @@ class AnnotationWorker(mp.Process):
             alerts_cooldown_seconds: int|float,
             queue_get_timeout: float = ANNOTATION_QUEUE_GET_TIMEOUT,
             queue_put_timeout: float = ANNOTATION_QUEUE_PUT_TIMEOUT,
-            max_consecutive_failures: int = ANNOTATION_MAX_CONSECUTIVE_FAILURES,
             max_put_alert_consecutive_failures: int = ANNOTATION_MAX_PUT_ALERT_CONSECUTIVE_FAILURES,
             max_put_video_consecutive_failures: int = ANNOTATION_MAX_PUT_VIDEO_CONSECUTIVE_FAILURES,
             poison_pill_timeout: float = POISON_PILL_TIMEOUT,
@@ -95,7 +94,6 @@ class AnnotationWorker(mp.Process):
         self.queue_get_timeout = queue_get_timeout
         self.queue_put_timeout = queue_put_timeout / 2  # split total between 2 queues
 
-        self.max_consecutive_failures = max_consecutive_failures
         self.max_put_alert_consecutive_failures = max_put_alert_consecutive_failures
         self.max_put_video_consecutive_failures = max_put_video_consecutive_failures
 

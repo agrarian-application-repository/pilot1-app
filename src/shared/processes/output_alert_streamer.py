@@ -41,7 +41,7 @@ class NotificationsStreamWriter(mp.Process):
             self,
             input_queue: mp.Queue,
             error_event: mp.Event,
-            alerts_get_timeout: float = ALERTS_GET_TIMEOUT,
+            alerts_get_timeout: float = ALERTS_QUEUE_GET_TIMEOUT,
             alerts_max_consecutive_failures: int = ALERTS_MAX_CONSECUTIVE_FAILURES,
             alerts_jpeg_quality: int = ALERTS_JPEG_COMPRESSION_QUALITY,
             # ------- FILE manager parameters --------
@@ -92,18 +92,23 @@ class NotificationsStreamWriter(mp.Process):
         # Initialize log file (placeholder, instantiated in run)
         self.log_file = None
 
-        # Initialize DB manager (placeholder, instantiated in run)
-        # database_url="postgresql://user:password@localhost:5432/alerts_db"    # PostgreSQL
-        # database_url="mysql+pymysql://user:password@localhost:3306/alerts_db"    # MySQL
+        # initialize database url
+        if database_username and database_password:
+            auth = f"{database_username}:{database_password}@"
+        elif database_username:
+            auth = f"{database_username}@"
+        else:
+            auth = ""
 
-        self.database_url = None
-        if not (database_service and database_host and len(database_username)>0 and len(database_password)>0):
-            if database_service == POSTGRESQL:
-                self.database_url = f"postgresql://{database_username}:{database_password}@{database_host}:{database_port}/{DB_NAME}"
-            elif database_service == MYSQL:
-                self.database_url = f"mysql+pymysql://{database_username}:{database_password}@{database_host}:{database_port}/{DB_NAME}"
-            else:
-                self.database_url = "sqlite:///alerts.db"
+        if database_service == POSTGRESQL:
+            self.database_url = f"postgresql://{auth}{database_host}:{database_port}/{DB_NAME}"
+        elif database_service == MYSQL:
+            self.database_url = f"mysql+pymysql://{auth}{database_host}:{database_port}/{DB_NAME}"
+        elif database_service == SQLITE:
+            self.database_url = f"sqlite:///{DB_NAME}"
+        else:
+            self.database_url = None
+
         
         self.db_username = database_username
         self.db_password = database_password

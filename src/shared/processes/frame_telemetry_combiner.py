@@ -256,7 +256,7 @@ class FrameTelemetryCombiner(mp.Process):
 
                 try:
                     # Try to get a frame, waiting for a short time if not available immediately
-                    frame_obj: FrameQueueObject = self.frame_queue.get(timeout=QUEUE_GET_TIMEOUT)
+                    frame_obj: FrameQueueObject = self.frame_queue.get(timeout=self.queue_get_timeout)
                 except QueueEmptyException:
                     logger.debug("Frame queue is empty, retrying fetch ...")
                     continue

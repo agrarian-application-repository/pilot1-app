@@ -6,7 +6,7 @@ from queue import Queue, Empty, Full
 import numpy as np
 
 from src.shared.processes.constants import (
-    VIDEO_WRITER_FPS,
+    FPS,
     MAX_SIZE_VIDEO_STREAM,
     VIDEO_OUT_STREAM_QUEUE_GET_TIMEOUT,
     VIDEO_OUT_STREAM_FFMPEG_STARTUP_TIMEOUT,    # 0.5
@@ -30,7 +30,7 @@ class VideoStreamManager:
     def __init__(
             self,
             mediaserver_url: str,
-            fps: int = VIDEO_WRITER_FPS,
+            fps: int = FPS,
             queue_max_size: int = MAX_SIZE_VIDEO_STREAM,
             queue_get_timeout: float = VIDEO_OUT_STREAM_QUEUE_GET_TIMEOUT,
             ffmpeg_startup_timeout: float = VIDEO_OUT_STREAM_FFMPEG_STARTUP_TIMEOUT,
