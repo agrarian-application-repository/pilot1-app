@@ -18,10 +18,10 @@ RUN apt update && apt install -y \
 WORKDIR /app
 
 # Copy requirements and install Python dependencies
-COPY docker/ui/requirements.txt ./requirements.txt
+COPY ./requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy project structure (filtered by docker/ui/.dockerignore)
+# Copy project structure (filtered by ./.dockerignore)
 COPY . .
 
 # Set permissions for entire /app directory at once

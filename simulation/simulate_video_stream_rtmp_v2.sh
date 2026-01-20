@@ -17,7 +17,7 @@ while true; do
     ffmpeg \
       -re \
       -stream_loop -1 \
-      -i /home/simone/Desktop/DJI_20241024104935_0008_D.MP4 \
+      -i /home/simone/projects/AGRARIAN/simulation/output.mp4 \
       -c:v libx264 \
       -preset veryfast \
       -tune zerolatency \

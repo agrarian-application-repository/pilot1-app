@@ -42,7 +42,7 @@ async def mock_server(host, port):
                     'frame_id': i,
                     'alert_msg': random.choice(["road", "car", "slope"]),
                     'timestamp': timestamp,
-                    'datetime': current_time,
+                    'datetime': current_time,   # string
                     'image': b64_image,
                     'width': 1920,
                     'height': 1080,
@@ -69,3 +69,6 @@ if __name__ == "__main__":
     server_thread = threading.Thread(target=run_server, daemon=True)
     server_thread.start()
     time.sleep(1)  # Give server a moment to start
+
+    while True:
+        time.sleep(10)

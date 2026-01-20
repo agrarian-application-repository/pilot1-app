@@ -58,6 +58,7 @@ class AlertReceiver(threading.Thread):
                 data['image'] = self.decompress_image(data['image'])
             self.shared_dequeue.appendleft(data)
             self.total_alerts += 1
+            logger.info(f"Received a message from WS server")
         except Exception as e:
             logger.error(f"Error parsing alert message: {e}")
 

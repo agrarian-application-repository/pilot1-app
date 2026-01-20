@@ -1,13 +1,13 @@
 import subprocess
 import threading
 import logging
-import time
+from time import time, sleep
 from queue import Queue, Empty, Full
 import numpy as np
 
 from src.shared.processes.constants import (
-    VIDEO_WRITER_FPS,
-    VIDEO_OUT_STREAM_QUEUE_MAX_SIZE,
+    FPS,
+    MAX_SIZE_VIDEO_STREAM,
     VIDEO_OUT_STREAM_QUEUE_GET_TIMEOUT,
     VIDEO_OUT_STREAM_FFMPEG_STARTUP_TIMEOUT,    # 0.5
     VIDEO_OUT_STREAM_FFMPEG_SHUTDOWN_TIMEOUT,    # 8.0
@@ -30,8 +30,8 @@ class VideoStreamManager:
     def __init__(
             self,
             mediaserver_url: str,
-            fps: int = VIDEO_WRITER_FPS,
-            queue_max_size: int = VIDEO_OUT_STREAM_QUEUE_MAX_SIZE,
+            fps: int = FPS,
+            queue_max_size: int = MAX_SIZE_VIDEO_STREAM,
             queue_get_timeout: float = VIDEO_OUT_STREAM_QUEUE_GET_TIMEOUT,
             ffmpeg_startup_timeout: float = VIDEO_OUT_STREAM_FFMPEG_STARTUP_TIMEOUT,
             ffmpeg_shutdown_timeout: float = VIDEO_OUT_STREAM_FFMPEG_SHUTDOWN_TIMEOUT,
@@ -71,6 +71,10 @@ class VideoStreamManager:
         Receives frames from the Worker process.
         Returns whether the frame was enqueued or not.
         """
+        if not self.running:
+            logger.warning("Stream Manager not running. Dropping frame.")
+            return False
+
         try:
             self.frame_queue.put_nowait(frame)
             return True
@@ -86,16 +90,27 @@ class VideoStreamManager:
         # Optimized command for Full HD 30fps ingest
         command = [
             'ffmpeg',
-            '-y', '-f', 'rawvideo',
+            '-y', 
+            '-f', 'rawvideo',
             '-vcodec', 'rawvideo',
             '-pix_fmt', 'bgr24',
             '-s', f"{self.width}x{self.height}",
             '-r', str(self.fps),
-            '-i', '-',  # Input from stdin pipe
+            '-i', '-', # Input from stdin pipe
             '-c:v', 'libx264',
-            '-pix_fmt', 'yuv420p',
             '-preset', 'veryfast',
             '-tune', 'zerolatency',
+            '-profile:v', 'baseline',
+            '-pix_fmt', 'yuv420p',
+            # Rate Control
+            '-b:v', '4000k',
+            '-maxrate', '4000k',
+            '-bufsize', '8000k',
+            # GOP / Keyframe Settings
+            '-g', str(2*self.fps),                    # Force keyframe every 2 seconds (at 30fps)
+            '-x264-params', f'keyint={str(2*self.fps)}:min-keyint={str(2*self.fps)}:scenecut=0',
+            # Output format
+            '-an',                         # Remove audio if not needed
             '-f', 'flv',
             self.mediaserver_url
         ]
@@ -111,7 +126,7 @@ class VideoStreamManager:
 
             # --- STARTUP VERIFICATION ---
             # Brief sleep to allow FFmpeg to initialize/fail connection
-            time.sleep(self.ffmpeg_startup_timeout)
+            sleep(self.ffmpeg_startup_timeout)
             if self._ffmpeg_process.poll() is not None:
                 # Process exited immediately
                 _, stderr_data = self._ffmpeg_process.communicate()
@@ -142,6 +157,7 @@ class VideoStreamManager:
             self._start_confirmed.set()
         finally:
             self._finalize_ffmpeg()
+            self.running = False
 
     def _finalize_ffmpeg(self):
         """Internal routine to close the pipe and wait for process exit."""
@@ -210,3 +226,56 @@ class VideoStreamManager:
                 logger.warning("Video Streaming thread did not terminate cleanly within timeout")
             else:
                 logger.info("Video Streaming thread terminated successfully")
+
+
+
+if __name__ == "__main__":
+        
+    import cv2
+    import datetime
+    from time import time, perf_counter, sleep
+
+    mediaserver_url = "rtmp://0.0.0.0:1935/annot"
+    fps=30
+    duration_seconds = 60
+
+    def make_frame():
+        # black frame
+        frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+
+        # 3. Define text properties
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        org = (50, 100)  # Coordinates (X, Y) where text starts
+        fontScale = 2
+        color = (255, 255, 255)  # White in BGR
+        thickness = 3
+
+        # put current datetime string oin frame
+        current_time = datetime.datetime.now().isoformat()
+        cv2.putText(frame, current_time, org, font, fontScale, color, thickness, cv2.LINE_AA)
+
+        return frame
+    
+    stream_manager = VideoStreamManager(
+        mediaserver_url=mediaserver_url,
+        fps=fps,
+    )
+    stream_manager.set_frame_dims(width=1920, height=1080)
+    stream_manager.start()
+
+    next = perf_counter() + 1/fps
+    stop_time = next + duration_seconds
+
+    while True:
+        if perf_counter() > stop_time:
+            break
+
+        frame = make_frame()
+        stream_manager.push_to_queue(frame)
+
+        perf = perf_counter()
+        if perf < next:
+            sleep(next-perf)
+        next += 1/fps
+
+    stream_manager.stop()

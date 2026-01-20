@@ -4,17 +4,18 @@ import ssl  # Needed for creating SSL context parameters
 from queue import Full as QueueFullException
 from aiomqtt.exceptions import MqttError
 from aiomqtt import Client, TLSParameters
-from time import time
+from time import sleep, time
 from src.shared.processes.messages import TelemetryQueueObject
 import multiprocessing as mp
 from src.shared.processes.constants import *
 from src.shared.processes.consumer import Consumer
+from typing import Optional
 
 # ================================================================
 logger = logging.getLogger("main.mqtt_telemetry_listener")
 
 if not logger.handlers:  # Avoid duplicate handlers
-    video_handler = logging.FileHandler('./logs/mqtt_telemetry_listener.log', mode='w')
+    video_handler = logging.FileHandler('./mqtt_telemetry_listener.log', mode='w')
     video_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(video_handler)
     logger.setLevel(logging.DEBUG)
@@ -31,16 +32,17 @@ class MqttCollectorProcess(mp.Process):
             telemetry_queue: mp.Queue, 
             stop_event: mp.Event,                       # stop event used to stop gracefully
             error_event: mp.Event,                      # error event used to stop gracefully on processing error
-            broker_host: str = MQTT_HOST,    # Example public broker that supports TLS
-            broker_port: int = MQTTS_PORT,              # Standard secure MQTTS port
-            username: str = None,
-            password: str = None,
-            qos_level: int = MQTT_QOS_LEVEL,
-            max_msg_wait: int = MQTT_MSG_WAIT_TIMEOUT,
-            reconnection_delay: float = MQTT_RECONNECT_DELAY,
-            ca_certs_file_path: str = None,             # '/path/to/your/ca.crt' if needed
-            cert_validation: int = MQTT_CERT_VALIDATION,
-            max_incoming_messages: int = MQTT_MAX_INCOMING_MESSAGES,
+            protocol: str = MQTT,
+            broker_host: str = TELEMETRY_LISTENER_HOST,    # Example public broker that supports TLS
+            broker_port: int = TELEMETRY_LISTENER_PORT,              # Standard secure MQTTS port
+            username: Optional[str] = None,
+            password: Optional[str] = None,
+            qos_level: int = TELEMETRY_LISTENER_QOS_LEVEL,
+            max_msg_wait: float = TELEMETRY_LISTENER_MSG_WAIT_TIMEOUT,
+            reconnection_delay: float = TELEMETRY_LISTENER_RECONNECT_DELAY,
+            ca_certs_file_path: str = "certificates/mqtt",
+            cert_validation: int = TELEMETRY_LISTENER_CERT_VALIDATION,
+            max_incoming_messages: int = TELEMETRY_LISTENER_MAX_INCOMING_MESSAGES,
     ):
 
         # Initialize the base Process class
@@ -76,12 +78,15 @@ class MqttCollectorProcess(mp.Process):
 
         # Configuration for the MQTT client (static)
         self.client_id = None  # placeholder
-        self.tls_params = TLSParameters(
-            ca_certs=ca_certs_file_path,
-            cert_reqs=cert_validation,
-        )
+        self.tls_params = None
+        
+        if protocol == MQTTS:
+            self.tls_params = TLSParameters(
+                ca_certs=ca_certs_file_path,
+                cert_reqs=cert_validation,
+            )
 
-        self.telemetry_state = TEMPLATE_TELEMETRY.copy()
+        self.telemetry_state = TELEMETRY_LISTENER_TEMPLATE_TELEMETRY.copy()
 
     def _create_mqtt_client(self):
         """Helper to create and configure the aiomqtt client."""
@@ -118,7 +123,7 @@ class MqttCollectorProcess(mp.Process):
                     logger.info("Secure connection successful. Subscribing to topics...")
 
                     # Subscribe to all topics
-                    for topic_to_subscribe_to in MQTT_TOPICS_TO_SUBSCRIBE:
+                    for topic_to_subscribe_to in TELEMETRY_LISTENER_TOPICS_TO_SUBSCRIBE:
                         await client.subscribe(topic=topic_to_subscribe_to, qos=self.qos_level)
                         logger.info(f"Subscribed to topic '{topic_to_subscribe_to}' with QoS level '{self.qos_level}'")
 
@@ -170,8 +175,9 @@ class MqttCollectorProcess(mp.Process):
                 async with asyncio.timeout(self.max_msg_wait):
                     # Get the next message from the iterator manually
                     message = await anext(client.messages)
+                    logger.debug(f"Message received on topic {message.topic.value}")
             except asyncio.TimeoutError:
-                # No message arrived within timeout, loop back to che halting events
+                # No message arrived within timeout, loop back to check halting events
                 logger.warning(f"No messages received for {self.max_msg_wait} seconds. Continuing to listen ...")
                 continue
             except StopAsyncIteration:
@@ -186,7 +192,7 @@ class MqttCollectorProcess(mp.Process):
             try:
                 # 1. Decode and Update State
                 payload = message.payload.decode()
-                telemetry_key = MQTT_TOPICS_TO_TELEMETRY_MAPPING.get(topic)
+                telemetry_key = TELEMETRY_LISTENER_TOPICS_TO_TELEMETRY_MAPPING.get(topic)
                 if not telemetry_key:
                     logger.warning(f"Received a message from an unexpected topic {topic}. Skipped.")
                     continue  # Ignore topics we don't map
@@ -255,19 +261,71 @@ class MqttCollectorProcess(mp.Process):
 if __name__ == "__main__":
 
     broker_host = "0.0.0.0"
-    broker_port = MQTTS_PORT
+    broker_port = MQTT_PORT
 
-    telemetry_queue = mp.Queue()
+    VSLOW = 1
+    SLOW = 10
+    FAST = 50
+    REAL = 30
+    FREAL = 40
+
+    QUEUE_SIZE = 20
+
+    telemetry_queue = mp.Queue(maxsize=QUEUE_SIZE)
     stop_event = mp.Event()
     error_event = mp.Event()
 
-    collector = MqttCollectorProcess(telemetry_queue, stop_event, error_event, broker_host=broker_host, broker_port=broker_port)
-    consumer = Consumer(telemetry_queue)
+    collector = MqttCollectorProcess(telemetry_queue, stop_event, error_event, broker_host=broker_host, broker_port=broker_port, cert_validation=None)
+    
+    consumer = Consumer(telemetry_queue, error_event, frequency_hz=FAST)
 
+    print("CONSUMERS STARTED")
     consumer.start()
+
+    sleep(3)
+
+    print("COLLECTOR STARTED")
     collector.start()
 
-    collector.join()
-    consumer.stop()
-    consumer.join()
+    sleep(5)
 
+    # option 1
+    print("STOP EVENT")
+    stop_event.set()
+    telemetry_queue.put(POISON_PILL)  # ensure consumer knows it must stop (collector does nnot provide POISON PILL)         
+    
+    # option2
+    #print("ERROR EVENT")
+    #error_event.set()              
+
+    processes = [collector, consumer]
+
+    while True:
+
+        # Check if everyone has finished their logic
+        all_finished = all(p.work_finished.is_set() for p in processes)
+
+        # Check if an error occurred anywhere
+        error_occurred = error_event.is_set()
+
+        if all_finished or error_occurred:
+            if error_occurred:
+                print("[Main] Error detected. Terminating chain.")
+            else:
+                print("[Main] All processes finished logic. Cleaning up.")
+            break
+
+        sleep(0.5)
+
+    print(f"[Main] Granting 5s for all processed to cleanly conclude their processing.")
+    sleep(5.0)
+    # The Sweep: Force everyone to join or die
+    for p in processes:
+        # If the logic is finished but the process is still 'alive',
+        # it is 100% stuck in the queue feeder thread.
+        if p.is_alive():
+            print(f"[Main] {p.name} is hanging in cleanup. Work Completed: {p.work_finished.is_set()}. Terminating.")
+            p.terminate()
+
+        p.join()
+        print(f"[Main] {p.name} joined.")

@@ -1,4 +1,6 @@
 import asyncio
+import base64
+import datetime
 import json
 import logging
 import threading
@@ -164,9 +166,9 @@ class WebSocketManager:
                 done, pending = await asyncio.wait(tasks, timeout=self.broadcast_timeout)
                 for task in pending:
                     task.cancel()
-                logger.warning(
-                    f"Cancelled {len(pending)} out of {len(done)+len(pending)} broadcasting tasks, "
-                    f"timeout exceeded"
+                logger.info(
+                    f"Broadcasted new alert event "
+                    f"to {len(done)} out of {len(self.connected_clients)} clients."
                 )
 
         logger.info("Broadcast loop stopped")
@@ -240,3 +242,75 @@ class WebSocketManager:
                 logger.warning("WebSocket thread did not terminate cleanly within timeout")
             else:
                 logger.info("WebSocket thread terminated successfully")
+
+
+if __name__ == "__main__":
+    
+    import random
+    from time import perf_counter, sleep, time
+    import numpy as np
+    from src.ui.alert_receiver import AlertReceiver
+    from collections import deque
+    import cv2
+
+    ALERT_INTERVAL = 5.0  # seconds
+    N_ALERTS = 50
+
+    def make_alert():
+         # black frame
+        dummy_img = np.zeros((1080, 1920, 3), dtype=np.uint8)
+
+        # 3. Define text properties
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        org = (50, 100)  # Coordinates (X, Y) where text starts
+        fontScale = 2
+        color = (255, 255, 255)  # White in BGR
+        thickness = 3
+
+        # put current datetime string oin frame
+        timestamp = time()
+        current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cv2.putText(dummy_img, current_time, org, font, fontScale, color, thickness, cv2.LINE_AA)
+
+        _, buffer = cv2.imencode('.jpg', dummy_img)
+        b64_image = base64.b64encode(buffer).decode('utf-8')
+
+        payload = {
+            'frame_id': int(timestamp*10),
+            'alert_msg': random.choice(["road", "car", "slope"]),
+            'timestamp': timestamp,
+            'datetime': current_time,   # string
+            'image': b64_image,
+            'width': 1920,
+            'height': 1080,
+            'compression': 'jpeg',
+        }
+        return payload
+    
+    # Example usage and test of WebSocketManager
+    ws_manager = WebSocketManager(host="localhost", port=8765)
+    ws_manager.start()
+
+    sleep(3)  # Give server time to start
+
+    listener = AlertReceiver(host="localhost", port=8765, shared_dequeue=deque(maxlen=5), reconnection_delay=2, ping_interval=10, ping_timeout=5)
+
+    next = perf_counter() + ALERT_INTERVAL
+
+    for i in range(N_ALERTS):
+
+        if i == 10:
+            listener.start()
+
+        if i == 40:
+            listener.stop()
+
+        alert = make_alert()
+        ws_manager.queue_alert(alert)
+
+        perf = perf_counter()
+        if perf < next:
+            sleep(next-perf)
+        next += ALERT_INTERVAL
+
+    ws_manager.stop()

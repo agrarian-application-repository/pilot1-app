@@ -50,7 +50,7 @@ def perform_danger_detection(
     # ============== LOAD DETECTION CLASSES INFO ===================================
 
     # prepare detection classes names and number
-    classes_names = detector.names  # Dictionary of class names
+    classes_names = detector.names  # list of class names
     num_classes = len(classes_names)
 
     # ============== LOAD FLIGHT INFO ===================================

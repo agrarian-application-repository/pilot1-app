@@ -41,7 +41,7 @@ class NotificationsStreamWriter(mp.Process):
             self,
             input_queue: mp.Queue,
             error_event: mp.Event,
-            alerts_get_timeout: float = ALERTS_GET_TIMEOUT,
+            alerts_get_timeout: float = ALERTS_QUEUE_GET_TIMEOUT,
             alerts_max_consecutive_failures: int = ALERTS_MAX_CONSECUTIVE_FAILURES,
             alerts_jpeg_quality: int = ALERTS_JPEG_COMPRESSION_QUALITY,
             # ------- FILE manager parameters --------
@@ -54,7 +54,11 @@ class NotificationsStreamWriter(mp.Process):
             ws_manager_broadcast_timeout: float = WS_MANAGER_BROADCAST_TIMEOUT,
             ws_manager_thread_close_timeout: float = WS_MANAGER_THREAD_CLOSE_TIMEOUT,
             # ------- DB manager parameters --------
-            database_url: Optional[str] = None,
+            database_service: Optional[str] = None,
+            database_host: Optional[str] = None,
+            database_port: int = DB_PORT,
+            database_username: str = "",
+            database_password: str = "",
             db_manager_pool_size: int = DB_MANAGER_POOL_SIZE,
             db_manager_max_overflow: int = DB_MANAGER_MAX_OVERFLOW,
             db_manager_queue_get_timeout: float = DB_MANAGER_QUEUE_WAIT_TIMEOUT,
@@ -73,6 +77,8 @@ class NotificationsStreamWriter(mp.Process):
             log_file: Path to log file (None to disable logging)
             alerts_jpeg_quality: JPEG compression quality (0-100)
             database_url: SQLAlchemy database URL
+
+
         """
         super().__init__()
         self.input_queue = input_queue
@@ -86,8 +92,26 @@ class NotificationsStreamWriter(mp.Process):
         # Initialize log file (placeholder, instantiated in run)
         self.log_file = None
 
-        # Initialize DB manager (placeholder, instantiated in run)
-        self.database_url = database_url
+        # initialize database url
+        if database_username and database_password:
+            auth = f"{database_username}:{database_password}@"
+        elif database_username:
+            auth = f"{database_username}@"
+        else:
+            auth = ""
+
+        if database_service == POSTGRESQL:
+            self.database_url = f"postgresql://{auth}{database_host}:{database_port}/{DB_NAME}"
+        elif database_service == MYSQL:
+            self.database_url = f"mysql+pymysql://{auth}{database_host}:{database_port}/{DB_NAME}"
+        elif database_service == SQLITE:
+            self.database_url = f"sqlite:///{DB_NAME}"
+        else:
+            self.database_url = None
+
+        
+        self.db_username = database_username
+        self.db_password = database_password
         self.db_manager = None
 
         # Initialize WebSocket manager (placeholder, instantiated in run)
@@ -136,7 +160,8 @@ class NotificationsStreamWriter(mp.Process):
                     thread_close_timeout=self.db_manager_thread_close_timeout,
                 )
                 # Initialize database
-                self.db_manager.initialize()
+                # Raises exception on failure
+                self.db_manager.initialize(self.db_username, self.db_password)
             else:
                 # db_manager remains None
                 pass
@@ -173,6 +198,8 @@ class NotificationsStreamWriter(mp.Process):
                 "No available system (File, WebSocket, DB) for providing alerts. "
                 "Shutting down the application ..."
             )
+            raise RuntimeError("No output managers available")
+            # on failure, main will catch exception and cause termination
 
     def _compress_frame(self, frame: np.ndarray) -> tuple:
         """
@@ -250,13 +277,15 @@ class NotificationsStreamWriter(mp.Process):
         compressed_frame, compressed_bytes = self._compress_frame(alert.annotated_frame)
 
         # Create alert data structure
-        alert_datetime = dtt.fromtimestamp(alert.timestamp).isoformat()
+        
+        alert_datetime = dtt.fromtimestamp(alert.timestamp)
+        alert_datetime_str = alert_datetime.isoformat()
         height, width, _ = alert.annotated_frame.shape
         alert_data = {
             'frame_id': alert.frame_id,
             'alert_msg': alert.alert_msg,
             'timestamp': alert.timestamp,
-            'datetime': alert_datetime,
+            'datetime': alert_datetime_str,
             'image': compressed_frame,
             'width': width,
             'height': height,
@@ -265,7 +294,7 @@ class NotificationsStreamWriter(mp.Process):
 
         # Log alert to file using the handle
         if self.log_file:
-            self._log_alert(alert.frame_id, alert.alert_msg, alert.timestamp, alert_datetime)
+            self._log_alert(alert.frame_id, alert.alert_msg, alert.timestamp, alert_datetime_str)
 
         # Queue for WebSocket broadcast
         if self.ws_manager:
@@ -283,7 +312,7 @@ class NotificationsStreamWriter(mp.Process):
                 image_height=height,
             )
 
-    def _cleanup(self, alert_count: int, poison_pill_received: bool):
+    def _cleanup(self, alert_count: int):
 
         logger.info("NotificationsStreamWriter process terminating ...")
         logger.info(f"Total correctly processed alerts: {alert_count}")
@@ -304,12 +333,6 @@ class NotificationsStreamWriter(mp.Process):
         if self.ws_manager:
             self.ws_manager.stop()
 
-        logger.info(
-            f"NotificationsStreamWriter process terminated. "
-            f"Poison Pill: {poison_pill_received}. "
-            f"Error event: {self.error_event.is_set()}."
-        )
-
     def run(self):
         """Main process loop."""
 
@@ -328,58 +351,68 @@ class NotificationsStreamWriter(mp.Process):
         logger.info(f"  - Log file: {logfile_status}")
         logger.info(f"  - JPEG quality: {self.alerts_jpeg_quality}\n")
 
-        # ---------------------------------
-        # Instantiate output managers
-        # ---------------------------------
-        # handles initialization errors internally
-        self._setup_managers()
+        try:
+            
+            # Instantiate output managers
+            # handles initialization errors internally
+            self._setup_managers()
 
-        # ---------------------------------
-        # Alerts Processing
-        # ---------------------------------
+            # ---------------------------------
+            # Alerts Processing
+            # ---------------------------------
 
-        while not self.error_event.is_set():
+            while not self.error_event.is_set():
 
-            try:
-                # Get alert from queue with timeout
-                alert = self.input_queue.get(timeout=self.alerts_get_timeout)
-            except QueueEmptyException:
-                logger.debug("Input queue empty. Continuing to wait for alerts ... ")
-                continue
+                try:
+                    # Get alert from queue with timeout
+                    alert = self.input_queue.get(timeout=self.alerts_get_timeout)
+                except QueueEmptyException:
+                    logger.debug("Input queue empty. Continuing to wait for alerts ... ")
+                    continue
 
-            try:
-                # if the alert being processed is the poison pill,
-                # break out of the loop to complete shutdown the process
-                if alert == POISON_PILL:
-                    poison_pill_received = True
-                    break
+                try:
+                    # if the alert being processed is the poison pill,
+                    # break out of the loop to complete shutdown the process
+                    if alert == POISON_PILL:
+                        poison_pill_received = True
+                        break
 
-                # Process the alert
-                self._process_alert(alert)
-                alert_count += 1
-                # reset counter
-                consecutive_failures = 0
+                    # Process the alert
+                    self._process_alert(alert)
+                    alert_count += 1
+                    # reset counter
+                    consecutive_failures = 0
 
-            except Exception as e:
-                consecutive_failures += 1
-                if consecutive_failures <= self.alerts_max_consecutive_failures:
-                    logger.warning(
-                        f"Error processing alert: {e}. "
-                        f"Consecutive failures: {consecutive_failures} (max {self.alerts_max_consecutive_failures}). "
-                        f"Will try to process next one ...", exc_info=True)
-                else:
-                    self.error_event.set()
-                    logger.error(
-                        "Error event set: "
-                        "threshold for max number of consecutive alerts failing to be processed has been surpassed. "
-                        "Application will shutdown ..."
-                    )
+                except Exception as e:
+                    consecutive_failures += 1
+                    if consecutive_failures < self.alerts_max_consecutive_failures:
+                        logger.warning(
+                            f"Error processing alert: {e}. "
+                            f"Consecutive failures: {consecutive_failures} (max {self.alerts_max_consecutive_failures}). "
+                            f"Will try to process next one ...", exc_info=True)
+                    else:
+                        self.error_event.set()
+                        logger.error(
+                            "Error event set: "
+                            "threshold for max number of consecutive alerts failing to be processed has been surpassed. "
+                            "Application will shutdown ..."
+                        )
+        
+        except Exception as e:
+            logger.critical(f"An unexpected critical error happened in notifications streamer process: {e}", exc_info=True)
+            self.error_event.set()
+            logger.warning("Error event set: force-stopping the application")
 
-        # ---------------------------------
-        # Final cleanup
-        # ---------------------------------
-        self._cleanup(alert_count, poison_pill_received)
-        self.work_finished.set()
+        finally:
+            # final cleanup
+            self._cleanup(alert_count)
+            # log process conclusion
+            logger.info(
+                "NotificationsStreamWriter process stopped gracefully. "
+                f"Poison pill received: {poison_pill_received}. "
+                f"Error event: {self.error_event.is_set()}."
+            )
+            self.work_finished.set()
 
 
 """

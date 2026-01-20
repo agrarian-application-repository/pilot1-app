@@ -8,39 +8,31 @@
 IMAGE_NAME="agrarian-ui"
 CONTAINER_NAME="agrarian-ui"
 DETACHED="false"
-REMOVE_EXISTING="false"
+REMOVE_EXISTING="true"
 ENV_FILE=""
 NETWORK=""
 BUILD="false"
 
 
-HOST_TCP_PORT="54321"
-TCP_PORT="54321"
-HOST_STREAMLIT_PORT="8501"
-MEDIAMTX_WEBRTC_URL="http://10.91.222.62:8889"
-STREAM_NAME="annot"
-STUN_SERVER="stun:stun.l.google.com:19302"
+WEBRTC_HOST="0.0.0.0"
+WEBRTC_PORT="8889"
+WEBRTC_STREAM_NAME="annot"
+WEBRTC_STUN_SERVER="stun:stun.l.google.com:19302"
 
+WEBSOCKET_HOST="0.0.0.0"
+WEBSOCKET_PORT="443"
+WEBSOCKET_RECONNECTION_DELAY="5"
+WEBSOCKET_PING_INTERVAL="30"
+WEBSOCKET_PING_TIMEOUT="10"
 
-WEBRTC_HOST =  "0.0.0.0"
-WEBRTC_PORT = "8889"
-WEBRTC_STREAM_NAME = "annot"
-WEBRTC_STUN_SERVER = "stun:stun.l.google.com:19302"
+ALERTS_REFRESH="1.0"
+ALERTS_BOX_COLOR_TIMEDIFF="5.0"
+ALERTS_MAX_DISPLAYED="5"
 
-WEBSOCKET_HOST = "0.0.0.0"
-WEBSOCKET_PORT = "443"
-WEBSOCKET_RECONNECTION_DELAY = "5"
-WEBSOCKET_PING_INTERVAL = "30"
-WEBSOCKET_PING_TIMEOUT = "10"
-
-ALERTS_REFRESH = "1.0"
-ALERTS_BOX_COLOR_TIMEDIFF = "5.0"
-ALERTS_MAX_DISPLAYED = "5"
-
-LOGO = "assets/leonardo.png"
-LOGO_WIDTH = "200"
-HTML_HEIGHT = "600"
-ALERT_HEIGHT = "600"
+LOGO="assets/leonardo.png"
+LOGO_WIDTH="200"
+HTML_HEIGHT="600"
+ALERT_HEIGHT="600"
 
 # Help function
 show_help() {
@@ -117,10 +109,26 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+DOCKERFILE_PATH="./docker/ui/Dockerfile"
+DOCKERIGNORE_PATH="./docker/ui/.dockerignore"
+REQUIREMENTS_PATH="./docker/ui/requirements.txt"
+ROOT_DOCKERIGNORE_PATH="./.dockerignore"
+ROOT_REQUIREMENTS_PATH="./requirements.txt"
+
+
 # Build image if requested
 if [[ "$BUILD" == "true" ]]; then
     echo "Building Docker image: $IMAGE_NAME"
-    docker build -f "./docker/ui/Dockerfile" -t "$IMAGE_NAME" .
+    # copy .dockerignore to context root for build
+    cp "$DOCKERIGNORE_PATH" "$ROOT_DOCKERIGNORE_PATH"
+    # copy requirements.txt to context root for build
+    cp "$REQUIREMENTS_PATH" "$ROOT_REQUIREMENTS_PATH"
+    # build docker image
+    docker build -f "$DOCKERFILE_PATH" -t "$IMAGE_NAME" .
+    # remove .dockerignore copy from context root
+    rm "$ROOT_DOCKERIGNORE_PATH"
+    # remove requirements.txt copy from context root
+    rm "$ROOT_REQUIREMENTS_PATH"
 fi
 
 # Remove existing container if requested

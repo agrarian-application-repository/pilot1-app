@@ -85,7 +85,7 @@ class DetectionWorker(mp.Process):
             logger.info("Animal detection model loaded.")
 
             # prepare detection classes names and number
-            classes_names = model.names  # Dictionary of class names
+            classes_names = model.names  # list of class names
             num_classes = len(classes_names)
 
             while not self.error_event.is_set():
@@ -173,63 +173,6 @@ class DetectionWorker(mp.Process):
                 f"Error event: {self.error_event.is_set()}."
             )
             self.work_finished.set()
-
-
-            """
-            logger.info("Finally block")
-            # Always signal that this process is done writing to the queue
-            self.result_queue.close()
-            logger.info("Queue closed")
-
-            if self.error_event.is_set():
-                # Case A: We know there is an error.
-                # Drop everything and leave.
-                # Prevents process from getting stuck while waiting for a (possibly) dead consumer to consume data
-                # from the queue (might never happen if downstream process is truly dead)
-                logger.info("Error event is set, cancelling output queue feeder thread data flushing...")
-                self.result_queue.cancel_join_thread()
-
-            else:
-                # Case B: We think everything is fine, and the POISON PILL  was put in the output queue
-                # HOWEVER: the consumer might still die before reading the poison pill, in that case this process will
-                # hang forever waiting for the output queue to drain, which will never happen
-
-                # THEREFORE:
-                # Explicitly wait for the buffer to flush,
-                # BUT keep an eye on the error_event while we wait.
-                feeder_thread = getattr(self.result_queue, '_thread', None)
-                if feeder_thread is not None and feeder_thread.is_alive():
-                    logger.info("No error event receiver. Waiting for output queue feeder thread to flush...")
-                    while feeder_thread.is_alive() and (not self.error_event.is_set()):
-                        logger.info(f"error event: {self.error_event.is_set()}")
-                        logger.info(f"feeder alive: {feeder_thread.is_alive()}")
-                        sleep(0.5)
-
-                    # If an error happened while we were waiting to flush,
-                    # stop waiting and drop the buffer, just exit.
-                    if self.error_event.is_set():
-                        self.result_queue.cancel_join_thread()
-                        logger.info(
-                            "Error event was set while flushing. "
-                            "Cancelling output queue feeder thread data flushing..."
-                        )
-                    else:
-                        logger.info("Flushing of data to the output queue complete. ")
-
-                else:
-                    # If feeder_thread is None, the queue was never used.
-                    # No need to wait or cancel; we can just exit.
-                    logger.info(
-                        "Output queue was never used or is already flushed. "
-                    )
-                    
-            # log process conclusion
-            logger.info(
-                "Animal detection process terminated successfully. "
-                f"Poison pill received: {poison_pill_received}. "
-                f"Error event: {self.error_event.is_set()}."
-            )
-            """
 
 
 

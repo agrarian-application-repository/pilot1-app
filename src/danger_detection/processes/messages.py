@@ -10,7 +10,7 @@ class DetectionResult:
     Attributes:
         frame_id (int): The unique identifier of the frame where detection occurred.
         frame (np.ndarray): The image data of the frame.
-        classes_names (dict[int, str]): A list of the names of the detected classes.
+        classes_names (list[str]): A list of the names of the detected classes.
         num_classes (int): The number of unique classes detected.
         classes (np.ndarray): An array of class IDs for each detected object.
         boxes_centers (np.ndarray): An array of the center coordinates of each bounding box.
@@ -21,7 +21,7 @@ class DetectionResult:
     """
     frame_id: int
     frame: np.ndarray
-    classes_names: dict[int, str]
+    classes_names: list[str]
     num_classes: int
     classes: np.ndarray
     boxes_centers: np.ndarray
@@ -79,7 +79,7 @@ class DangerDetectionResults:
     Attributes:
         frame_id (int): The unique identifier of the frame.
         frame (np.ndarray): The image data of the frame.
-        classes_names (dict[int, str]): A list of the names of the detected classes.
+        classes_names (list[str]): A list of the names of the detected classes.
         num_classes (int): The number of unique classes detected.
         classes (np.ndarray): An array of class IDs for each detected object.
         boxes_centers (np.ndarray): An array of the center coordinates of each bounding box.
@@ -94,7 +94,7 @@ class DangerDetectionResults:
     """
     frame_id: int
     frame: np.ndarray
-    classes_names: dict[int, str]
+    classes_names: list[str]
     num_classes: int
     classes: np.ndarray
     boxes_centers: np.ndarray
