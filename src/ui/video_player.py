@@ -1,5 +1,5 @@
 def get_video_player(
-        mediamtx_webrtc_url: str,
+        webrtc_url: str,
         stream_name: str, 
         stun_server: str,
 ) -> str:
@@ -158,7 +158,7 @@ def get_video_player(
                     await pc.setLocalDescription(offer);
                     
                     // Send offer to MediaMTX WHEP endpoint
-                    const response = await fetch('{mediamtx_webrtc_url}/{stream_name}/whep', {{
+                    const response = await fetch('{webrtc_url}/{stream_name}/whep', {{
                         method: 'POST',
                         headers: {{
                             'Content-Type': 'application/sdp'

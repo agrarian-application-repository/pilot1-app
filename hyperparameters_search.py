@@ -1,10 +1,10 @@
 from ultralytics import YOLO
 
-import wandb
 from src.configs.hyperparameters_search import check_hs_args
 
 from src.configs.utils import parse_config_file, read_yaml_config
 from src.logging.wandb_access import get_wandb_api_key, get_wandb_entity
+from ray import tune
 
 
 def main():
@@ -13,7 +13,15 @@ def main():
     # Read YAML config file and transform it into a dict
     hs_args = read_yaml_config(config_file_path)
 
-    hs_args = check_hs_args(hs_args)
+    # hs_args = check_hs_args(hs_args)
+    raw_space = hs_args.pop("raw_space")
+
+    hs_args["space"] = {}
+    for k, v in raw_space.items():
+        hs_args["space"][k] = tune.uniform(
+            raw_space[k]['min'],
+            raw_space[k]['max'],
+        )
 
     print("PERFORMING HYPERPARAMETERS SEARCH WITH THE FOLLOWING ARGUMENTS:")
     print(hs_args, "\n")
@@ -33,7 +41,7 @@ def main():
     results_grid = model.tune(**hs_args)
 
     # Finish the W&B run
-    wandb.finish()
+    # wandb.finish()
 
 
 if __name__ == "__main__":

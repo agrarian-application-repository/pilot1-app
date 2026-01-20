@@ -2,24 +2,27 @@
 
 # str: Path to the model checkpoint file.
 # Specifies the .pt file for the model to be used during inference.
-model_checkpoint: 'checkpoints/danger_detection/detection.pt'
-
-# float: Confidence threshold for detection filtering.
-# Detections with a confidence score below this value will be discarded.
-# Range: (0.0, 1.0]
-conf: 0.3
-
-# float: IoU threshold for Non-Maximum Suppression (NMS).
-# Helps reduce duplicate detections by suppressing overlapping boxes.
-# Range: (0.0, 1.0]
-iou: 0.3
+model_checkpoint: 'checkpoints/danger_detection/detection_1280_720_yolo11m.pt'
+#model_checkpoint: 'checkpoints/danger_detection/detection_1920_1080_yolo11m.pt'
 
 # int: Image/video (height, width) during inference.
 # All images/videos will be resized to this height before being given to the model (doesn't affect output image/video size).
 # Range: Any positive integer >= 32.
 imgsz:
-  - 1088 # height
-  - 1920 # width
+  - 736 # height
+  - 1280 # width
+  #- 1088   # height
+  #- 1920  # width
+
+# float: Confidence threshold for detection filtering.
+# Detections with a confidence score below this value will be discarded.
+# Range: (0.0, 1.0]
+conf: 0.25
+
+# float: IoU threshold for Non-Maximum Suppression (NMS).
+# Helps reduce duplicate detections by suppressing overlapping boxes.
+# Range: (0.0, 1.0]
+iou: 0.5
 
 # bool: Enable half-precision (FP16) inference.
 # Can increase inference speed on supported GPUs with minimal accuracy loss.

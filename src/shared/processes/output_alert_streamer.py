@@ -1,17 +1,17 @@
 import multiprocessing as mp
-import numpy as np
+from queue import Empty as QueueEmptyException
+import json
 import cv2
-import time
-import logging
-from pathlib import Path
-from urllib.parse import urlparse
-import socket
-import msgpack
-import queue
+import numpy as np
 from typing import Optional
-import struct
-import datetime
+import base64
+from datetime import datetime as dtt
+import logging
+from time import time
+from src.shared.processes.db_manager import DatabaseManager
+from src.shared.processes.websocket_manager import WebSocketManager
 from src.shared.processes.messages import AnnotationResults
+from src.shared.processes.constants import *
 
 
 # ================================================================
@@ -19,425 +19,443 @@ from src.shared.processes.messages import AnnotationResults
 logger = logging.getLogger("main.alert_out")
 
 if not logger.handlers:  # Avoid duplicate handlers
-    video_handler = logging.FileHandler('/app/logs/alert_out.log', mode='w')
+    video_handler = logging.FileHandler('./logs/alert_out.log', mode='w')
     video_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(video_handler)
     logger.setLevel(logging.DEBUG)
+
 
 # ================================================================
 
 
 class NotificationsStreamWriter(mp.Process):
+    """
+    A multiprocessing process that:
+    - receives AnnotationResults objects with anomalies
+    - exposes WebSocket API and pushes alerts to clients (optional)
+    - saves alerts to a SQL database (optional)
+    - logs alerts to file. (optional)
+    """
 
     def __init__(
-            self, 
-            video_info_dict, 
-            cooldown_seconds: float, 
-            input_queue: mp.Queue, 
-            output_dir: str, 
-            output_url: str,
+            self,
+            input_queue: mp.Queue,
+            error_event: mp.Event,
+            alerts_get_timeout: float = ALERTS_QUEUE_GET_TIMEOUT,
+            alerts_max_consecutive_failures: int = ALERTS_MAX_CONSECUTIVE_FAILURES,
+            alerts_jpeg_quality: int = ALERTS_JPEG_COMPRESSION_QUALITY,
+            # ------- FILE manager parameters --------
+            log_file_path: Optional[str] = "alerts.log",
+            # ------- WS manager parameters --------
+            websocket_host: Optional[str] = None,
+            websocket_port: int = WSS_PORT,
+            ws_manager_ping_interval: float = WS_MANAGER_PING_INTERVAL,
+            ws_manager_ping_timeout: float = WS_MANAGER_PING_TIMEOUT,
+            ws_manager_broadcast_timeout: float = WS_MANAGER_BROADCAST_TIMEOUT,
+            ws_manager_thread_close_timeout: float = WS_MANAGER_THREAD_CLOSE_TIMEOUT,
+            # ------- DB manager parameters --------
+            database_service: Optional[str] = None,
+            database_host: Optional[str] = None,
+            database_port: int = DB_PORT,
+            database_username: str = "",
+            database_password: str = "",
+            db_manager_pool_size: int = DB_MANAGER_POOL_SIZE,
+            db_manager_max_overflow: int = DB_MANAGER_MAX_OVERFLOW,
+            db_manager_queue_get_timeout: float = DB_MANAGER_QUEUE_WAIT_TIMEOUT,
+            db_manager_thread_close_timeout: float = DB_MANAGER_THREAD_CLOSE_TIMEOUT,
+            db_manager_alerts_queue_size: int = DB_MANAGER_QUEUE_SIZE,
 
-            max_queue_size: int = 30,
-            jpeg_quality: int = 85, 
-            max_packet_size: int = 65507,
-            connection_timeout: float = 10.0, 
-            retry_attempts: int = 3,
-            retry_delay: float = 1.0
     ):
+        """
+        Initialize the NotificationsStreamWriter process.
+
+        Args:
+            input_queue: Queue receiving AnnotationResults objects
+            error_event: Event to signal process termination, processing error
+            websocket_host: Host for WebSocket server
+            websocket_port: Port for WebSocket server
+            log_file: Path to log file (None to disable logging)
+            alerts_jpeg_quality: JPEG compression quality (0-100)
+            database_url: SQLAlchemy database URL
+
+
+        """
         super().__init__()
-        self.video_info_dict = video_info_dict
         self.input_queue = input_queue
-        self.output_dir = Path(output_dir)
-        self.cooldown_seconds = cooldown_seconds
+        self.error_event = error_event
+        self.log_file_path = log_file_path
+        self.alerts_jpeg_quality = alerts_jpeg_quality
+
+        self.alerts_get_timeout = alerts_get_timeout
+        self.alerts_max_consecutive_failures = alerts_max_consecutive_failures
+
+        # Initialize log file (placeholder, instantiated in run)
+        self.log_file = None
+
+        # initialize database url
+        if database_username and database_password:
+            auth = f"{database_username}:{database_password}@"
+        elif database_username:
+            auth = f"{database_username}@"
+        else:
+            auth = ""
+
+        if database_service == POSTGRESQL:
+            self.database_url = f"postgresql://{auth}{database_host}:{database_port}/{DB_NAME}"
+        elif database_service == MYSQL:
+            self.database_url = f"mysql+pymysql://{auth}{database_host}:{database_port}/{DB_NAME}"
+        elif database_service == SQLITE:
+            self.database_url = f"sqlite:///{DB_NAME}"
+        else:
+            self.database_url = None
+
         
-        self.max_queue_size = max_queue_size
-        self.jpeg_quality = max(1, min(100, jpeg_quality))
-        self.max_packet_size = max_packet_size
-        self.connection_timeout = connection_timeout
-        self.retry_attempts = retry_attempts
-        self.retry_delay = retry_delay
-        
-        # Calculate cooldown in frames
-        fps = self.video_info_dict["fps"]
-        self.last_alert_frame_id = -fps
-        self.alerts_frames_cooldown = fps * cooldown_seconds
-        
-        # Parse and validate URL
-        self.protocol, self.host, self.port = self._parse_and_validate_url(output_url)
-        
-        # Initialize network resources
-        self.sock = None
-        self.is_connected = False
-        self.alerts_sent = 0
-        self.alerts_failed = 0
-        self.frames_dropped = 0
-        
-        # File handle initialized in run()
-        self.alerts_file = None
-    
-    def _parse_and_validate_url(self, output_url: str) -> tuple[str, str, int]:
-        """Parse and validate the output URL."""
+        self.db_username = database_username
+        self.db_password = database_password
+        self.db_manager = None
+
+        # Initialize WebSocket manager (placeholder, instantiated in run)
+        self.websocket_host = websocket_host
+        self.websocket_port = websocket_port
+        self.ws_manager = None
+
+        # WS Manager Config
+        self.ws_manager_ping_interval = ws_manager_ping_interval
+        self.ws_manager_ping_timeout = ws_manager_ping_timeout
+        self.ws_manager_broadcast_timeout = ws_manager_broadcast_timeout
+        self.ws_manager_thread_close_timeout = ws_manager_thread_close_timeout
+
+        # DB manager Config
+        self.db_manager_pool_size = db_manager_pool_size
+        self.db_manager_max_overflow = db_manager_max_overflow
+        self.db_manager_queue_get_timeout = db_manager_queue_get_timeout
+        self.db_manager_thread_close_timeout = db_manager_thread_close_timeout
+        self.db_manager_alerts_queue_size = db_manager_alerts_queue_size
+
+        self.work_finished = mp.Event()
+
+    def _setup_managers(self):
+
+        # Initialize log file manager
         try:
-            parsed_url = urlparse(output_url)
-            protocol = parsed_url.scheme.lower()
-            
-            if protocol != 'tcp':
-                logger.error(f"Invalid protocol: {protocol}. Expected 'tcp'.")
-                raise ValueError(f"Unsupported protocol: {protocol}")
-            
-            if not parsed_url.hostname:
-                logger.error("Missing hostname in URL")
-                raise ValueError("Missing hostname in URL")
-            
-            if not parsed_url.port:
-                logger.error("Missing port in URL")
-                raise ValueError("Missing port in URL")
-            
-            host = parsed_url.hostname
-            port = parsed_url.port
-            
-            # Validate port range
-            if not (1 <= port <= 65535):
-                logger.error(f"Invalid port number: {port}")
-                raise ValueError(f"Invalid port number: {port}")
-            
-            logger.info(f"Parsed URL - Protocol: {protocol}, Host: {host}, Port: {port}")
-            return protocol, host, port
-            
+            if self.log_file_path:
+                self.log_file = open(self.log_file_path, 'a', buffering=1, encoding='utf-8')
+            else:
+                # log_file remains None
+                pass
         except Exception as e:
-            logger.error(f"Failed to parse URL {output_url}: {e}")
-            raise
-    
-    def _create_socket(self) -> Optional[socket.socket]:
-        """Create and configure TCP socket."""
+            self.log_file = None    # ensure log_file stays None
+            logger.error(f"Failed to open log file {self.log_file_path}: {e}. Continuing without ...")
+
+        # Initialize DB manager
         try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            # sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            sock.settimeout(self.connection_timeout)
-            logger.info("Created TCP socket")
-            return sock
+            if self.database_url:
+                # Instantiate object
+                self.db_manager = DatabaseManager(
+                    database_url=self.database_url,
+                    alerts_queue_size=self.db_manager_alerts_queue_size,
+                    pool_size=self.db_manager_pool_size,
+                    max_overflow=self.db_manager_max_overflow,
+                    queue_get_timeout=self.db_manager_queue_get_timeout,
+                    thread_close_timeout=self.db_manager_thread_close_timeout,
+                )
+                # Initialize database
+                # Raises exception on failure
+                self.db_manager.initialize(self.db_username, self.db_password)
+            else:
+                # db_manager remains None
+                pass
         except Exception as e:
-            logger.error(f"Failed to create socket: {e}")
-            return None
-    
-    def _connect_tcp(self) -> bool:
-        """Establish TCP connection with retry logic."""
-        
-        for attempt in range(1, self.retry_attempts+1):
-            try:
-                if self.sock:
-                    self.sock.close()
-                
-                self.sock = self._create_socket()
-                if not self.sock:
-                    continue
-                
-                logger.info(f"Attempting TCP connection to {self.host}:{self.port} (attempt {attempt}/{self.retry_attempts})")
-                self.sock.connect((self.host, self.port))
-                self.is_connected = True
-                logger.info(f"Successfully connected to {self.host}:{self.port}")
-                return True
-                
-            except socket.timeout:
-                logger.warning(f"TCP connection timeout (attempt {attempt}/{self.retry_attempts})")
-            except socket.error as e:
-                logger.warning(f"TCP connection failed (attempt {attempt}/{self.retry_attempts}): {e}")
-            except Exception as e:
-                logger.error(f"Unexpected error during TCP connection (attempt {attempt}/{self.retry_attempts}): {e}")
-            
-            if attempt < self.retry_attempts:
-                logger.info(f"Retrying to connect in {self.retry_delay} seconds ...")
-                time.sleep(self.retry_delay)
-        
-        logger.error(f"Failed to establish TCP connection after {self.retry_attempts} attempts")
-        return False
-    
-    def _manage_queue_buffer(self) -> None:
-        """Drop frames if queue is getting too large."""
+            self.db_manager = None  # ensure db_manager stays None
+            logger.error(f"Failed to create DB manager: {e}. Continuing without ...")
+
+        # Initialize WebSocket manager
         try:
-            queue_size = self.input_queue.qsize()
-            if queue_size > self.max_queue_size:
-                frames_to_drop = queue_size - self.max_queue_size
-                logger.warning(f"Queue size ({queue_size}) exceeds maximum ({self.max_queue_size}). Dropping {frames_to_drop} frames.")
-                
-                for _ in range(frames_to_drop):
-                    try:
-                        dropped_frame = self.input_queue.get_nowait()
-                        if dropped_frame is None:
-                            self.input_queue.put(None)  # Put sentinel back
-                            break
-                        self.frames_dropped += 1
-                    except queue.Empty:
-                        break
-                        
-        except NotImplementedError:
-            # qsize() not available on all platforms
-            pass
-    
-    def _compress_image(self, frame: np.ndarray) -> tuple[bool, np.ndarray, Optional[str]]:
-        """Compress image to reduce network transfer size."""
-        try:
-            # Validate frame
-            if frame is None or frame.size == 0:
-                logger.error("Invalid frame for compression")
-                return False, frame, None
-            
-            # Compress to JPEG
-            encode_params = [int(cv2.IMWRITE_JPEG_QUALITY), self.jpeg_quality]
-            success, compressed_img = cv2.imencode(".jpg", frame, encode_params)
-            
-            if not success:
-                logger.warning("Image compression failed, using original frame")
-                return False, frame, None
-            
-            # Log compression ratio
-            original_size = frame.nbytes
-            compressed_size = len(compressed_img)
-            compression_ratio = original_size / compressed_size if compressed_size > 0.0 else 1.0
-            logger.debug(f"Image compressed: {original_size} -> {compressed_size} bytes (ratio: {compression_ratio:.2f})")
-            
-            return True, compressed_img, '.jpg'
-            
+            if self.websocket_host:
+                # Instantiate object
+                self.ws_manager = WebSocketManager(
+                    host=self.websocket_host,
+                    port=self.websocket_port,
+                    ping_interval=self.ws_manager_ping_interval,
+                    ping_timeout=self.ws_manager_ping_timeout,
+                    broadcast_timeout=self.ws_manager_broadcast_timeout,
+                    thread_close_timeout=self.ws_manager_thread_close_timeout,
+                )
+                # Start WebSocket server
+                self.ws_manager.start()
+            else:
+                # ws_manager remains None
+                pass
         except Exception as e:
-            logger.error(f"Error during image compression: {e}")
-            return False, frame, None
-    
-    def _create_message_packet(self, frame_results: AnnotationResults) -> Optional[bytes]:
-        """Create msgpack data packet from frame results."""
+            self.ws_manager = None  # ensure ws_manager stays None
+            logger.error(f"Failed to create websocket server: {e}. Continuing without ...")
+
+        # At least one between Websocket manager and DB manager must have been initialized
+        if not (self.db_manager or self.ws_manager or self.log_file):
+            self.error_event.set()
+            logger.error(
+                "Error event set: "
+                "No available system (File, WebSocket, DB) for providing alerts. "
+                "Shutting down the application ..."
+            )
+            raise RuntimeError("No output managers available")
+            # on failure, main will catch exception and cause termination
+
+    def _compress_frame(self, frame: np.ndarray) -> tuple:
+        """
+        Compress frame to JPEG format.
+
+        Args:
+            frame: The frame to compress
+
+        Returns:
+            Tuple of (base64_encoded_string, raw_bytes)
+        """
+
+        jpg_as_text = 'no_ws'
+        compressed_bytes = 'no_db'
+
+        if not (self.ws_manager or self.db_manager):
+            logger.debug(f"No WS nor DB, skipping compression step.")
+            return jpg_as_text, compressed_bytes
+
+        compression_start = time()
+
+        # Encode as JPEG
+        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), self.alerts_jpeg_quality]
+        _, buffer = cv2.imencode('.jpg', frame, encode_param)
+
+        # Convert to base64 for WebSocket transmission
+        if self.ws_manager:
+            jpg_as_text = base64.b64encode(buffer).decode('utf-8')
+
+        # Get raw bytes for database storage
+        if self.db_manager:
+            compressed_bytes = buffer.tobytes()
+
+        logger.debug(f"Frame compressed took frame to {(time() - compression_start) * 1000:.1f} ms")
+
+        return jpg_as_text, compressed_bytes
+
+    def _log_alert(self, frame_id: int, alert_msg: str, timestamp: float, datetime_str: str):
+        """
+        Log alert information using a persistent file handle.
+
+        Args:
+            frame_id: Frame identifier
+            alert_msg: Alert message
+            timestamp: Alert timestamp
+            datetime_str: alert datetime
+        """
+        if not self.log_file:
+            return
+
         try:
-            # Compress image
-            compression_success, compressed_img, img_format = self._compress_image(frame_results.annotated_frame)
-            
-            # Create message data
-            message_data = {
-                "frame_id": frame_results.frame_id,
-                "alert_msg": frame_results.alert_msg,
-                "timestamp": frame_results.timestamp,
-                "img_shape": frame_results.annotated_frame.shape,
-                "img_dtype": str(frame_results.annotated_frame.dtype),
-                "img_format": img_format,
-                "compressed": compression_success
+            log_entry = {
+                'frame_id': frame_id,
+                'alert_msg': alert_msg,
+                'timestamp': timestamp,
+                'datetime': datetime_str,
             }
-            
-            # Add image data
-            if compression_success and img_format:
-                message_data["img_bytes"] = compressed_img.tobytes()
-            else:
-                message_data["img_bytes"] = frame_results.annotated_frame.tobytes()
-            
-            # Pack with msgpack
-            msgpack_data = msgpack.packb(message_data, use_bin_type=True)
-            
-            if msgpack_data:
-                # Check packet size
-                if len(msgpack_data) > self.max_packet_size:
-                    logger.warning(
-                        f"Packet size ({len(msgpack_data)}) exceeds maximum ({self.max_packet_size}). "
-                        f"Consider reducing image quality or resolution."
-                    )
-                
-                return msgpack_data
-            
-            else:
-                logger.error(f"Error creating message packet: {e}")
-                return None
+            # Writing to a line-buffered handle is highly efficient
+            self.log_file.write(json.dumps(log_entry) + '\n')
+            logger.debug(f"Alert logged to file: frame_id={frame_id}")
 
         except Exception as e:
-            logger.error(f"Error creating message packet: {e}")
-            return None
+            logger.error(f"Error writing to persistent log: {e}")
 
-    def _send_all(self, data: bytes) -> bool:
-        """Send all data, handling partial sends"""
-        total_sent = 0
-        while total_sent < len(data):
-            try:
-                sent = self.sock.send(data[total_sent:])
-                if sent == 0:
-                    logger.warning("sent nothing")
-                    return False
-                total_sent += sent
-            except socket.error:
-                logger.warning("socket error in send")
-                return False
-            
-        return True
+    def _process_alert(self, alert: AnnotationResults):
+        """
+        Process a new alert: compress, store, and queue for broadcast.
 
-    def _send_packet(self, data: bytes) -> bool:
-        """Send data via TCP with length prefix."""
-        try:
-            if not self.sock or not self.is_connected:
-                logger.warning("TCP socket not connected, attempting reconnection ...")
-                logger.debug(f"socket: {self.sock}, connected: {self.is_connected} ")
-                if not self._connect_tcp():
-                    return False
-            
-            # Send length prefix (4 bytes) followed by data
-            length_prefix = struct.pack('!I', len(data))
-            full_packet = length_prefix + data
-            
-            # Use _send_all to handle partial sends properly
-            if not self._send_all(full_packet):
-                logger.warning("Failed to send complete packet, disconnecting ...")
-                self.is_connected = False
-                return False
-                
-            logger.info("TCP packet sent succesfully")
-            return True
+        Args:
+            alert: AnnotationResults object
+        """
+        logger.info(f"Processing alert: frame_id={alert.frame_id}, msg='{alert.alert_msg}'")
+
+        # Compress frame
+        compressed_frame, compressed_bytes = self._compress_frame(alert.annotated_frame)
+
+        # Create alert data structure
         
-        except socket.timeout:
-            logger.error("TCP send timeout")
-            self.is_connected = False
-            return False
-        except socket.error as e:
-            logger.error(f"TCP send error: {e}")
-            self.is_connected = False
-            return False
-        except Exception as e:
-            logger.error(f"Unexpected error during TCP send: {e}")
-            self.is_connected = False
-            return False
-    
-    def _write_alert_to_file(self, frame_results: AnnotationResults) -> None:
-        """Write alert message to file."""
-        try:
-            if not self.alerts_file:
-                logger.error("Alerts file not open")
-                return
-            
-            msg = f"Frame {frame_results.frame_id}, "
-            msg += f"Alert: {frame_results.alert_msg}, "
-            msg += f"timestamp: {datetime.datetime.fromtimestamp(frame_results.timestamp).strftime('%Y-%m-%d %H:%M:%S.%f')}\n"
-            
-            self.alerts_file.write(msg)
-            self.alerts_file.flush()  # Ensure data is written immediately
-            
-        except Exception as e:
-            logger.error(f"Error writing alert to file: {e}")
+        alert_datetime = dtt.fromtimestamp(alert.timestamp)
+        alert_datetime_str = alert_datetime.isoformat()
+        height, width, _ = alert.annotated_frame.shape
+        alert_data = {
+            'frame_id': alert.frame_id,
+            'alert_msg': alert.alert_msg,
+            'timestamp': alert.timestamp,
+            'datetime': alert_datetime_str,
+            'image': compressed_frame,
+            'width': width,
+            'height': height,
+            'compression': 'jpeg',
+        }
 
-    def _cleanup(self):
-        if self.alerts_file:
-            self.alerts_file.close()
-        # Cleanup resources
-        self._close_alerts_file()
-        self._close_socket()
+        # Log alert to file using the handle
+        if self.log_file:
+            self._log_alert(alert.frame_id, alert.alert_msg, alert.timestamp, alert_datetime_str)
 
-    def _close_alerts_file(self):
-        if self.alerts_file:
+        # Queue for WebSocket broadcast
+        if self.ws_manager:
+            self.ws_manager.queue_alert(alert_data)
+
+        # Save to database
+        if self.db_manager:
+            self.db_manager.save_alert(
+                frame_id=alert.frame_id,
+                alert_msg=alert.alert_msg,
+                timestamp=alert.timestamp,
+                datetime=alert_datetime,
+                image_data=compressed_bytes,
+                image_width=width,
+                image_height=height,
+            )
+
+    def _cleanup(self, alert_count: int):
+
+        logger.info("NotificationsStreamWriter process terminating ...")
+        logger.info(f"Total correctly processed alerts: {alert_count}")
+
+        # Close log file
+        if self.log_file:
             try:
-                self.alerts_file.close()
-                logger.info("Alerts file closed")
+                self.log_file.close()
+                logger.info("Alert log file closed")
             except Exception as e:
-                logger.error(f"Error closing alerts file: {e}")
+                logger.error(f"Failed to close alert log file: {e}")
 
-    def _close_socket(self):
-        if self.sock:
-            try:
-                self.sock.close()
-                logger.info("Socket closed")
-            except Exception as e:
-                logger.error(f"Error closing socket: {e}")
+        # Close database (handles errors internally)
+        if self.db_manager:
+            self.db_manager.close()
+
+        # Stop WebSocket server (handles errors internally)
+        if self.ws_manager:
+            self.ws_manager.stop()
 
     def run(self):
-        """Main process loop for notifications streaming."""
-        logger.info("Starting notification streaming process")
-        
-        # Create output directory
+        """Main process loop."""
+
+        alert_count = 0
+        consecutive_failures = 0
+        poison_pill_received = False
+
+        ws_status = f"ws://{self.websocket_host}:{self.websocket_port}" if self.websocket_host else "disabled"
+        db_status = self.database_url if self.database_url else "disabled"
+        logfile_status = self.log_file_path if self.log_file_path else 'disabled'
+
+        logger.info("NotificationsStreamWriter process starting")
+        logger.info(f"Configuration:")
+        logger.info(f"  - WebSocket: {ws_status}")
+        logger.info(f"  - Database: {db_status}")
+        logger.info(f"  - Log file: {logfile_status}")
+        logger.info(f"  - JPEG quality: {self.alerts_jpeg_quality}\n")
+
         try:
-            self.output_dir.mkdir(parents=True, exist_ok=True)
-            logger.info(f"Output directory created/verified: {self.output_dir}")
-        except Exception as e:
-            logger.error(f"Failed to create output directory {self.output_dir}: {e}")
-            return
-        
-        # Open alerts file
-        try:
-            alerts_file_path = self.output_dir / "alerts.txt"
-            self.alerts_file = open(alerts_file_path, "w")
-            logger.info(f"Alerts file opened: {alerts_file_path}")
-        except Exception as e:
-            logger.error(f"Failed to open alerts file: {e}")
-        
-        # create TCP socket and connect
-        connection_established = self._connect_tcp()
-        if not connection_established:
-            logger.warning("Failed to establish TCP connection, will try to reconnet on send")
-        
-        frames_processed = 0
-        
-        try:
-            while True:
-                
-                # Manage queue buffer
-                self._manage_queue_buffer()
-                
-                # Get frame from queue with timeout
+            
+            # Instantiate output managers
+            # handles initialization errors internally
+            self._setup_managers()
+
+            # ---------------------------------
+            # Alerts Processing
+            # ---------------------------------
+
+            while not self.error_event.is_set():
+
                 try:
-                    frame_results: AnnotationResults = self.input_queue.get(timeout=1.0)
-                except queue.Empty:
-                    logger.warning(f"No frame received within 1.0 seconds. Continuing to wait...")
+                    # Get alert from queue with timeout
+                    alert = self.input_queue.get(timeout=self.alerts_get_timeout)
+                except QueueEmptyException:
+                    logger.debug("Input queue empty. Continuing to wait for alerts ... ")
                     continue
-                
-                # Check for termination sentinel
-                if frame_results is None:
-                    logger.info("Received termination signal. Shutting down notification streaming process.")
-                    break
-                
-                frame_id = frame_results.frame_id
-                frames_processed += 1
-                
-                # Check if alert should be sent
-                cooldown_has_passed = (frame_id - self.last_alert_frame_id) >= self.alerts_frames_cooldown
-                alert_exist = len(frame_results.alert_msg) > 0
-                
-                if cooldown_has_passed and alert_exist:
 
-                    # Write to file (if open)
-                    if self.alerts_file:
-                        self._write_alert_to_file(frame_results)
+                try:
+                    # if the alert being processed is the poison pill,
+                    # break out of the loop to complete shutdown the process
+                    if alert == POISON_PILL:
+                        poison_pill_received = True
+                        break
 
-                    # Send alert via TCP (if not connected, send will try to reconnect)
-                    
-                    # Create message packet
-                    msgpack_data = self._create_message_packet(frame_results)
-                    if not msgpack_data:
-                        logger.error("Failed to create message packet")
-                        continue
-                    
-                    # Send packet
-                    if self._send_packet(msgpack_data):
-                        self.alerts_sent += 1
-                        logger.info(
-                            f"Alert sent successfully (Frame ID: {frame_id}), "
-                            f"Packet size: {len(msgpack_data)} bytes, "
-                            f"Alert: {frame_results.alert_msg})"
-                        )
+                    # Process the alert
+                    self._process_alert(alert)
+                    alert_count += 1
+                    # reset counter
+                    consecutive_failures = 0
+
+                except Exception as e:
+                    consecutive_failures += 1
+                    if consecutive_failures < self.alerts_max_consecutive_failures:
+                        logger.warning(
+                            f"Error processing alert: {e}. "
+                            f"Consecutive failures: {consecutive_failures} (max {self.alerts_max_consecutive_failures}). "
+                            f"Will try to process next one ...", exc_info=True)
                     else:
-                        self.alerts_failed += 1
-                        logger.error(f"Failed to send alert (Frame ID: {frame_id})")
-                    
-                    # Update last alert frame ID to reset cooldown
-                    self.last_alert_frame_id = frame_id
-                
-                # Log periodic status
-                if frames_processed % 100 == 0:
-                    logger.info(
-                        f"Processed {frames_processed} frames, "
-                        f"Alerts sent: {self.alerts_sent}, "
-                        f"Alerts failed: {self.alerts_failed}, "
-                        f"Frames dropped: {self.frames_dropped}"
-                    )
-
-        except KeyboardInterrupt:
-            logger.info("Received keyboard interrupt. Shutting down notification streaming process.")
-        except Exception as e:
-            logger.error(f"Unexpected error in notification streaming process: {e}")
+                        self.error_event.set()
+                        logger.error(
+                            "Error event set: "
+                            "threshold for max number of consecutive alerts failing to be processed has been surpassed. "
+                            "Application will shutdown ..."
+                        )
         
+        except Exception as e:
+            logger.critical(f"An unexpected critical error happened in notifications streamer process: {e}", exc_info=True)
+            self.error_event.set()
+            logger.warning("Error event set: force-stopping the application")
+
         finally:
-            self._cleanup()
+            # final cleanup
+            self._cleanup(alert_count)
+            # log process conclusion
             logger.info(
-                f"Notification streaming process terminated. "
-                f"Frames processed: {frames_processed}, "
-                f"Alerts sent: {self.alerts_sent}, "
-                f"Alerts failed: {self.alerts_failed}, "
-                f"Frames dropped: {self.frames_dropped}"
+                "NotificationsStreamWriter process stopped gracefully. "
+                f"Poison pill received: {poison_pill_received}. "
+                f"Error event: {self.error_event.is_set()}."
             )
+            self.work_finished.set()
+
+
+"""
+# Example usage
+if __name__ == "__main__":
+    # Create shared objects
+    alert_queue = mp.Queue()
+    stop_event = mp.Event()
+
+    # Create and start process
+    writer = NotificationsStreamWriter(
+        input_queue=alert_queue,
+        stop_event=stop_event,
+        max_alerts=50,
+        websocket_port=8765,
+        log_file="alerts.log",
+        alerts_jpeg_quality=85,
+        database_url="sqlite:///alerts.db"  # Use SQLite for example
+        # For PostgreSQL: "postgresql://user:password@localhost:5432/alerts_db"
+        # For MySQL: "mysql+pymysql://user:password@localhost:3306/alerts_db"
+    )
+    writer.start()
+
+    # Simulate sending alerts
+    import time
+
+    for i in range(5):
+        fake_frame = np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
+        alert = AnnotationResults(
+            frame_id=i,
+            annotated_frame=fake_frame,
+            alert_msg=f"Danger detected: Type {i}",
+            timestamp=time.time(),
+            original_wh=(1920, 1080)
+        )
+        alert_queue.put(alert)
+        time.sleep(1)
+
+    # Let it run for a bit
+    time.sleep(5)
+
+    # Stop the process
+    stop_event.set()
+    writer.join()
+    print("Process terminated")
+"""

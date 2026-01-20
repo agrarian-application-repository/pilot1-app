@@ -127,7 +127,7 @@ def perform_health_monitoring(
     while cap.isOpened():
         iteration_start_time = time()
         success, frame = cap.read()
-        if not success or frame_id > 2000:
+        if not success:
             print("Video processing has been successfully completed.")
             break
 

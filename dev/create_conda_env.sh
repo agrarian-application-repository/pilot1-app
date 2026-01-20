@@ -1,16 +1,15 @@
 #! bin/bash
 
 module load proxy/proxy_16
-module load cuda12.1
-module load miniconda3/py310_23.1.0-1
+module load cuda12.9/toolkit/12.9
+module load miniconda3/py312_2
 
-
-source /archive/apps/miniconda/miniconda3/py310_23.1.0-1/etc/profile.d/conda.sh
-conda create --name agrarian python=3.10 -y
-conda activate agrarian
+source /archive/apps/miniconda/miniconda3/py312_2/etc/profile.d/conda.sh
+conda create --name agrarian312 python=3.12 -y
+conda activate agrarian312
 
 pip install --upgrade pip
-pip install --no-cache-dir torch==2.3.1+cu121 torchvision==0.18.1+cu121 -f https://download.pytorch.org/whl/torch_stable.html
+pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cu130
 pip install --no-cache-dir -r dev/requirements.txt
 
 conda deactivate

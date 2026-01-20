@@ -5,11 +5,10 @@ docker rm -f mediamtx_server || true
 
 echo "Starting MediaMTX Docker container..."
 
-
-# port 8554/tcp and 8554/udp for RTSP streams are handles internally by the docker network, no need for external mapping
 docker run -d \
   --name mediamtx_server \
-  --network agrarian-network \
+  -p "8554:8554/udp" \
+  -p "8554:8554/tcp" \
   -p "1935:1935/tcp" \
   -p "8889:8889/tcp" \
   -v "$(pwd)/configs/mediamtx/my_mediamtx.yaml:/mediamtx.yml:ro" \

@@ -1,6 +1,7 @@
 import numpy as np
 from dataclasses import dataclass
 
+
 @dataclass
 class FrameQueueObject:
     """
@@ -10,10 +11,12 @@ class FrameQueueObject:
         frame_id (int): The unique identifier for the frame.
         frame (np.ndarray): The actual image data as a NumPy array.
         timestamp (float): The timestamp of reception.
+        original_wh tuple(int, int): The original shape of the image
     """
     frame_id: int
     frame: np.ndarray
     timestamp: float
+    original_wh: tuple[int, int]
 
 
 @dataclass
@@ -30,7 +33,7 @@ class TelemetryQueueObject:
 
 
 @dataclass
-class CombinedFrametelemetryQueueObject:
+class CombinedFrameTelemetryQueueObject:
     """
     A dataclass to represent the match between a frame and a telemetry packet based on timestamp.
 
@@ -39,11 +42,13 @@ class CombinedFrametelemetryQueueObject:
         frame (np.ndarray): The actual image data as a NumPy array.
         telemetry (dict|None): A dictionary object containing the drone telemetry.
         timestamp (float): The timestamp of reception (of the frame).
+        original_wh tuple(int, int): The original shape of the image
     """
     frame_id: int
     frame: np.ndarray
     telemetry: dict|None
     timestamp: float
+    original_wh: tuple[int, int]
 
 
 @dataclass
@@ -53,7 +58,7 @@ class AnnotationResults:
 
     Attributes:
         frame_id (int): The unique identifier of the frame.
-        annotated_frame (np.ndarray): The final image with annotations.
+        annotated_frame (np.ndarray): The final image with annotations at the original resolution.
         alert_msg (str): A string describing the types of danger detected.
         timestamp (float): The timestamp of reception (of the frame).
     """

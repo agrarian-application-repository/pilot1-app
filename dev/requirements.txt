@@ -1,9 +1,10 @@
+aiomqtt
+bcrypt
 black
 isort
 geopy
 lapx
 matplotlib
-msgpack
 networkx
 numpy
 onnx
@@ -21,8 +22,10 @@ scikit-image
 scipy
 setuptools
 shapely
+sqlalchemy
 streamlit
-transformers
 tqdm
 ultralytics
 wandb
+websockets
+websocket-client

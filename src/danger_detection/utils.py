@@ -5,16 +5,17 @@ from rasterio.windows import bounds
 from affine import Affine
 import rasterio
 from rasterio.features import rasterize
+from rasterio import RasterioIOError
 
 import cv2
 import numpy as np
 from geopy.distance import geodesic
 from scipy.ndimage import convolve
 
+from typing import Optional, Union, Tuple
+
 
 __all__ = [
-    "get_dem",
-    "get_dem_mask",
     "open_dem_tifs",
     "close_tifs",
     "extract_dem_window",
@@ -29,31 +30,35 @@ __all__ = [
 ]
 
 
-def get_dem(dem_path):
-    # Open the DEM
-    dem_tif = rasterio.open(Path(dem_path))
-    return dem_tif
+def safe_open_raster(path: Optional[Union[str, Path]]) -> Optional[rasterio.DatasetReader]:
+    """Helper function to handle the repetitive opening logic."""
+    if path is None:
+        return None
+
+    path_obj = Path(path)
+    if not path_obj.exists():
+        print(f"File not found at: {path_obj}")
+        return None
+
+    try:
+        return rasterio.open(path_obj)
+    except (RasterioIOError, OSError) as e:
+        print(f"Failed to open {path_obj.name}: {e}")
+        return None
 
 
-def get_dem_mask(dem_mask_path):
-    # Open the DEM mask if provided, otherwise assume all pixels are valid are return None
-    if dem_mask_path is not None:
-        dem_mask_tif = rasterio.open(Path(dem_mask_path))
-    else:
-        dem_mask_tif = None
+def open_dem_tifs(
+        dem_path: Optional[Union[str, Path]],
+        dem_mask_path: Optional[Union[str, Path]]
+) -> Tuple[Optional[rasterio.DatasetReader], Optional[rasterio.DatasetReader]]:
 
-    return dem_mask_tif
+    # Open the primary DEM
+    dem_tif = safe_open_raster(dem_path)
 
-
-def open_dem_tifs(dem_path, dem_mask_path):
-
-    dem_tif = None
+    # 2. Open the mask (only if DEM exists and was opened successfully)
     dem_mask_tif = None
-
-    if dem_path is not None:
-        dem_tif = rasterio.open(Path(dem_path))
-        if dem_mask_path is not None:
-            dem_mask_tif = rasterio.open(Path(dem_mask_path))
+    if dem_tif and dem_mask_path:
+        dem_mask_tif = safe_open_raster(dem_mask_path)
 
     return dem_tif, dem_mask_tif
 

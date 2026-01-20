@@ -1,188 +1,442 @@
 import multiprocessing as mp
 import logging
+import time
+from queue import Empty as QueueEmptyException
+from queue import Full as QueueFullException
 from collections import deque
-from src.shared.processes.messages import FrameQueueObject, TelemetryQueueObject, CombinedFrametelemetryQueueObject
+from src.shared.processes.messages import FrameQueueObject, TelemetryQueueObject, CombinedFrameTelemetryQueueObject
 from typing import Optional
+
+from src.shared.processes.constants import *
+
 
 # ================================================================
 
 logger = logging.getLogger("main.combiner")
 
 if not logger.handlers:  # Avoid duplicate handlers
-    video_handler = logging.FileHandler('/app/logs/combiner.log', mode='w')
+    video_handler = logging.FileHandler('./logs/combiner.log', mode='w')
     video_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(video_handler)
     logger.setLevel(logging.DEBUG)
 
 # ================================================================
 
+
 class FrameTelemetryCombiner(mp.Process):
     """
     A multiprocessing Process that combines frames with telemetry data based on timestamps.
-    
-    Takes frames from frame_queue and telemetry dictionaries from telemetry_queue,
-    matches them by timestamp, and outputs combined data to output_queues.
-    Discards older telemetry data once a match is found.
+
+    One frame at a time (from oldest, FIFO):
+    - Takes frame and its id from frame_queue (multiprocessing Queue)
+    - searches in the telemetry_queue (multiprocessing Queue) the telemetry values that best match based
+    on the timestamp (max_time_diff_s sets the max time difference allowed).
+    Telemetry values are delivered in order of timestamp
+    - if no match is found, the matching telemetry value must be set to None in the output object
+    - if match is found,removes all the older telemetry values from the queue to free space
+    - outputs combined data to output_queues combining frame and telemetry (ensuring the data is put on all queues,
+    either on all or none, list of multiprocessing Queue objects)
+
+    The process can shut-down via a global ErrorEvent being set (hard shutdown),
+    or via POISON-PILL (sequential shutdown).
+    If the process stops due to error_event, it's not necessary to propagate the poison pill since all processes will
+    stop at the same time.
+
     """
-    
+
     def __init__(
-            self, 
-            frame_queue: mp.Queue, 
-            telemetry_queue: mp.Queue, 
-            output_queues: list[mp.Queue], 
-            max_time_diff_s: float = 0.15,
-        ):
+            self,
+            frame_queue: mp.Queue,
+            telemetry_queue: mp.Queue,
+            output_queues: list[mp.Queue],
+            error_event: mp.Event,
+            telemetry_buffer_max_size: int = FRAMETELCOMB_MAX_TELEM_BUFFER_SIZE,
+            max_time_diff_s: float = FRAMETELCOMB_MAX_TIME_DIFF,
+            queue_get_timeout: float = FRAMETELCOMB_QUEUE_GET_TIMEOUT,
+            queue_put_max_retries: int = FRAMETELCOMB_QUEUE_PUT_MAX_RETRIES,
+            queue_put_backoff: float = FRAMETELCOMB_QUEUE_PUT_BACKOFF,
+            poison_pill_backoff: float = POISON_PILL_TIMEOUT,
+    ):
         """
-        Initialize the FrameTelemetryCombiner.
-        
+        Initialize the FrameTelemetryCombiner process.
+
         Args:
-            frame_queue: Queue containing frame data with timestamps
-            telemetry_queue: Queue containing telemetry dictionaries with timestamps
-            output_queues: List of Queues to output combined frame-telemetry data to
-            max_time_diff_s: Maximum acceptable time difference for matching (seconds)
+            frame_queue: Queue containing FrameQueueObject instances
+            telemetry_queue: Queue containing TelemetryQueueObject instances
+            output_queues: List of queues to output CombinedFrameTelemetryQueueObject instances
+            error_event: Event to signal the process to stop
+            max_time_diff_s: Maximum time difference allowed for matching (seconds)
         """
         super().__init__()
+
+        # mp queues and events
         self.frame_queue = frame_queue
         self.telemetry_queue = telemetry_queue
         self.output_queues = output_queues
+        self.error_event = error_event
+
+        # local telemetry buffer for timestamp matching
+        self.telemetry_buffer = deque(maxlen=telemetry_buffer_max_size)
         self.max_time_diff_s = max_time_diff_s
-        self.telemetry_buffer = deque(maxlen=frame_queue._maxsize)
-        self.running = True
-        
-    def stop(self):
-        """Signal the process to stop."""
-        self.running = False
-    
-    def _load_telemetry_buffer(self):
-        """Load available telemetry data into a DEQUEUE buffer."""
-        while not self.telemetry_queue.empty():
+
+        # queue get
+        self.queue_get_timeout = queue_get_timeout
+
+        # multi-queue put
+        self.queue_put_max_retries = queue_put_max_retries
+        self.queue_put_backoff = queue_put_backoff
+        self.poison_pill_backoff = poison_pill_backoff
+
+        self.work_finished = mp.Event()
+
+    def _update_telemetry_buffer(self):
+        """Collect all available telemetry data from queue into buffer."""
+        logger.debug(f"initial telemetry buffer length: {len(self.telemetry_buffer)}")
+        while True:
             try:
-                telemetry_data = self.telemetry_queue.get_nowait()
-                self.telemetry_buffer.append(telemetry_data)
-            except:
-                logger.error("Error in retrieving objects from the telemetry queue")
+                telemetry_obj: TelemetryQueueObject = self.telemetry_queue.get_nowait()
+                self.telemetry_buffer.append(telemetry_obj)
+            except QueueEmptyException:
+                logger.debug(
+                    "Telemetry queue emptied into the local buffer (if not empty already). "
+                    "Stopping fetch for matching to the current frame. "
+                    f"Buffer length: {len(self.telemetry_buffer)}"
+                )
                 break
-    
-    def _find_best_telemetry_match(self, frame_timestamp: float) -> TelemetryQueueObject | None:
+            except Exception as e:
+                logger.debug(
+                    f"Unexpected error in telemetry fetch: {e}. "
+                    f"Stopping fetch for matching to the current frame"
+                )
+                break
+
+    def _find_best_match(self, frame_timestamp: float) -> Optional[dict]:
         """
         Find the best matching telemetry for the given frame timestamp.
-        
-        Returns the telemetry data with the closest timestamp within max_time_diff_s.
-        Discards older telemetry data once a match is found.
+        Removes all older telemetry values from buffer if match is found.
+        Find the best matching telemetry for the given frame timestamp.
+
+        Args:
+            frame_timestamp: Timestamp of the frame to match
+
+        Returns:
+            Matched telemetry dict or None if no match within time threshold
         """
         if not self.telemetry_buffer:
+            logger.warning(f"No telemetry data available for matching at timestamp {frame_timestamp}")
             return None
-        
+
         best_match = None
-        best_time_diff = float('inf')
-        match_index = -1
-        
-        # Find the best match
-        for i, telemetry_data in enumerate(self.telemetry_buffer):
-            try:
-                time_diff = abs(frame_timestamp - telemetry_data.timestamp)
-                
-                if time_diff <= self.max_time_diff_s and time_diff < best_time_diff:
-                    best_match = telemetry_data
-                    best_time_diff = time_diff
-                    match_index = i
+        best_diff = float('inf')
+        best_idx = -1  # Track index of the telemetry with timestamp closest to that of the frame
+        last_too_old_idx = -1  # Track oldest telemetry that is too old and should be removed
 
-                if best_match is not None and time_diff > self.max_time_diff_s:
-                    # do not scan the entire data structure if a best match has already been found an now the time distance is growing
-                    break
+        min_valid_timestamp = frame_timestamp - self.max_time_diff_s
 
-            except ValueError:
-                logger.warning("expection rasied while searching for the best matching telemetry, continuing ...")
-                continue
-        
-        # If we found a match, remove all telemetry data up to (but not including) the match.
-        # The match is stored in 'best_match'
-        if best_match is not None:
-            logger.debug(f"best match found at index {match_index} out of {len(self.telemetry_buffer)} telemetries")
-            for _ in range(match_index):
-                if self.telemetry_buffer:
-                    self.telemetry_buffer.popleft()
-        
-        return best_match
-    
-    def _combine_frame_telemetry(self, frame_data: FrameQueueObject, telemetry_data: Optional[TelemetryQueueObject]) -> CombinedFrametelemetryQueueObject:
+        # Find closest telemetry by timestamp
+        for idx, telemetry_obj in enumerate(self.telemetry_buffer):
+            time_diff = abs(telemetry_obj.timestamp - frame_timestamp)
+
+            if time_diff < best_diff:
+                best_diff = time_diff
+                best_match = telemetry_obj
+                best_idx = idx
+
+            # Track the last telemetry that's too old (before min_valid_timestamp)
+            if telemetry_obj.timestamp < min_valid_timestamp:
+                last_too_old_idx = idx
+
+            # Since telemetry is ordered by timestamp, if we're past the frame
+            # timestamp by too much, we can stop searching
+            if telemetry_obj.timestamp > frame_timestamp + self.max_time_diff_s:
+                break
+
+        # Remove old telemetry regardless of match success
+        if last_too_old_idx >= 0:
+            # Remove all telemetry up to and including last_too_old_idx
+            for _ in range(last_too_old_idx + 1):
+                self.telemetry_buffer.popleft()
+            logger.debug(
+                f"Removed {last_too_old_idx + 1} telemetry entries "
+                f"older than the maximum allowed time difference for matching ({self.max_time_diff_s} seconds)")
+
+            # Adjust best_idx if we removed items before it
+            if best_idx >= 0:
+                best_idx = best_idx - (last_too_old_idx + 1)
+
+        # Check if best match is within allowed time difference
+        if best_diff <= self.max_time_diff_s:
+            logger.debug(f"Found telemetry match with time diff: {best_diff:.4f}s")
+            # Remove all telemetry older than to the matched one (keep matched one)
+            removed_older = 0
+            for _ in range(best_idx):
+                self.telemetry_buffer.popleft()
+                removed_older += 1
+            logger.debug(f"Removed {removed_older} telemetries old than the best match from the buffer")
+            return best_match.telemetry
+
+        else:
+            logger.warning(
+                f"No telemetry match found within {self.max_time_diff_s} seconds "
+                f"(best diff: {best_diff:.4f}s). "
+            )
+            return None
+
+    def _output_to_all_queues(
+            self,
+            combined_obj: CombinedFrameTelemetryQueueObject|str,
+            backoff: float,         # different for poison pill and frame
+    ) -> bool:
         """
-        Combine frame and telemetry data into output format.
-        
+        Output combined data to all output queues (all or none).
+
+        Args:
+            combined_obj: The combined object to output
+
         Returns:
-            CombinedQueueObject object
+            True if successfully output to all queues, False otherwise
         """
 
-        combined_data = CombinedFrametelemetryQueueObject(
-            frame_id = frame_data.frame_id, 
-            frame=frame_data.frame, 
-            telemetry=telemetry_data.telemetry if telemetry_data is not None else None,
-           timestamp= frame_data.timestamp,
+        if combined_obj == POISON_PILL:
+            obj_type = "poison pill"
+        else:
+            obj_type = f"frame {combined_obj.frame_id}"
+            if combined_obj.telemetry is not None:
+                obj_type += " + telemetry"
+
+        # Check if all queues have space (not full) before attempting to put
+        # This provides atomicity guarantee
+        for attempt in range(1, self.queue_put_max_retries+1):
+
+            all_have_space = all([not queue.full() for queue in self.output_queues])
+            if all_have_space:
+                # All queues have space, proceed with putting
+                for queue in self.output_queues:
+                    queue.put_nowait(combined_obj)
+
+                logger.debug(
+                    f"Successfully output [{obj_type}] "
+                    f"to all {len(self.output_queues)} processing queues")
+                return True
+
+            else:
+                # At least one queue is full, wait and retry
+                if attempt <= self.queue_put_max_retries:
+                    logger.debug(f"Some queues full, retrying ({attempt}/{self.queue_put_max_retries})...")
+                    time.sleep(backoff)
+
+        logger.warning(
+            f"Failed to output put [{obj_type}] to model queues: "
+            f"At least one queue full after {self.queue_put_max_retries} attempts. "
+            f"Discarding [{obj_type}]."
         )
 
-        return combined_data
-    
+        # if it's the poison pill we were unable to propagate, set the error event to force-stop the application
+        if combined_obj == POISON_PILL:
+            self.error_event.set()
+            logger.error(
+                "Error event set: could not propagate poison pill to all models queues."
+                "Force-stopping the application"
+
+            )
+        return False
+
     def run(self):
         """Main process loop."""
-        logger.info(f"FrameTelemetryCombiner process started (PID: {self.pid})")
+        logger.info("FrameTelemetryCombiner process started")
 
-        failed_matchings = 0
-        
-        while self.running:
-            
-            try:
-                # Load new telemetry data into buffer
-                self._load_telemetry_buffer()
-                
-                # Get frame data
+        failed_matches = 0
+        consecutive_failed_matches = 0
+        poison_pill_received = False
+
+        try:
+
+            # Process runs until the stop event is set
+            while not self.error_event.is_set():
+
                 try:
-                    frame_data = self.frame_queue.get(timeout=0.1)
-                    if frame_data is None:  # Sentinel value to stop
-                        logger.info("Found sentinel value on frame queue, terminating process ...")
-                        break
-                except Exception as e:
-                    logger.error(f"Failed to retrieve frame from input queue: {e}")
+                    # Try to get a frame, waiting for a short time if not available immediately
+                    frame_obj: FrameQueueObject = self.frame_queue.get(timeout=self.queue_get_timeout)
+                except QueueEmptyException:
+                    logger.debug("Frame queue is empty, retrying fetch ...")
                     continue
-                
-                # Extract frame timestamp
-                frame_timestamp = frame_data.timestamp
-                
-                # Find best matching telemetry
-                best_telemetry = self._find_best_telemetry_match(frame_timestamp)
 
-                if best_telemetry is None:
-                    failed_matchings += 1
-                    logger.warning(
-                        f"Unable to find suitable telemetry for frame {frame_timestamp.frame_id}. "
-                        f"Total matches not found: {failed_matchings}"
-                )
-                
-                # Combine frame and telemetry data
-                combined_data = self._combine_frame_telemetry(frame_data, best_telemetry)
-                
-                # Output the combined frame and telemetry data
-                try:
-                    for output_queue in self.output_queues:        
-                        output_queue.put(combined_data, timeout=1.0)
-                except Exception as e:
-                    logger.error(f"Failed to put combined frame-telemetry data onto one or more output queues: {e}")
-                
-                # Log matching info
-                if best_telemetry:
-                    telemetry_ts = best_telemetry.timestamp
-                    time_diff = abs(frame_timestamp - telemetry_ts)
-                    logger.debug(f"Matched frame {frame_timestamp:.3f} with telemetry {telemetry_ts:.3f} (diff: {time_diff:.3f}s)")
+                # if the object found is the poison pill, it must be propagated to following processes via
+                # their input queues. Must ensure that all downstream processes receive the pill
+                if frame_obj == POISON_PILL:
+                    logger.info("Found sentinel value on queue.")
+                    poison_pill_received = True
+                    # internally handles setting of error_event if unable to propagate the poison pill to all queues
+                    # error_event causes clean shutdown of all processes
+                    self._output_to_all_queues(frame_obj, backoff=self.poison_pill_backoff)
+                    break
+
+                # Collect available telemetry data into buffer
+                # stop when all have been collected and the queue is empty, or the local telemetry data buffer is full
+                self._update_telemetry_buffer()
+
+                # Find best matching telemetry
+                matched_telemetry = self._find_best_match(frame_obj.timestamp)
+
+                if matched_telemetry is None:
+                    failed_matches += 1
+                    consecutive_failed_matches += 1
+                    logger.debug(
+                        f"N. Consecutive failed matches: {consecutive_failed_matches}. "
+                        f"N. Total failed matches: {failed_matches}. "
+                        f"Either the delay between frames and telemetry is too large, or telemetry collection has stopped."
+                    )
                 else:
-                    logger.warning(f"No telemetry match found for frame {frame_timestamp:.3f}")
-                
-            except Exception as e:
-                logger.error(f"Error in FrameTelemetryCombiner: {e}")
-                continue
-        
-        try:        
-            for output_queue in self.output_queues:
-                output_queue.put(None, timeout=1.0)
+                    consecutive_failed_matches = 0
+
+                # Create combined object
+                combined_obj = CombinedFrameTelemetryQueueObject(
+                    frame_id=frame_obj.frame_id,
+                    frame=frame_obj.frame,
+                    telemetry=matched_telemetry,
+                    timestamp=frame_obj.timestamp,
+                    original_wh=frame_obj.original_wh,
+                )
+
+                # Output to all queues (all or none = discard frame)
+                self._output_to_all_queues(combined_obj, backoff=self.queue_put_backoff)
+
         except Exception as e:
-                logger.error(f"Failed to put termination signal in one or more queues: {e}")
-        
-        logger.info("FrameTelemetryCombiner process finished")
+            logger.critical(f"An unexpected critical error happened in the frame-telemetry combiner process: {e}")
+            self.error_event.set()
+            logger.warning("Error event set: force-stopping the application")
+
+        finally:
+            # log process conclusion
+            logger.info(
+                "FrameTelemetryCombiner process stopped gracefully. "
+                f"Poison pill received: {poison_pill_received}. "
+                f"Error event: {self.error_event.is_set()}."
+            )
+            self.work_finished.set()
+
+
+
+if __name__ == "__main__":
+
+    import numpy as np
+    import random
+    from src.shared.processes.consumer import Consumer
+    from src.shared.processes.producer import Producer
+
+    VSLOW = 1
+    SLOW = 10
+    FAST = 50
+    REAL = 30
+    FREAL = 40
+
+    QUEUE_MAX = 3
+
+    def generate_frame_queue_object():
+        ts = time.time()
+        return FrameQueueObject(
+            frame_id=int(ts*100),
+            frame=np.random.randint(0, 256, size=(720, 1280, 3), dtype=np.uint8),
+            timestamp=ts,
+            original_wh=(1920, 1080),
+        )
+
+    def generate_telemetry_object():
+        return TelemetryQueueObject(
+            telemetry={
+                "latitude": random.uniform(-90.0, 90.0),       # degrees
+                "longitude": random.uniform(-180.0, 180.0),    # degrees
+                "rel_alt": random.uniform(0.0, 100.0),         # meters
+                "gb_yaw": random.uniform(0.0, 360.0),          # degrees
+            },
+            timestamp=time.time()
+        )
+
+    frame_queue = mp.Queue(maxsize=QUEUE_MAX)
+    telemetry_queue = mp.Queue(maxsize=QUEUE_MAX*10)
+    stop_event = mp.Event()
+    error_event = mp.Event()
+
+    out1 = mp.Queue(maxsize=QUEUE_MAX)
+    out2 = mp.Queue(maxsize=QUEUE_MAX)
+    out3 = mp.Queue(maxsize=QUEUE_MAX)
+    out_queues = [out1, out2, out3]
+
+    stream_reader = Producer(frame_queue, error_event, generate_frame_queue_object, frequency_hz=FREAL)
+    stream_reader.stop_with_poison = False
+    
+    telemetry_reader = Producer(telemetry_queue,error_event, generate_telemetry_object, frequency_hz=SLOW)
+    telemetry_reader.stop_with_poison = False   # telemetry reader without giving notice, it ismply stops and puts noting on output queue
+
+    consumer1 = Consumer(out1, error_event, frequency_hz=FAST)
+    consumer2 = Consumer(out2, error_event, frequency_hz=FAST)
+    consumer3 = Consumer(out3, error_event, frequency_hz=FAST)
+
+    combiner = FrameTelemetryCombiner(frame_queue, telemetry_queue, out_queues, error_event)
+
+    print("CONSUMERS STARTED")
+    consumer3.start()
+    consumer2.start()
+    consumer1.start()
+
+    time.sleep(3)
+
+    print("COMBINER STARTED")
+    combiner.start()
+
+    time.sleep(3)
+
+    print("READERS STARTED")
+    stream_reader.start()
+    telemetry_reader.start()
+
+    time.sleep(3)
+
+    # stop without telling via posion pill nor error event
+    print("TELEMETRY STOPPED")
+    telemetry_reader.stop()
+
+    time.sleep(3)
+
+    # stop without telling via posion pill nor error event
+    print("VIDEO STOPPED")
+    stream_reader.stop()
+
+    time.sleep(1)
+
+    print("POISON PILL")
+    frame_queue.put(POISON_PILL)    # option1
+    #print("ERROR EVENT")
+    #error_event.set()              # option2
+
+    processes = [stream_reader, telemetry_reader] + [combiner] + [consumer1, consumer2, consumer3]
+
+    while True:
+
+        # Check if everyone has finished their logic
+        all_finished = all(p.work_finished.is_set() for p in processes)
+
+        # Check if an error occurred anywhere
+        error_occurred = error_event.is_set()
+
+        if all_finished or error_occurred:
+            if error_occurred:
+                print("[Main] Error detected. Terminating chain.")
+            else:
+                print("[Main] All processes finished logic. Cleaning up.")
+            break
+
+        time.sleep(0.5)
+
+    print(f"[Main] Granting 5s for all processed to cleanly conclude their processing.")
+    time.sleep(5.0)
+    # The Sweep: Force everyone to join or die
+    for p in processes:
+        # If the logic is finished but the process is still 'alive',
+        # it is 100% stuck in the queue feeder thread.
+        if p.is_alive():
+            print(f"[Main] {p.name} is hanging in cleanup. Work Completed: {p.work_finished.is_set()}. Terminating.")
+            p.terminate()
+
+        p.join()
+        print(f"[Main] {p.name} joined.")

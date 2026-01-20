@@ -23,15 +23,21 @@ def preprocess_cli_args(args: Namespace) -> tuple[Path, Path]:
 
 
 def create_out_dir_structure(in_dir: Path, out_dir: Path):
-    (out_dir/"images").mkdir(exist_ok=False)
-    (out_dir/"labels").mkdir(exist_ok=False)
-    shutil.copy(in_dir/"classes.txt", out_dir/"classes.txt")
-    shutil.copy(in_dir/"notes.json", out_dir/"notes.json")
+    #(out_dir/"images").mkdir(exist_ok=False)
+    #(out_dir/"labels").mkdir(exist_ok=False)
+    #shutil.copy(in_dir/"classes.txt", out_dir/"classes.txt")
+    #shutil.copy(in_dir/"notes.json", out_dir/"notes.json")
+    (out_dir/"train"/"images").mkdir(exist_ok=False, parents=True)
+    (out_dir/"train"/"labels").mkdir(exist_ok=False, parents=True)
+    (out_dir/"val"/"images").mkdir(exist_ok=False, parents=True)
+    (out_dir/"val"/"labels").mkdir(exist_ok=False, parents=True)
+    (out_dir/"test"/"images").mkdir(exist_ok=False, parents=True)
+    (out_dir/"test"/"labels").mkdir(exist_ok=False, parents=True)
 
 
 def read_yolo_annotation(file_path: Path) -> tuple[np.ndarray, np.ndarray]:
     data = np.loadtxt(file_path)
-    print(data)
+    #print(data)
 
     # handle case no bounding boxes
     if data.size == 0:
@@ -169,27 +175,29 @@ def main():
     in_dir, out_dir = preprocess_cli_args(args)
     create_out_dir_structure(in_dir, out_dir)
 
-    original_images = in_dir/"images"
-    original_labels = in_dir/"labels"
+    for split in ["train", "val", "test"]:
 
-    target_images = out_dir/"images"
-    target_labels = out_dir/"labels"
+        original_images = in_dir/split/"images"
+        original_labels = in_dir/split/"labels"
 
-    for img_path in original_images.iterdir():
-        label_path = (original_labels/img_path.name).with_suffix(".txt")
-        print(f"processing {label_path}")
+        target_images = out_dir/split/"images"
+        target_labels = out_dir/split/"labels"
 
-        img = cv2.imread(str(img_path))
-        img_height, img_width = img.shape[:2]
+        for img_path in original_images.iterdir():
+            label_path = (original_labels/img_path.name).with_suffix(".txt")
+            print(f"processing {label_path}")
 
-        classes, bboxes = read_yolo_annotation(label_path)
-        xyxy_bboxes = xywhn2xyxy(bboxes, w=img_width, h=img_height)
+            img = cv2.imread(str(img_path))
+            img_height, img_width = img.shape[:2]
 
-        w_ranges = get_split_ranges(img_width, num_splits=4, split_dim=640)
-        h_ranges = get_split_ranges(img_height, num_splits=2, split_dim=640)
+            classes, bboxes = read_yolo_annotation(label_path)
+            xyxy_bboxes = xywhn2xyxy(bboxes, w=img_width, h=img_height)
 
-        save_image_crops(img, img_path, target_images, w_ranges, h_ranges)
-        save_labels_crops(classes, xyxy_bboxes, label_path, target_labels, w_ranges, h_ranges)
+            w_ranges = get_split_ranges(img_width, num_splits=4, split_dim=480)
+            h_ranges = get_split_ranges(img_height, num_splits=2, split_dim=480)
+
+            save_image_crops(img, img_path, target_images, w_ranges, h_ranges)
+            save_labels_crops(classes, xyxy_bboxes, label_path, target_labels, w_ranges, h_ranges)
 
 
 if __name__ == "__main__":
