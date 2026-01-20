@@ -2,7 +2,7 @@
 
 # str: Path to the model checkpoint file.
 # Specifies the .pt file for the model to be used during inference.
-model_checkpoint: 'checkpoints/danger_detection/detection_1920_1080_m.pt'
+model_checkpoint: 'checkpoints/danger_detection/detection_1280_720_yolo11m.pt'
 
 # str: Path to the tracker configuration file.
 # Specifies the .yaml file containing the tracker configuration.
@@ -11,7 +11,7 @@ tracker: 'configs/health_monitoring/botsort.yaml'
 # float: Confidence threshold for detection filtering.
 # Detections with a confidence score below this value will be discarded.
 # Range: (0.0, 1.0]
-conf: 0.2
+conf: 0.25
 
 # float: IoU threshold for Non-Maximum Suppression (NMS).
 # Helps reduce duplicate detections by suppressing overlapping boxes.

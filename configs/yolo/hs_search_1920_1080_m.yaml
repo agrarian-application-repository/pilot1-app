@@ -33,7 +33,7 @@ task: detect
 # Specifies the model file for training. Accepts a path to either a .pt pretrained model.
 # Type: str
 # Allowed values: Any valid file path
-model: /davinci-1/home/msarti/projects/AGRARIAN_PROJECT/AGRARIAN/yolo11x.pt
+model: /davinci-1/home/msarti/projects/AGRARIAN_PROJECT/AGRARIAN/yolo11m.pt
 
 # Path to the dataset configuration file (e.g., coco8.yaml). Contains dataset-specific parameters.
 # Type: str
@@ -88,7 +88,7 @@ cache: false
 # Specifies the computational device(s) for training: GPU, CPU, or MPS.
 # Type: int, str, or list
 # Allowed values: int >=0 ,list[int] >=0 , str in  ['cpu', 'mps']
-device: 2
+device: 0
 
 # Number of worker threads for data loading.
 # Type: int
@@ -104,7 +104,7 @@ project: experiments_agrarian_hs
 # Name of the training run. Used for creating a subdirectory within the project folder.
 # Type: str
 # Allowed values: Any valid string
-name: hs_search_1920_1080_x
+name: hs_search_1920_1080_m
 
 # If true, allows overwriting of an existing project/name directory.
 # Type: bool

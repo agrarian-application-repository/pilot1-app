@@ -1,6 +1,6 @@
 from ultralytics import YOLO
 
-import wandb
+# import wandb
 from src.configs.train import check_train_args
 from src.configs.utils import parse_config_file, read_yaml_config
 from src.logging.wandb_access import get_wandb_api_key, get_wandb_entity
@@ -13,7 +13,7 @@ def main():
     # Read YAML config file and transform it into a dict
     train_args = read_yaml_config(config_file_path)
 
-    train_args = check_train_args(train_args)
+    # train_args = check_train_args(train_args)
 
     print("PERFORMING TRAINING WITH THE FOLLOWING ARGUMENTS:")
     print(train_args, "\n")

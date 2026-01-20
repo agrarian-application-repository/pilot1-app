@@ -88,7 +88,7 @@ cache: false
 # Specifies the computational device(s) for training: GPU, CPU, or MPS.
 # Type: int, str, or list
 # Allowed values: int >=0 ,list[int] >=0 , str in  ['cpu', 'mps']
-device: 2
+device: 0
 
 # Number of worker threads for data loading.
 # Type: int
@@ -162,7 +162,7 @@ close_mosaic: 20
 # Resumes training from the last saved checkpoint.
 # Type: bool
 # Default: false
-resume: false
+resume: true
 
 # Enables Automatic Mixed Precision (AMP) training.
 # Type: bool

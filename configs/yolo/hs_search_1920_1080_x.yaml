@@ -33,12 +33,12 @@ task: detect
 # Specifies the model file for training. Accepts a path to either a .pt pretrained model.
 # Type: str
 # Allowed values: Any valid file path
-model: /davinci-1/home/msarti/projects/AGRARIAN_PROJECT/AGRARIAN/yolo11m.pt
+model: /davinci-1/home/msarti/projects/AGRARIAN_PROJECT/AGRARIAN/yolo11x.pt
 
 # Path to the dataset configuration file (e.g., coco8.yaml). Contains dataset-specific parameters.
 # Type: str
 # Allowed values: Any valid file path
-data: /archive/group/ai/datasets/AGRARIAN/manual_annotations/train_val_test_splitted_1280_720/data.yaml
+data: /archive/group/ai/datasets/AGRARIAN/manual_annotations/detection_final/data.yaml
 
 # Total number of training epochs. Each epoch represents a full pass over the entire dataset.
 # Type: int
@@ -61,13 +61,13 @@ patience: 20
 # Type: int/float
 # Default: 16
 # Allowed values: int >= 1 or int == -1 or float in (0.0, 1.0] 
-batch: 12
+batch: 6
 
 # Target image size for training. All images are resized to this dimension.
 # Type: int or list[int]
 # Default: 640
 # Allowed values: >= 32
-imgsz: 480
+imgsz: 640
 
 # Enables saving of training checkpoints and final model weights.
 # Type: bool
@@ -88,7 +88,7 @@ cache: false
 # Specifies the computational device(s) for training: GPU, CPU, or MPS.
 # Type: int, str, or list
 # Allowed values: int >=0 ,list[int] >=0 , str in  ['cpu', 'mps']
-device: 3
+device: 0
 
 # Number of worker threads for data loading.
 # Type: int
@@ -104,7 +104,7 @@ project: experiments_agrarian_hs
 # Name of the training run. Used for creating a subdirectory within the project folder.
 # Type: str
 # Allowed values: Any valid string
-name: hs_search_1280_720_m
+name: hs_search_1920_1080_x
 
 # If true, allows overwriting of an existing project/name directory.
 # Type: bool
@@ -162,7 +162,7 @@ close_mosaic: 20
 # Resumes training from the last saved checkpoint.
 # Type: bool
 # Default: false
-resume: false
+resume: true
 
 # Enables Automatic Mixed Precision (AMP) training.
 # Type: bool
