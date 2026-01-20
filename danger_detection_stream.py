@@ -24,9 +24,7 @@ from pathlib import Path
 
 from time import sleep
 
-
 import logging
-
 
 # ================================================================
 
@@ -38,11 +36,11 @@ if not logger.handlers:  # Avoid duplicate handlers
     logger.addHandler(video_handler)
     logger.setLevel(logging.INFO)
 
+
 # ================================================================
 
-    
-def main():
 
+def main():
     env_vars = preprocess_env_vars()
 
     print(env_vars)
@@ -52,8 +50,8 @@ def main():
 
     # DEM data is passed to the container as volume mapped into /app/dem/dem.tif,dem_mask.tif
     dem_path = Path("dem/dem.tif")
-    dem_mask_path=Path("dem/dem_mask.tif")
-    
+    dem_mask_path = Path("dem/dem_mask.tif")
+
     output_dir = Path(LOCAL_OUTPUT_DIR)
     output_dir.mkdir(exist_ok=True, parents=True)
 
@@ -70,11 +68,11 @@ def main():
     }
 
     drone_args = {
-        "focal_length_mm":env_vars["DRONE_TRUE_FOCAL_LEN_MM"],
-        "sensor_width_mm":env_vars["DRONE_SENSOR_WIDTH_MM"],
-        "sensor_height_mm":env_vars["DRONE_SENSOR_HEIGHT_MM"],
-        "sensor_width_pixels":env_vars["DRONE_SENSOR_WIDTH_PIXELS"],
-        "sensor_height_pixels":env_vars["DRONE_SENSOR_HEIGHT_PIXELS"],
+        "focal_length_mm": env_vars["DRONE_TRUE_FOCAL_LEN_MM"],
+        "sensor_width_mm": env_vars["DRONE_SENSOR_WIDTH_MM"],
+        "sensor_height_mm": env_vars["DRONE_SENSOR_HEIGHT_MM"],
+        "sensor_width_pixels": env_vars["DRONE_SENSOR_WIDTH_PIXELS"],
+        "sensor_height_pixels": env_vars["DRONE_SENSOR_HEIGHT_PIXELS"],
     }
 
     # ============== SETUP EVENTS ===================================
@@ -85,28 +83,27 @@ def main():
     # ============== SETUP QUEUES ===================================
 
     # LAYER 1 -> 2
-    frame_reader_out_queue =        mp.Queue(maxsize=env_vars["MAX_SIZE_FRAME_READER_OUT"])
-    telemetry_reader_out_queue =    mp.Queue(maxsize=env_vars["MAX_SIZE_TELEMETRY_READER_OUT"])
+    frame_reader_out_queue = mp.Queue(maxsize=env_vars["MAX_SIZE_FRAME_READER_OUT"])
+    telemetry_reader_out_queue = mp.Queue(maxsize=env_vars["MAX_SIZE_TELEMETRY_READER_OUT"])
     # LAYER 2 -> 3
-    detection_in_queue =            mp.Queue(maxsize=env_vars["MAX_SIZE_DETECTION_IN"])
-    segmentation_in_queue =         mp.Queue(maxsize=env_vars["MAX_SIZE_SEGMENTATION_IN"])
-    geo_in_queue =                  mp.Queue(maxsize=env_vars["MAX_SIZE_GEO_IN"])
-    models_in_queues =              [detection_in_queue, segmentation_in_queue, geo_in_queue]
+    detection_in_queue = mp.Queue(maxsize=env_vars["MAX_SIZE_DETECTION_IN"])
+    segmentation_in_queue = mp.Queue(maxsize=env_vars["MAX_SIZE_SEGMENTATION_IN"])
+    geo_in_queue = mp.Queue(maxsize=env_vars["MAX_SIZE_GEO_IN"])
+    models_in_queues = [detection_in_queue, segmentation_in_queue, geo_in_queue]
     # LAYER 3 -> 4
-    detection_results_queue =       mp.Queue(maxsize=env_vars["MAX_SIZE_DETECTION_RESULTS"])
-    segmentation_results_queue =    mp.Queue(maxsize=env_vars["MAX_SIZE_SEGMENTATION_RESULTS"])
-    geo_results_queue =             mp.Queue(maxsize=env_vars["MAX_SIZE_GEO_RESULTS"])
-    models_results_queues =         [detection_results_queue, segmentation_results_queue, geo_results_queue]
+    detection_results_queue = mp.Queue(maxsize=env_vars["MAX_SIZE_DETECTION_RESULTS"])
+    segmentation_results_queue = mp.Queue(maxsize=env_vars["MAX_SIZE_SEGMENTATION_RESULTS"])
+    geo_results_queue = mp.Queue(maxsize=env_vars["MAX_SIZE_GEO_RESULTS"])
+    models_results_queues = [detection_results_queue, segmentation_results_queue, geo_results_queue]
     # LAYER 4 -> 5
-    aligned_models_queue =          mp.Queue(maxsize=env_vars["MAX_SIZE_MODELS_ALIGNMENT_RESULTS"])
+    aligned_models_queue = mp.Queue(maxsize=env_vars["MAX_SIZE_MODELS_ALIGNMENT_RESULTS"])
     # LAYER 5 -> 6
     danger_detection_result_queue = mp.Queue(maxsize=env_vars["MAX_SIZE_DANGER_DETECTION_RESULT"])
     # LAYER 6 -> 7
-    video_stream_queue =            mp.Queue(maxsize=env_vars["MAX_SIZE_VIDEO_STREAM"])
-    notifications_stream_queue =    mp.Queue(maxsize=env_vars["MAX_SIZE_NOTIFICATIONS_STREAM"])
+    video_stream_queue = mp.Queue(maxsize=env_vars["MAX_SIZE_VIDEO_STREAM"])
+    notifications_stream_queue = mp.Queue(maxsize=env_vars["MAX_SIZE_NOTIFICATIONS_STREAM"])
     # LAYER 7 -> 8
-    video_storage_queue =           mp.Queue(maxsize=env_vars["MAX_SIZE_VIDEO_STORAGE"])
-
+    video_storage_queue = mp.Queue(maxsize=env_vars["MAX_SIZE_VIDEO_STORAGE"])
 
     # ============== INSTANTIATE PROCESSES ===================================
 
@@ -118,17 +115,17 @@ def main():
             stop_event=stop_event,
             error_event=error_event,
             video_stream_url=env_vars["VIDEO_STREAM_READER_URL"],
-            connect_open_timeout_s = env_vars["VIDEO_STREAM_READER_CONNECTION_OPEN_TIMEOUT_S"],
-            connect_retry_delay_s = env_vars["VIDEO_STREAM_READER_RECONNECT_DELAY"],
-            connect_max_consecutive_failures = env_vars["VIDEO_STREAM_READER_MAX_CONSECUTIVE_CONNECTION_FAILURES"],
-            frame_read_timeout_s = env_vars["VIDEO_STREAM_READER_FRAME_READ_TIMEOUT_S"],
-            frame_read_retry_delay_s = env_vars["VIDEO_STREAM_READER_FRAME_RETRY_DELAY"],
-            frame_read_max_consecutive_failures = env_vars["VIDEO_STREAM_READER_FRAME_MAX_CONSECUTIVE_FAILURES"],
-            buffer_size = env_vars["VIDEO_STREAM_READER_BUFFER_SIZE"],
-            expected_aspect_ratio = VIDEO_STREAM_READER_EXPECTED_ASPECT_RATIO,          # fixed
-            processing_shape = VIDEO_STREAM_READER_PROCESSING_SHAPE,                    # fixed
-            queue_out_put_timeout = env_vars["VIDEO_STREAM_READER_QUEUE_PUT_TIMEOUT"],
-            poison_pill_timeout = env_vars["POISON_PILL_TIMEOUT"],
+            connect_open_timeout_s=env_vars["VIDEO_STREAM_READER_CONNECTION_OPEN_TIMEOUT_S"],
+            connect_retry_delay_s=env_vars["VIDEO_STREAM_READER_RECONNECT_DELAY"],
+            connect_max_consecutive_failures=env_vars["VIDEO_STREAM_READER_MAX_CONSECUTIVE_CONNECTION_FAILURES"],
+            frame_read_timeout_s=env_vars["VIDEO_STREAM_READER_FRAME_READ_TIMEOUT_S"],
+            frame_read_retry_delay_s=env_vars["VIDEO_STREAM_READER_FRAME_RETRY_DELAY"],
+            frame_read_max_consecutive_failures=env_vars["VIDEO_STREAM_READER_FRAME_MAX_CONSECUTIVE_FAILURES"],
+            buffer_size=env_vars["VIDEO_STREAM_READER_BUFFER_SIZE"],
+            expected_aspect_ratio=VIDEO_STREAM_READER_EXPECTED_ASPECT_RATIO,  # fixed
+            processing_shape=VIDEO_STREAM_READER_PROCESSING_SHAPE,  # fixed
+            queue_out_put_timeout=env_vars["VIDEO_STREAM_READER_QUEUE_PUT_TIMEOUT"],
+            poison_pill_timeout=env_vars["POISON_PILL_TIMEOUT"],
         )
 
         # Create StreamTelemetryReader process
@@ -142,8 +139,8 @@ def main():
             username=env_vars["TELEMETRY_LISTENER_USERNAME"],
             password=env_vars["TELEMETRY_LISTENER_PASSWORD"],
             qos_level=env_vars["TELEMETRY_LISTENER_QOS_LEVEL"],
-            ca_certs_file_path=str(mqtt_certificates_dir),          # fixed
-            cert_validation=TELEMETRY_LISTENER_CERT_VALIDATION,     # fixed
+            ca_certs_file_path=str(mqtt_certificates_dir),  # fixed
+            cert_validation=TELEMETRY_LISTENER_CERT_VALIDATION,  # fixed
             max_msg_wait=env_vars["TELEMETRY_LISTENER_MSG_WAIT_TIMEOUT"],
             reconnection_delay=env_vars["TELEMETRY_LISTENER_RECONNECT_DELAY"],
             max_incoming_messages=env_vars["TELEMETRY_LISTENER_MAX_INCOMING_MESSAGES"],
@@ -207,8 +204,6 @@ def main():
             poison_pill_timeout=env_vars["POISON_PILL_TIMEOUT"],
         )
 
-
-
         # Create DangerIdentification process
         danger_identification_process = DangerDetectionWorker(
             input_queue=aligned_models_queue,
@@ -235,23 +230,6 @@ def main():
 
         # ---------------------------------
 
-        video_writer_process_cfg = {
-            "fps=env_vars("FPS", VIDEO_WRITER_FPS),
-            "get_frame_timeout=env_vars("VIDEO_WRITER_GET_FRAME_TIMEOUT", VIDEO_WRITER_GET_FRAME_TIMEOUT),
-            # -------- LOCAL SAVE -------------
-            "local_video_extension=env_vars("VIDEO_WRITER_FILE_TYPE_EXTENSION", VIDEO_WRITER_FILE_TYPE_EXTENSION),
-            "video_codec=env_vars("VIDEO_WRITER_CODEC", VIDEO_WRITER_CODEC),
-            # -------- STREAM MANAGER -------------
-            "stream_manager_queue_max_size=env_vars("VIDEO_OUT_STREAM_QUEUE_MAX_SIZE", MAX_SIZE_VIDEO_STREAM),
-            "stream_manager_queue_get_timeout=env_vars("VIDEO_OUT_STREAM_QUEUE_GET_TIMEOUT", VIDEO_OUT_STREAM_QUEUE_GET_TIMEOUT),
-            "stream_manager_ffmpeg_startup_timeout=env_vars("VIDEO_OUT_STREAM_FFMPEG_STARTUP_TIMEOUT", VIDEO_OUT_STREAM_FFMPEG_STARTUP_TIMEOUT),
-            "stream_manager_ffmpeg_shutdown_timeout=env_vars("VIDEO_OUT_STREAM_FFMPEG_SHUTDOWN_TIMEOUT", VIDEO_OUT_STREAM_FFMPEG_SHUTDOWN_TIMEOUT),
-            "stream_manager_startup_timeout=env_vars("VIDEO_OUT_STREAM_STARTUP_TIMEOUT", VIDEO_OUT_STREAM_STARTUP_TIMEOUT),
-            "stream_manager_shutdown_timeout=env_vars("VIDEO_OUT_STREAM_SHUTDOWN_TIMEOUT", VIDEO_OUT_STREAM_SHUTDOWN_TIMEOUT),
-            # -------- STORAGE_MANAGER ------------
-            "storage_manager_handoff_timeout=env_vars("VIDEO_WRITER_HANDOFF_TIMEOUT", VIDEO_WRITER_HANDOFF_TIMEOUT),
-        }
-
         # Create VideoStreamWriter process
         video_writer_process = VideoProducerProcess(
             input_queue=video_stream_queue,
@@ -259,17 +237,17 @@ def main():
             error_event=error_event,
             fps=env_vars["FPS"],
             poison_pill_timeout=env_vars["POISON_PILL_TIMEOUT"],
-            local_video_name=str(output_dir/ANNOTATED_VIDEO_NAME),      # fixed
-            video_codec=CODEC,                                          # fixed
+            local_video_name=str(output_dir / ANNOTATED_VIDEO_NAME),  # fixed
+            video_codec=CODEC,  # fixed
             media_server_url=env_vars["VIDEO_OUT_STREAM_URL"],
-            stream_manager_queue_max_size = env_vars["MAX_SIZE_VIDEO_STREAM"],
-            stream_manager_queue_get_timeout = env_vars["VIDEO_OUT_STREAM_QUEUE_GET_TIMEOUT"],
-            stream_manager_ffmpeg_startup_timeout = env_vars["VIDEO_OUT_STREAM_FFMPEG_STARTUP_TIMEOUT"],
-            stream_manager_ffmpeg_shutdown_timeout = env_vars["VIDEO_OUT_STREAM_FFMPEG_SHUTDOWN_TIMEOUT"],
-            stream_manager_startup_timeout = env_vars["VIDEO_OUT_STREAM_STARTUP_TIMEOUT"],
-            stream_manager_shutdown_timeout = env_vars["VIDEO_OUT_STREAM_SHUTDOWN_TIMEOUT"],
+            stream_manager_queue_max_size=env_vars["MAX_SIZE_VIDEO_STREAM"],
+            stream_manager_queue_get_timeout=env_vars["VIDEO_OUT_STREAM_QUEUE_GET_TIMEOUT"],
+            stream_manager_ffmpeg_startup_timeout=env_vars["VIDEO_OUT_STREAM_FFMPEG_STARTUP_TIMEOUT"],
+            stream_manager_ffmpeg_shutdown_timeout=env_vars["VIDEO_OUT_STREAM_FFMPEG_SHUTDOWN_TIMEOUT"],
+            stream_manager_startup_timeout=env_vars["VIDEO_OUT_STREAM_STARTUP_TIMEOUT"],
+            stream_manager_shutdown_timeout=env_vars["VIDEO_OUT_STREAM_SHUTDOWN_TIMEOUT"],
             # -------- STORAGE_MANAGER ------------
-            storage_manager_handoff_timeout = env_vars["VIDEO_WRITER_HANDOFF_TIMEOUT"],
+            storage_manager_handoff_timeout=env_vars["VIDEO_WRITER_HANDOFF_TIMEOUT"],
         )
 
         # ---------------------------------
@@ -281,9 +259,9 @@ def main():
             alerts_get_timeout=env_vars["ALERTS_QUEUE_GET_TIMEOUT"],
             alerts_max_consecutive_failures=env_vars["ALERTS_MAX_CONSECUTIVE_FAILURES"],
             alerts_jpeg_quality=env_vars["ALERTS_JPEG_COMPRESSION_QUALITY"],
-            log_file_path=str(output_dir/ALERTS_FILE_NAME),
+            log_file_path=str(output_dir / ALERTS_FILE_NAME),
             websocket_host=WEBSOCKET_HOST,  # fixed, runs locally
-            websocket_port=WEBRTC_PORT,     # fixed, uses tls
+            websocket_port=WEBRTC_PORT,  # fixed, uses tls
             ws_manager_ping_interval=env_vars["WS_MANAGER_PING_INTERVAL"],
             ws_manager_ping_timeout=env_vars["WS_MANAGER_PING_TIMEOUT"],
             ws_manager_broadcast_timeout=env_vars["WS_MANAGER_BROADCAST_TIMEOUT"],
@@ -293,11 +271,11 @@ def main():
             database_port=env_vars["DB_PORT"],
             database_username=env_vars["DB_USERNAME"],
             database_password=env_vars["DB_PASSWORD"],
-            db_manager_pool_size = env_vars["DB_MANAGER_POOL_SIZE"],
-            db_manager_max_overflow = env_vars["DB_MANAGER_MAX_OVERFLOW"],
-            db_manager_queue_get_timeout = env_vars["DB_MANAGER_QUEUE_WAIT_TIMEOUT"],
-            db_manager_thread_close_timeout = env_vars["DB_MANAGER_THREAD_CLOSE_TIMEOUT"],
-            db_manager_alerts_queue_size = env_vars["DB_MANAGER_QUEUE_SIZE"],
+            db_manager_pool_size=env_vars["DB_MANAGER_POOL_SIZE"],
+            db_manager_max_overflow=env_vars["DB_MANAGER_MAX_OVERFLOW"],
+            db_manager_queue_get_timeout=env_vars["DB_MANAGER_QUEUE_WAIT_TIMEOUT"],
+            db_manager_thread_close_timeout=env_vars["DB_MANAGER_THREAD_CLOSE_TIMEOUT"],
+            db_manager_alerts_queue_size=env_vars["DB_MANAGER_QUEUE_SIZE"],
         )
 
         # ---------------------------------
@@ -310,7 +288,7 @@ def main():
             max_retries=env_vars["VIDEO_OUT_STORE_MAX_UPLOAD_RETRIES"],
             retry_backoff=env_vars["VIDEO_OUT_STORE_RETRY_BACKOFF_TIME"],
         )
-    
+
     except Exception as e:
         logger.critical(f"Failed to instantiate one of the processes: {e}", exc_info=True)
         return
@@ -322,26 +300,26 @@ def main():
         # LAYER 8
         video_storage_process.start()
         sleep(1.0)
-        
+
         # LAYER 7
         notification_writer_process.start()
         sleep(1.0)
 
         video_writer_process.start()
         sleep(1.0)
-        
+
         # LAYER 6
         annotation_process.start()
         sleep(1.0)
-        
+
         # LAYER 5
         danger_identification_process.start()
         sleep(1.0)
-        
+
         # LAYER 4
         models_alignment_process.start()
         sleep(1.0)
-        
+
         # LAYER 3
         geo_process.start()
         sleep(1.0)
@@ -349,11 +327,11 @@ def main():
         sleep(1.0)
         detection_process.start()
         sleep(1.0)
-        
+
         # LAYER 2
         combiner_process.start()
         sleep(1.0)
-        
+
         # LAYER 1
         telemetry_reader_process.start()
         sleep(1.0)
@@ -362,9 +340,9 @@ def main():
 
     except Exception as e:
         logger.critical(f"Failed to start one of the processes: {e}.", exc_info=True)
-        return 
-    
-    # ============== JOIN PROCESSES (SEQUENTIAL ORDER) ===================================
+        return
+
+        # ============== JOIN PROCESSES (SEQUENTIAL ORDER) ===================================
 
     processes = [
         video_reader_process,
@@ -384,7 +362,7 @@ def main():
 
         # Check if everyone has finished their logic
         all_finished = all(p.work_finished.is_set() for p in processes)
-        
+
         # Check if an error occurred anywhere
         error_occurred = error_event.is_set()
 
@@ -399,7 +377,7 @@ def main():
 
     logger.info(f"Granting 5s for all processed to cleanly conclude their processing.")
     sleep(5.0)
-    
+
     # The Sweep: Force everyone to join or die
     for p in processes:
         # If the logic is finished but the process is still 'alive',
