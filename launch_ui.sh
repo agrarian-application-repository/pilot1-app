@@ -4,6 +4,14 @@
 
 # set -e  # Exit on any error
 
+# paths for docker build
+DOCKERFILE_PATH="./docker/ui/Dockerfile"
+DOCKERIGNORE_PATH="./docker/ui/.dockerignore"
+REQUIREMENTS_PATH="./docker/ui/requirements.txt"
+ROOT_DOCKERIGNORE_PATH="./.dockerignore"
+ROOT_REQUIREMENTS_PATH="./requirements.txt"
+
+
 # Default values
 IMAGE_NAME="agrarian-ui"
 CONTAINER_NAME="agrarian-ui"
@@ -108,12 +116,6 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
-
-DOCKERFILE_PATH="./docker/ui/Dockerfile"
-DOCKERIGNORE_PATH="./docker/ui/.dockerignore"
-REQUIREMENTS_PATH="./docker/ui/requirements.txt"
-ROOT_DOCKERIGNORE_PATH="./.dockerignore"
-ROOT_REQUIREMENTS_PATH="./requirements.txt"
 
 
 # Build image if requested

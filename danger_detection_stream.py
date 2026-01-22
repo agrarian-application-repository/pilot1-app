@@ -39,11 +39,18 @@ if not logger.handlers:  # Avoid duplicate handlers
 
 # ================================================================
 
-
 def main():
-    env_vars = preprocess_env_vars()
 
-    print(env_vars)
+    #for key, value in os.environ.items():
+    #    logger.info(f"{key}={value}")
+    
+    try:
+        env_vars = preprocess_env_vars()
+    except Exception as e:
+        logger.critical(f"Failed to process ENV variables {e}", exc_info=True)
+        exit(1)
+
+    logger.info(env_vars)
 
     detection_args = read_yaml_config("configs/danger_detection/detector.yaml")
     segmentation_args = read_yaml_config("configs/danger_detection/segmenter.yaml")
@@ -282,7 +289,7 @@ def main():
 
         video_storage_process = VideoPersistenceProcess(
             input_queue=video_storage_queue,
-            storage_url=env_vars["VIDEO_STORAGE_URL"],
+            storage_url=env_vars["VIDEO_OUT_STORE_URL"],
             delete_local_on_success=env_vars["VIDEO_OUT_STORE_DELETE_LOCAL_ON_SUCCESS"],
             queue_get_timeout=env_vars["VIDEO_OUT_STORE_QUEUE_GET_TIMEOUT"],
             max_retries=env_vars["VIDEO_OUT_STORE_MAX_UPLOAD_RETRIES"],
@@ -388,3 +395,7 @@ def main():
 
         p.join()
         logger.info(f"{p.name} joined.")
+
+
+if __name__ == "__main__":
+    main()

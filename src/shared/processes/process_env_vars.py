@@ -17,7 +17,7 @@ def fetch_env(key, default):
 
     # 1. Handle missing or empty environment variable
     if value is None or value.strip() == "":
-        return None if default is NOT_SPECIFIED else default
+        return None if default == NOT_SPECIFIED else default
 
     # 2. If default is NOT_SPECIFIED, we can't infer type, so return as string
     if default is NOT_SPECIFIED:
@@ -128,6 +128,7 @@ def preprocess_env_vars():
         "TELEMETRY_LISTENER_MAX_INCOMING_MESSAGES": fetch_env("TELEMETRY_LISTENER_MAX_INCOMING_MESSAGES", TELEMETRY_LISTENER_MAX_INCOMING_MESSAGES),
 
         # frame telemetry combiner
+        "FRAMETELCOMB_MAX_TELEM_BUFFER_SIZE": FRAMETELCOMB_MAX_TELEM_BUFFER_SIZE,
         "FRAMETELCOMB_MAX_TIME_DIFF": fetch_env("FRAMETELCOMB_MAX_TIME_DIFF", FRAMETELCOMB_MAX_TIME_DIFF),
         "FRAMETELCOMB_QUEUE_GET_TIMEOUT": fetch_env("FRAMETELCOMB_QUEUE_GET_TIMEOUT", FRAMETELCOMB_QUEUE_GET_TIMEOUT),
         "FRAMETELCOMB_QUEUE_PUT_MAX_RETRIES": fetch_env("FRAMETELCOMB_QUEUE_PUT_MAX_RETRIES", FRAMETELCOMB_QUEUE_PUT_MAX_RETRIES),
@@ -171,7 +172,9 @@ def preprocess_env_vars():
         "VIDEO_OUT_STREAM_USERNAME": fetch_env("VIDEO_OUT_STREAM_USERNAME", VIDEO_OUT_STREAM_USERNAME),
         "VIDEO_OUT_STREAM_PASSWORD": fetch_env("VIDEO_OUT_STREAM_PASSWORD", VIDEO_OUT_STREAM_PASSWORD),
         "VIDEO_OUT_STREAM_PROTOCOL": fetch_env("VIDEO_OUT_STREAM_PROTOCOL", VIDEO_OUT_STREAM_PROTOCOL),
+        "VIDEO_OUT_STREAM_HOST": fetch_env("VIDEO_OUT_STREAM_HOST", VIDEO_OUT_STREAM_HOST),
         "VIDEO_OUT_STREAM_PORT": fetch_env("VIDEO_OUT_STREAM_PORT", VIDEO_OUT_STREAM_PORT),
+        "VIDEO_OUT_STREAM_STREAM_KEY": fetch_env("VIDEO_OUT_STREAM_STREAM_KEY", VIDEO_OUT_STREAM_STREAM_KEY),
         "VIDEO_OUT_STREAM_QUEUE_GET_TIMEOUT": fetch_env("VIDEO_OUT_STREAM_QUEUE_GET_TIMEOUT", VIDEO_OUT_STREAM_QUEUE_GET_TIMEOUT),
         "VIDEO_OUT_STREAM_FFMPEG_STARTUP_TIMEOUT": fetch_env("VIDEO_OUT_STREAM_FFMPEG_STARTUP_TIMEOUT", VIDEO_OUT_STREAM_FFMPEG_STARTUP_TIMEOUT),
         "VIDEO_OUT_STREAM_FFMPEG_SHUTDOWN_TIMEOUT": fetch_env("VIDEO_OUT_STREAM_FFMPEG_SHUTDOWN_TIMEOUT", VIDEO_OUT_STREAM_FFMPEG_SHUTDOWN_TIMEOUT),
@@ -251,7 +254,7 @@ def preprocess_env_vars():
     # sensor_width_pixels/sensor_height_pixels MUST be equal to sensor_width_mm/sensor_height_mm!!!!
     physical_ratio = env_vars["DRONE_SENSOR_WIDTH_MM"] / env_vars["DRONE_SENSOR_HEIGHT_MM"]
     pixel_ratio = env_vars["DRONE_SENSOR_WIDTH_PIXELS"] / env_vars["DRONE_SENSOR_HEIGHT_PIXELS"]
-    if not math.isclose(physical_ratio, pixel_ratio, rel_tol=1e-5):
+    if not math.isclose(physical_ratio, pixel_ratio, rel_tol=1e-3):
         raise ValueError(
             f"Drone camera sensor aspect ratio mismatch! "
             f"Physical ({physical_ratio:.4f}) does not match "
@@ -300,15 +303,15 @@ def preprocess_env_vars():
 
     # CREATE URL
     env_vars["VIDEO_STREAM_READER_URL"] = None
-    protocol = f"{env_vars["VIDEO_STREAM_READER_PROTOCOL"]}://"
-    host_port_key = f"{env_vars["VIDEO_STREAM_READER_HOST"]}:{env_vars["VIDEO_STREAM_READER_PORT"]}/{env_vars["VIDEO_STREAM_READER_STREAM_KEY"]}"
+    protocol = f"{env_vars['VIDEO_STREAM_READER_PROTOCOL']}://"
+    host_port_key = f"{env_vars['VIDEO_STREAM_READER_HOST']}:{env_vars['VIDEO_STREAM_READER_PORT']}/{env_vars['VIDEO_STREAM_READER_STREAM_KEY']}"
     
     if (env_vars["VIDEO_STREAM_READER_PROTOCOL"] in [RTMPS, RTSPS]):
         # username and password must be provided for secure protocols
         if (env_vars["VIDEO_STREAM_READER_USERNAME"] is None or env_vars["VIDEO_STREAM_READER_PASSWORD"] is None):
-            raise ValueError(f"{env_vars["VIDEO_STREAM_READER_PROTOCOL"]} requires both username and password to be specified")
+            raise ValueError(f"{env_vars['VIDEO_STREAM_READER_PROTOCOL']} requires both username and password to be specified")
         else:
-            auth_prefix = f"{env_vars["VIDEO_STREAM_READER_USERNAME"]}:{env_vars["VIDEO_STREAM_READER_PASSWORD"]}@"
+            auth_prefix = f"{env_vars['VIDEO_STREAM_READER_USERNAME']}:{env_vars['VIDEO_STREAM_READER_PASSWORD']}@"
             env_vars["VIDEO_STREAM_READER_URL"] = f"{protocol}{auth_prefix}{host_port_key}"
     # and can be ignored otheriwse
     else:
@@ -369,7 +372,7 @@ def preprocess_env_vars():
     if (env_vars["TELEMETRY_LISTENER_PROTOCOL"] == MQTTS and (
         env_vars["TELEMETRY_LISTENER_USERNAME"] is None or 
         env_vars["TELEMETRY_LISTENER_PASSWORD"] is None)):
-        raise ValueError(f"{env_vars["TELEMETRY_LISTENER_PROTOCOL"]} requires both username and password to be specified")
+        raise ValueError(f"{env_vars['TELEMETRY_LISTENER_PROTOCOL']} requires both username and password to be specified")
     elif env_vars["TELEMETRY_LISTENER_PROTOCOL"] == MQTT:
         env_vars["TELEMETRY_LISTENER_USERNAME"] = None 
         env_vars["TELEMETRY_LISTENER_PASSWORD"] = None
@@ -530,15 +533,15 @@ def preprocess_env_vars():
     
     # CREATE URL
     env_vars["VIDEO_OUT_STREAM_URL"] = None
-    protocol = f"{env_vars["VIDEO_OUT_STREAM_PROTOCOL"]}://"
-    host_port_key = f"{env_vars["VIDEO_OUT_STREAM_HOST"]}:{env_vars["VIDEO_OUT_STREAM_PORT"]}/{env_vars["VIDEO_OUT_STREAM_STREAM_KEY"]}"
+    protocol = f"{env_vars['VIDEO_OUT_STREAM_PROTOCOL']}://"
+    host_port_key = f"{env_vars['VIDEO_OUT_STREAM_HOST']}:{env_vars['VIDEO_OUT_STREAM_PORT']}/{env_vars['VIDEO_OUT_STREAM_STREAM_KEY']}"
     
     if (env_vars["VIDEO_OUT_STREAM_PROTOCOL"] in [RTMPS]):
         # username and password must be provided for secure protocols
         if (env_vars["VIDEO_OUT_STREAM_USERNAME"] is None or env_vars["VIDEO_OUT_STREAM_PASSWORD"] is None):
-            raise ValueError(f"{env_vars["VIDEO_OUT_STREAM_PROTOCOL"]} requires both username and password to be specified")
+            raise ValueError(f"{env_vars['VIDEO_OUT_STREAM_PROTOCOL']} requires both username and password to be specified")
         else:
-            auth_prefix = f"{env_vars["VIDEO_OUT_STREAM_USERNAME"]}:{env_vars["VIDEO_OUT_STREAM_PASSWORD"]}@"
+            auth_prefix = f"{env_vars['VIDEO_OUT_STREAM_USERNAME']}:{env_vars['VIDEO_OUT_STREAM_PASSWORD']}@"
             env_vars["VIDEO_OUT_STREAM_URL"] = f"{protocol}{auth_prefix}{host_port_key}"
     # and can be ignored otheriwse
     else:

@@ -1,63 +1,38 @@
 #!/bin/bash
 
-# Danger detection Container Launch Script
+# Dnager Detection Container Launch Script
 
 # set -e  # Exit on any error
 
+# paths for docker build
+DOCKERFILE_PATH="./docker/danger_detection/Dockerfile"
+DOCKERIGNORE_PATH="./docker/danger_detection/.dockerignore"
+REQUIREMENTS_PATH="./docker/danger_detection/requirements.txt"
+ROOT_DOCKERIGNORE_PATH="./.dockerignore"
+ROOT_REQUIREMENTS_PATH="./requirements.txt"
+
 # Default values
-IMAGE_NAME="agrarian-danger-detection-stream"
-CONTAINER_NAME="agrarian-danger-detection-stream"
+IMAGE_NAME="agrarian-dd"
+CONTAINER_NAME="agrarian-dd"
+DETACHED="false"
+REMOVE_EXISTING="true"
+ENV_FILE="$(pwd)/docker/danger_detection/.env"
+NETWORK=""
+BUILD="false"
 
 DEM_PATH=""
 DEM_MASK_PATH=""
 
-# Algorithms configuration
-INPUT_CONFIG=""
-DRONE_CONFIG=""
-# OUTPUT_CONFIG=""  --> not provided by the user, use repo config
-# DETECTOR_CONFIG=""  --> not provided by the user, use repo config
-# SEGMENTER_CONFIG=""  --> not provided by the user, use repo config
-
-# Stream and network configuration variables with defaults
-STREAM_IP="mediamtx_server"
-STREAM_PORT="1935"
-STREAM_NAME="drone"
-TELEMETRY_IP="0.0.0.0"
-TELEMETRY_PORT="12345"
-ANNOTATIONS_IP="mediamtx_server"
-ANNOTATIONS_PORT="8554"
-ANNOTATIONS_NAME="annot"
-ALERTS_IP="10.91.222.62"
-ALERTS_PORT="54321"
-
-DETACHED="false"
-REMOVE_EXISTING="false"
-ENV_FILE=""
-NETWORK="agrarian-network"
-BUILD="false"
-
 # Help function
 show_help() {
     cat << EOF
-Agrarian Danger Detection Stream Container Launch Script
+Agrarian Danger Detection Container Launch Script
 
 Usage: $0 [OPTIONS]
 
 OPTIONS:
     -i, --image         NAME                    Docker image name (default: agrarian-danger-detection-stream)
     -n, --name          NAME                    Container name (default: agrarian-danger-detection-stream)
-    --dem               TIF                     DEM data
-    --dem_mask          TIF                     DEM mask data
-    --in_conf           YAML                    Input config file
-    --drone_conf        YAML                    Drone config file
-    
-    --stream_name       URL(NAME)               Name of the stream (default: drone)
-    --telemetry_ip      URL(IP)                 IP where to receive the telemetry packets (default: 0.0.0.0 - listen on all interfaces)
-    --telemetry_port    URL(PORT)               Port where to receive the UDP packets (exposed Dockerfile: 12345/udp)
-    --annotations_name  URL(NAME)               Name of the annotated stream (default: annot)
-    --alerts_ip         URL(IP)                 IP of the machine where to send the alerts TPC packets (default: 10.91.222.62)
-    --alerts_port       URL(PORT)               Port where to send the alerts TCP packets
-
     -d, --detached                              Run in detached mode
     -r, --remove                                Remove existing container if it exists
     -f, --env-file      FILE                    Load environment variables from file
@@ -65,6 +40,8 @@ OPTIONS:
     -b, --build                                 Build image before running
     -h, --help                                  Show this help message
 
+    --dem               TIF                     DEM data
+    --dem_mask          TIF                     DEM mask data
 EOF
 }
 
@@ -77,66 +54,6 @@ while [[ $# -gt 0 ]]; do
             ;;
         -n|--name)
             CONTAINER_NAME="$2"
-            shift 2
-            ;;
-        --dem)
-            DEM_PATH="$2"
-            if [[ -f "$DEM_PATH" ]] && [[ "$DEM_PATH" == *.tif ]]; then
-                shift 2
-            else
-                echo "Error: --dem must be an existing .tif file."
-                exit 1
-            fi
-            ;;
-        --dem_mask)
-            DEM_MASK_PATH="$2"
-            if [[ -f "$DEM_MASK_PATH" ]] && [[ "$DEM_MASK_PATH" == *.tif ]]; then
-                shift 2
-            else
-                echo "Error: --dem_mask must be an existing .tif file."
-                exit 1
-            fi
-            ;;
-        --in_conf)
-            INPUT_CONFIG="$2"
-            if [[ -f "$INPUT_CONFIG" ]] && [[ "$INPUT_CONFIG" == *.yaml ]]; then
-                shift 2
-            else
-                echo "Error: --in_conf requires an existing .yaml file."
-                exit 1
-            fi
-            ;;
-        --drone_conf)
-            DRONE_CONFIG="$2"
-            if [[ -f "$DRONE_CONFIG" ]] && [[ "$DRONE_CONFIG" == *.yaml ]]; then
-                shift 2
-            else
-                echo "Error: --drone_conf requires an existing .yaml file."
-                exit 1
-            fi
-            ;;
-        --stream_name)
-            STREAM_NAME="$2"
-            shift 2
-            ;;
-        --telemetry_ip)
-            TELEMETRY_IP="$2"
-            shift 2
-            ;;
-        --telemetry_port)
-            TELEMETRY_PORT="$2"
-            shift 2
-            ;;
-        --annotations_name)
-            ANNOTATIONS_NAME="$2"
-            shift 2
-            ;;
-        --alerts_ip)
-            ALERTS_IP="$2"
-            shift 2
-            ;;
-        --alerts_port)
-            ALERTS_PORT="$2"
             shift 2
             ;;
         -d|--detached)
@@ -163,6 +80,24 @@ while [[ $# -gt 0 ]]; do
             show_help
             exit 0
             ;;
+        --dem)
+            DEM_PATH="$2"
+            if [[ -f "$DEM_PATH" ]] && [[ "$DEM_PATH" == *.tif ]]; then
+                shift 2
+            else
+                echo "Error: --dem must be an existing .tif file."
+                exit 1
+            fi
+            ;;
+        --dem_mask)
+            DEM_MASK_PATH="$2"
+            if [[ -f "$DEM_MASK_PATH" ]] && [[ "$DEM_MASK_PATH" == *.tif ]]; then
+                shift 2
+            else
+                echo "Error: --dem_mask must be an existing .tif file."
+                exit 1
+            fi
+            ;;
         *)
             echo "Unknown option: $1"
             show_help
@@ -171,18 +106,19 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Check for mandatory arguments after parsing is complete.
-# This ensures all required options were provided.
-if [[ -z "$INPUT_CONFIG" || -z "$DRONE_CONFIG" ]]; then
-    echo "Error: Missing one or more required configuration files."
-    show_help
-    exit 1
-fi
-
 # Build image if requested
 if [[ "$BUILD" == "true" ]]; then
     echo "Building Docker image: $IMAGE_NAME"
-    docker build -f "./docker/danger_detection/Dockerfile" -t "$IMAGE_NAME" .
+    # copy .dockerignore to context root for build
+    cp "$DOCKERIGNORE_PATH" "$ROOT_DOCKERIGNORE_PATH"
+    # copy requirements.txt to context root for build
+    cp "$REQUIREMENTS_PATH" "$ROOT_REQUIREMENTS_PATH"
+    # build docker image
+    docker build -f "$DOCKERFILE_PATH" -t "$IMAGE_NAME" .
+    # remove .dockerignore copy from context root
+    rm "$ROOT_DOCKERIGNORE_PATH"
+    # remove requirements.txt copy from context root
+    rm "$ROOT_REQUIREMENTS_PATH"
 fi
 
 # Remove existing container if requested
@@ -210,16 +146,15 @@ else
     DOCKER_CMD="$DOCKER_CMD -it"
 fi
 
+# use gpus
 DOCKER_CMD="$DOCKER_CMD --gpus all"
 
 # Add container name
 DOCKER_CMD="$DOCKER_CMD --name $CONTAINER_NAME"
 
-# Add port mappings (omit RTMP port 1935  and RTSP, internal networking handles them)
-DOCKER_CMD="$DOCKER_CMD -p $TELEMETRY_PORT:12345/udp"
-# port 54321/tcp because only the receiver needs port mapping, here the application is sending TCP packets
-# port 1935 (RTMP) omitted because it is mapped by the media server
-# port 8554/tcp and 8554/udp omitted because communication with media server handled internally through the docker network
+# Add port mappings
+# port 443 to allow Websocket requiest from UI
+DOCKER_CMD="$DOCKER_CMD -p 443:443"
 
 # Add network if specified
 if [[ -n "$NETWORK" ]]; then
@@ -227,16 +162,8 @@ if [[ -n "$NETWORK" ]]; then
 fi
 
 # Add environment variables
-DOCKER_CMD="$DOCKER_CMD -e STREAM_IP=$STREAM_IP"
-DOCKER_CMD="$DOCKER_CMD -e STREAM_PORT=$STREAM_PORT"
-DOCKER_CMD="$DOCKER_CMD -e STREAM_NAME=$STREAM_NAME"
-DOCKER_CMD="$DOCKER_CMD -e TELEMETRY_IP=$TELEMETRY_IP"
-DOCKER_CMD="$DOCKER_CMD -e TELEMETRY_PORT=$TELEMETRY_PORT"
-DOCKER_CMD="$DOCKER_CMD -e ANNOTATIONS_IP=$ANNOTATIONS_IP"
-DOCKER_CMD="$DOCKER_CMD -e ANNOTATIONS_PORT=$ANNOTATIONS_PORT"
-DOCKER_CMD="$DOCKER_CMD -e ANNOTATIONS_NAME=$ANNOTATIONS_NAME"
-DOCKER_CMD="$DOCKER_CMD -e ALERTS_IP=$ALERTS_IP"
-DOCKER_CMD="$DOCKER_CMD -e ALERTS_PORT=$ALERTS_PORT"
+# ...
+# skip, use file
 
 # Map to local logs folder for debugging
 DOCKER_CMD="$DOCKER_CMD -v $(pwd)/logs:/app/logs"
@@ -255,11 +182,8 @@ if [[ -n "$DEM_MASK_PATH" ]]; then
 fi
 
 # Add config files via volume mapping
-DOCKER_CMD="$DOCKER_CMD -v $(pwd)/$INPUT_CONFIG:/app/configs/danger_detection/input.yaml"
-DOCKER_CMD="$DOCKER_CMD -v $(pwd)/$DRONE_CONFIG:/app/configs/drone_specs.yaml"
 DOCKER_CMD="$DOCKER_CMD -v $(pwd)/configs/danger_detection/detector.yaml:/app/configs/danger_detection/detector.yaml"
 DOCKER_CMD="$DOCKER_CMD -v $(pwd)/configs/danger_detection/segmenter.yaml:/app/configs/danger_detection/segmenter.yaml"
-DOCKER_CMD="$DOCKER_CMD -v $(pwd)/configs/danger_detection/output.yaml:/app/configs/danger_detection/output.yaml"
 
 # Add env file if specified
 if [[ -n "$ENV_FILE" ]]; then
@@ -283,24 +207,6 @@ echo "Container Name:       $CONTAINER_NAME"
 echo "Detached Mode:        $DETACHED"
 echo "Network:              ${NETWORK:-default}"
 echo "Environment File:     ${ENV_FILE:-none}"
-echo ""
-echo "Stream Configuration:"
-echo "  Input Stream IP:    $STREAM_IP"
-echo "  Input Stream Port:  $STREAM_PORT"
-echo "  Stream Name:        $STREAM_NAME"
-echo ""
-echo "Telemetry Configuration:"
-echo "  Telemetry IP:       $TELEMETRY_IP"
-echo "  Telemetry Port:     $TELEMETRY_PORT"
-echo ""
-echo "Annotations Configuration:"
-echo "  Annotations IP:     $ANNOTATIONS_IP"
-echo "  Annotations Port:   $ANNOTATIONS_PORT"
-echo "  Annotations Name:   $ANNOTATIONS_NAME"
-echo ""
-echo "Alerts Configuration:"
-echo "  Alerts IP:          $ALERTS_IP"
-echo "  Alerts Port:        $ALERTS_PORT"
 echo "======================================================"
 
 # Ask for confirmation unless in detached mode
@@ -321,4 +227,5 @@ echo ""
 # exec $DOCKER_CMD
 $DOCKER_CMD
 
-# source launch_danger_detection.sh -b -r --in_conf configs/danger_detection/input.yaml --drone_conf configs/drone_specs.yaml
+# source launch_danger_detection.sh -r
+# source launch_danger_detection.sh -b -r

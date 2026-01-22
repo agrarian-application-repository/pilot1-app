@@ -63,6 +63,7 @@ src/*/
 !checkpoints/health_monitoring/
 !configs/health_monitoring/
 !logs/health_monitoring/
+!src/configs/
 !src/health_monitoring/
 !src/shared/
 

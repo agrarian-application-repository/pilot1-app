@@ -59,7 +59,3 @@ except KeyboardInterrupt:
     print("\nStopping simulation...")
     client.loop_stop()
     client.disconnect()
-
-#Once the script is running, you can "listen" to the traffic inside the Docker container to verify the messages are arriving:
-#docker exec -it mosquitto mosquitto_sub -u your_username -P your_password -t "telemetry/#" -v
-#docker exec -it mosquitto mosquitto_sub -t "telemetry/#" -v

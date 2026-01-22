@@ -152,7 +152,7 @@ class StreamVideoReader(mp.Process):
                     cap = self._setup_capture()
                     # Manually trigger the exception if the connection isn't actually "live"
                     if cap is None or not cap.isOpened():
-                        raise ConnectionError(f"VideoCapture opened but is not functional for {self.video_stream_url}")
+                        raise ConnectionError(f"VideoCapture is either not open or not functional for {self.video_stream_url}")
                     logger.info("VideoCapture Object setup complete and stream is open")
                     consecutive_connection_failures = 0 # Reset on success
                 
