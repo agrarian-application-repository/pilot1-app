@@ -24,9 +24,11 @@ conf: 0.25
 # Range: (0.0, 1.0]
 iou: 0.5
 
+rect: true
+
 # bool: Enable half-precision (FP16) inference.
 # Can increase inference speed on supported GPUs with minimal accuracy loss.
-half: false
+half: true
 
 # int or str: Device to be used for evaluation.
 # Allows selection between CPU and GPU resources.

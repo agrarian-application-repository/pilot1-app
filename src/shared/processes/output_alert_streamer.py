@@ -55,6 +55,8 @@ class NotificationsStreamWriter(mp.Process):
             ws_manager_thread_close_timeout: float = WS_MANAGER_THREAD_CLOSE_TIMEOUT,
             # ------- DB manager parameters --------
             database_service: Optional[str] = None,
+            database_worker_name: Optional[str] = None,
+            database_worker_password: Optional[str] = None,
             database_host: Optional[str] = None,
             database_port: int = DB_PORT,
             database_username: str = "",
@@ -92,24 +94,21 @@ class NotificationsStreamWriter(mp.Process):
         # Initialize log file (placeholder, instantiated in run)
         self.log_file = None
 
-        # initialize database url
-        if database_username and database_password:
-            auth = f"{database_username}:{database_password}@"
-        elif database_username:
-            auth = f"{database_username}@"
-        else:
-            auth = ""
-
-        if database_service == POSTGRESQL:
-            self.database_url = f"postgresql://{auth}{database_host}:{database_port}/{DB_NAME}"
-        elif database_service == MYSQL:
-            self.database_url = f"mysql+pymysql://{auth}{database_host}:{database_port}/{DB_NAME}"
-        elif database_service == SQLITE:
-            self.database_url = f"sqlite:///{DB_NAME}"
-        else:
+        if not (database_worker_name and database_worker_password):
             self.database_url = None
+            logger.warning("DB worker credential not provided, cannot access the DB")
+        else:
+            auth = f"{database_worker_name}:{database_worker_password}@"
+            if database_service == POSTGRESQL:
+                self.database_url = f"postgresql://{auth}{database_host}:{database_port}/{DB_NAME}"
+            elif database_service == MYSQL:
+                self.database_url = f"mysql+pymysql://{auth}{database_host}:{database_port}/{DB_NAME}"
+            elif database_service == SQLITE:
+                self.database_url = f"sqlite:///{DB_NAME}"
+            else:
+                self.database_url = None
+                logger.warning(f"DB SERVICE requested {database_service} is not available, cannot access the DB")
 
-        
         self.db_username = database_username
         self.db_password = database_password
         self.db_manager = None
@@ -373,7 +372,7 @@ class NotificationsStreamWriter(mp.Process):
                 try:
                     # if the alert being processed is the poison pill,
                     # break out of the loop to complete shutdown the process
-                    if alert == POISON_PILL:
+                    if isinstance(alert, str) and alert == POISON_PILL:
                         poison_pill_received = True
                         break
 

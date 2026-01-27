@@ -2,7 +2,7 @@
 
 # Set up the RTMP server details (where FFmpeg will push the stream to)
 # Note: The stream key 'stream' is appended to the URL
-rtmp_stream_url="rtmp://0.0.0.0:1935/annot"
+rtmp_stream_url="rtmp://0.0.0.0:1935/drone"
 
 echo "Starting RTMP stream to: $rtmp_stream_url"
 echo "Make sure your RTMP server is running on port 1935"
@@ -17,7 +17,7 @@ while true; do
     ffmpeg \
       -re \
       -stream_loop -1 \
-      -i /home/simone/projects/AGRARIAN/simulation/output.mp4 \
+      -i /home/simone/Desktop/DJI_20241024104935_0008_D.MP4 \
       -c:v libx264 \
       -preset veryfast \
       -tune zerolatency \

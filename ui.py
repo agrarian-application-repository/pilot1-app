@@ -11,7 +11,7 @@ from src.ui.video_player import get_video_player
 # ================================================================
 # Logging Configuration
 # ================================================================
-log_path = "./logs/ui/ui.log"
+log_path = "./logs/ui.log"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -32,7 +32,7 @@ WEBRTC_STREAM_NAME = os.getenv("WEBRTC_STREAM_NAME", "annot")
 WEBRTC_STUN_SERVER = os.getenv("WEBRTC_STUN_SERVER", "stun:stun.l.google.com:19302")
 
 WEBSOCKET_HOST = os.getenv("WEBSOCKET_HOST", "0.0.0.0")
-WEBSOCKET_PORT = int(os.getenv("WEBSOCKET_PORT", 443))
+WEBSOCKET_PORT = int(os.getenv("WEBSOCKET_PORT", 8443))
 WEBSOCKET_RECONNECTION_DELAY = int(os.getenv("WEBSOCKET_RECONNECTION_DELAY", 5))
 WEBSOCKET_PING_INTERVAL = int(os.getenv("WEBSOCKET_PING_INTERVAL", 30))
 WEBSOCKET_PING_TIMEOUT = int(os.getenv("WEBSOCKET_PING_TIMEOUT", 10))
@@ -137,6 +137,7 @@ def process_alerts():
                     st.image(
                         alert['image'],
                         use_container_width=True,
+                        #width='stretch',
                         caption=f"Frame {alert['frame_id']} - {alert_local_time}"
                     )
                 
@@ -161,8 +162,7 @@ def update_metrics():
         seconds_passed = int(current_time - st.session_state.last_alert_timestamp)
         logger.info(f"seconds passed: {seconds_passed}")
         minutes_passed = seconds_passed // 60
-        if minutes_passed > 0:
-            seconds_passed = seconds_passed % 60
+        seconds_passed = seconds_passed % 60
 
         # Convert time to local timestamp for displaying
         last_alert_local = (
@@ -174,10 +174,10 @@ def update_metrics():
 
         logger.info(f"last alert local time {last_alert_local}")
 
-        if seconds_passed < 60:
-            text = f"Alert received {seconds_passed} seconds ago ({last_alert_local})"
-        else:
+        if minutes_passed >= 1:
             text = f"Alert received {minutes_passed}:{seconds_passed} minutes ago ({last_alert_local})"
+        else:
+            text = f"Alert received {seconds_passed} seconds ago ({last_alert_local})"
 
         if seconds_passed > ALERTS_BOX_COLOR_TIMEDIFF:
             st.warning(text)  # yellow if older

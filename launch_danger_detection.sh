@@ -153,8 +153,8 @@ DOCKER_CMD="$DOCKER_CMD --gpus all"
 DOCKER_CMD="$DOCKER_CMD --name $CONTAINER_NAME"
 
 # Add port mappings
-# port 443 to allow Websocket requiest from UI
-DOCKER_CMD="$DOCKER_CMD -p 443:443"
+# port 8443 to allow Websocket requiest from UI
+DOCKER_CMD="$DOCKER_CMD -p 8443:8443"
 
 # Add network if specified
 if [[ -n "$NETWORK" ]]; then

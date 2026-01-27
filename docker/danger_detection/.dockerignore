@@ -51,6 +51,7 @@ pyscripts/
 shscripts/
 simulation/
 tests/
+postgres_data/
 
 # - exclude partially
 checkpoints/*/

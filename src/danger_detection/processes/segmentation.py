@@ -205,8 +205,8 @@ if __name__ == "__main__":
 
     out_queue = mp.Queue(maxsize=CONSUMER_QUEUE_MAX)
 
-    producer = Producer(frame_telemetry_queue, generate_frame_telemetry_queue_object, frequency_hz=FAST)
-    consumer = Consumer(out_queue, frequency_hz=VSLOW)
+    producer = Producer(frame_telemetry_queue, error_event, generate_frame_telemetry_queue_object, frequency_hz=FAST)
+    consumer = Consumer(out_queue, error_event, frequency_hz=VSLOW)
 
     segmenter = SegmentationWorker(frame_telemetry_queue, out_queue, error_event, segmentation_args)
 
@@ -241,7 +241,7 @@ if __name__ == "__main__":
     print("detector joined")
 
     print("CONSUMER STOPPED")
-    consumer.stop()
+    consumer.join()
     consumer.join()
     print("consumer joined")
 

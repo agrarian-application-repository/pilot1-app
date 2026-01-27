@@ -118,7 +118,7 @@ class VideoPersistenceProcess(mp.Process):
                     logger.debug("No upload tasks in queue, continuing to wait...")
                     continue
 
-                if message == POISON_PILL:
+                if isinstance(message, str) and message == POISON_PILL:
                     logger.info("Poison pill received. Shutting down Persistence Process.")
                     break
 

@@ -81,6 +81,11 @@ class VideoStreamManager:
         except Full:
             logger.warning("Stream queue full, dropping frame to maintain real-time sync.")
             return False
+    
+    @staticmethod
+    def log_stderr(pipe):
+        for line in iter(pipe.readline, b''):
+            logger.debug(f"FFmpeg: {line.decode().strip()}")
 
     def _stream_loop(self):
         """
@@ -123,6 +128,8 @@ class VideoStreamManager:
                 stderr=subprocess.PIPE,
                 bufsize=10 ** 7
             )
+            #stderr consumer
+            threading.Thread(target=self.log_stderr, args=(self._ffmpeg_process.stderr,), daemon=True).start()
 
             # --- STARTUP VERIFICATION ---
             # Brief sleep to allow FFmpeg to initialize/fail connection

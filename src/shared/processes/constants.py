@@ -32,7 +32,7 @@ ANNOTATED_VIDEO_NAME = 'annotated_video.mp4'
 CODEC = 'mp4v'
 
 # agrarian database name
-DB_NAME = "agrarian.db"
+DB_NAME = "agrarian_db"
 
 # -------------------------- DANGER DETECTION PARAMETERS --------------------------
 
@@ -97,16 +97,16 @@ AWS = "aws"
 GOOGLE = "google"
 
 HTTP_PORT = 80
-HTTPS_PORT = 443
+HTTPS_PORT = 8443
 MQTT_PORT = 1883
 MQTTS_PORT = 8883
 RTMP_PORT = 1935
-RTMPS_PORT = 443
+RTMPS_PORT = 8443
 RTSP_PORT = 8554
 RTSPS_PORT = 441
 WEBRTC_PORT = 8889
 WS_PORT = 80
-WSS_PORT = 443
+WSS_PORT = 8443
 WS_COMMON_PORT = 8765
 DB_COMMON_PORT = 5432
 
@@ -239,7 +239,7 @@ ALERTS_JPEG_COMPRESSION_QUALITY = 85
 
 # -------------------------- ALERTS WS --------------------------
 
-WEBSOCKET_HOST = "localhost"
+WEBSOCKET_HOST = "0.0.0.0"
 WEBSOCKET_PORT = HTTPS_PORT
 
 WS_MANAGER_BROADCAST_TIMEOUT = 2.0

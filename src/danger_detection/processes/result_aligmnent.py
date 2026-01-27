@@ -75,7 +75,7 @@ class ModelsAlignmentWorker(mp.Process):
 
                     # check whether any of the results is a poison pill
                     # if it is, propagate it and leave the loop
-                    if any(r == POISON_PILL for r in collected_results):
+                    if any((isinstance(r,str) and r == POISON_PILL) for r in collected_results):
                         poison_pill_received = True
                         logger.info("Found sentinel value on queue.")
                         try:

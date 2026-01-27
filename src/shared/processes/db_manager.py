@@ -177,6 +177,7 @@ class DatabaseManager:
             self.database_url,
             pool_pre_ping=True,                     # Checks if connection is alive before using it
             pool_size=self.pool_size,               # Number of permanent connections
+            connect_args={'connect_timeout': 5},    # 5 second limit to connect
             max_overflow=self.max_overflow,         # Allow extra connections during spikes
             echo=False,
         )
@@ -184,19 +185,40 @@ class DatabaseManager:
 
         SessionFactory = sessionmaker(bind=self._db_engine)
         with SessionFactory() as session:
-            # 1. Fetch user by email
-            user = session.query(User).filter_by(email=username).first()
-            # 2. check that the user exists and that the password matches
-            if not user or not user.verify_password(password):
-                err_msg = "Authentication failed: Invalid credentials."
-                logger.error(err_msg)
-                raise ValueError(err_msg)
+            try:
+                # 1. Fetch user by email
+                user = session.query(User).filter_by(email=username).first()
+                
+                #if user:
+                #    print(f"DEBUG: Provided password: {password}")
+                #    print(f"DEBUG: Stored hash in DB: {user.password}")
+                #    # Check the exact length: a standard bcrypt hash is exactly 60 characters
+                #    print(f"DEBUG: Hash length: {len(user.password)}") 
+                #    print(f"DEBUG: Hash repr: {repr(user.password)}") # This will show hidden \n or \r
+                #    # Manually try a check
+                #    is_match = bcrypt.checkpw(password.encode('utf-8'), user.password.encode('utf-8'))
+                #    print(f"DEBUG: Manual bcrypt check match: {is_match}")
 
-            # 3. Success - Create Flight
-            new_flight = Flight(user_id=user.user_id)
-            session.add(new_flight)
-            session.commit()
-            self.flight_id = new_flight.flight_id
+                # 2. check that the user exists and that the password matches
+                if not user or not user.verify_password(password):
+                    err_msg = "Authentication failed: Invalid credentials."
+                    logger.error(err_msg)
+                    raise ValueError(err_msg)
+                
+                logger.info("User credentials approved")
+
+                # 3. Success - Create Flight
+                new_flight = Flight(user_id=user.user_id)
+                session.add(new_flight)
+                session.commit()
+                self.flight_id = new_flight.flight_id
+                logger.info("New flight record created succesfully")
+            
+            except Exception as e:
+                session.rollback() # Undo changes if something crashes
+                err_msg = "unexpected failure during credentials check or flight record creation. Rolling back."
+                logger.error(err_msg)
+                raise e
 
         # Start the background worker thread
         self._stop_event.clear()
@@ -317,9 +339,9 @@ if __name__ == "__main__":
     N_ALERTS = 100
 
 
-    db_url="sqlite:///alerts.db"  # SQLite
-    # db_url="postgresql://user:password@localhost:5432/alerts_db"    # PostgreSQL
-    # db_url="mysql+pymysql://user:password@localhost:3306/alerts_db"    # MySQL
+    # db_url="sqlite:///alerts.db"  # SQLite
+    db_url="postgresql://app_manager:app_manager_pass@localhost:5432/agrarian_db"    # PostgreSQL
+    # db_url="mysql+pymysql://app_manager:app_manager_pass@localhost:3306/agrarian_db"    # MySQL
 
     email="testuser@testmail.com"
     plaintext_password="testpassword"
@@ -339,15 +361,15 @@ if __name__ == "__main__":
                 session.commit()
                 print(f"Test user {email} created with secure hash.")
 
-    def generate_db_alert_object():
+    def generate_db_alert_object(frame_id:int):
         ts = time()
         # Encode as JPEG
-        frame = np.zeros((1080, 1920, 3))
+        frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
         encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 85]
         _, buffer = cv2.imencode('.jpg', frame, encode_param)
         compressed_bytes = buffer.tobytes()
         return {
-                "frame_id": int(ts*100),
+                "frame_id": frame_id,
                 "alert_msg": random.choice(["road", "car", "slope"]),
                 "timestamp": ts,
                 "datetime": dtt.datetime.fromtimestamp(ts),
@@ -357,7 +379,7 @@ if __name__ == "__main__":
         }
     
 
-    create_test_db(db_url, email, plaintext_password)
+    # create_test_db(db_url, email, plaintext_password)
 
     db_manager = DatabaseManager(db_url)
     # db_manager.initialize(email, plaintext_password+"wrong")   # should fail
@@ -366,9 +388,9 @@ if __name__ == "__main__":
 
     next = perf_counter() + 1/speed
 
-    for _ in range(N_ALERTS):
+    for i in range(N_ALERTS):
 
-        alert = generate_db_alert_object()
+        alert = generate_db_alert_object(i)
         db_manager.save_alert(**alert)
 
         perf = perf_counter()

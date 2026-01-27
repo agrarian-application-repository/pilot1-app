@@ -20,7 +20,6 @@ def get_danger_intersect_colored_frames(shape):
     color_intersect_frame = np.full(shape, YELLOW, dtype=np.uint8)
     return color_danger_frame, color_intersect_frame
 
-
 def draw_safety_areas(
         annotated_frame,
         boxes_centers,
@@ -30,7 +29,6 @@ def draw_safety_areas(
     for box_center in boxes_centers:
         # Draw safety circle on annotated frame (green)
         cv2.circle(annotated_frame, box_center, safety_radius, GREEN, 2)
-
 
 def draw_detections(
         annotated_frame,
@@ -42,7 +40,6 @@ def draw_detections(
     for obj_class, box_corner1, box_corner2 in zip(classes, boxes_corner1, boxes_corner2):
         # Draw bounding box on annotated frame (blue sheep, purple goat), on top of safety circles
         cv2.rectangle(annotated_frame, box_corner1, box_corner2, CLASS_COLOR[obj_class], 2)
-
 
 def draw_dangerous_area(
         annotated_frame,

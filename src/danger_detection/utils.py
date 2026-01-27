@@ -398,13 +398,15 @@ def create_dangerous_intersections_masks(
     return combined_danger_mask_no_intersections, combined_intersections, danger_types
 
 
-def create_safety_mask(frame_height, frame_width, boxes_centers, safety_radius):
+def create_safety_mask(frame_height, frame_width, boxes_centers, safety_radius = -1):
     # Initialize the mask with zeros
     safety_mask = np.zeros((frame_height, frame_width), dtype=np.uint8)
 
-    # Draw circles on the mask
-    for box_center in boxes_centers:
-        cv2.circle(safety_mask, box_center, safety_radius, 1, cv2.FILLED)
+    # safety radius is 0 or negative when the radius cannot be determined, so the safety masks cannot be drawn
+    if safety_radius > 0:
+        # Draw circles on the mask
+        for box_center in boxes_centers:
+            cv2.circle(safety_mask, box_center, safety_radius, 1, cv2.FILLED)
 
     return safety_mask
 
