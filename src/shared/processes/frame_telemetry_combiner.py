@@ -197,7 +197,7 @@ class FrameTelemetryCombiner(mp.Process):
             True if successfully output to all queues, False otherwise
         """
 
-        if combined_obj == POISON_PILL:
+        if isinstance(combined_obj, str) and combined_obj == POISON_PILL:
             obj_type = "poison pill"
         else:
             obj_type = f"frame {combined_obj.frame_id}"
@@ -232,7 +232,7 @@ class FrameTelemetryCombiner(mp.Process):
         )
 
         # if it's the poison pill we were unable to propagate, set the error event to force-stop the application
-        if combined_obj == POISON_PILL:
+        if isinstance(combined_obj, str) and combined_obj == POISON_PILL:
             self.error_event.set()
             logger.error(
                 "Error event set: could not propagate poison pill to all models queues."
@@ -263,7 +263,7 @@ class FrameTelemetryCombiner(mp.Process):
 
                 # if the object found is the poison pill, it must be propagated to following processes via
                 # their input queues. Must ensure that all downstream processes receive the pill
-                if frame_obj == POISON_PILL:
+                if isinstance(frame_obj, str) and frame_obj == POISON_PILL:
                     logger.info("Found sentinel value on queue.")
                     poison_pill_received = True
                     # internally handles setting of error_event if unable to propagate the poison pill to all queues

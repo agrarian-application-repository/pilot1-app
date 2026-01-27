@@ -4,6 +4,14 @@
 
 # set -e  # Exit on any error
 
+# paths for docker build
+DOCKERFILE_PATH="./docker/ui/Dockerfile"
+DOCKERIGNORE_PATH="./docker/ui/.dockerignore"
+REQUIREMENTS_PATH="./docker/ui/requirements.txt"
+ROOT_DOCKERIGNORE_PATH="./.dockerignore"
+ROOT_REQUIREMENTS_PATH="./requirements.txt"
+
+
 # Default values
 IMAGE_NAME="agrarian-ui"
 CONTAINER_NAME="agrarian-ui"
@@ -20,7 +28,7 @@ WEBRTC_STREAM_NAME="annot"
 WEBRTC_STUN_SERVER="stun:stun.l.google.com:19302"
 
 WEBSOCKET_HOST="0.0.0.0"
-WEBSOCKET_PORT="443"
+WEBSOCKET_PORT="8443"
 WEBSOCKET_RECONNECTION_DELAY="5"
 WEBSOCKET_PING_INTERVAL="30"
 WEBSOCKET_PING_TIMEOUT="10"
@@ -108,12 +116,6 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
-
-DOCKERFILE_PATH="./docker/ui/Dockerfile"
-DOCKERIGNORE_PATH="./docker/ui/.dockerignore"
-REQUIREMENTS_PATH="./docker/ui/requirements.txt"
-ROOT_DOCKERIGNORE_PATH="./.dockerignore"
-ROOT_REQUIREMENTS_PATH="./requirements.txt"
 
 
 # Build image if requested

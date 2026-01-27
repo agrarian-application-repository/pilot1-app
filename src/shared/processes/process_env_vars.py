@@ -15,22 +15,24 @@ def fetch_env(key, default):
     """
     value = os.getenv(key)
 
-    # 1. Handle missing or empty environment variable
+    # Handle missing or empty environment variable
+    # when default is NOT_SPECIFIED, return None
+    # when default is not NOT_SPECIFIED, return default
     if value is None or value.strip() == "":
-        return None if default is NOT_SPECIFIED else default
-
-    # 2. If default is NOT_SPECIFIED, we can't infer type, so return as string
-    if default is NOT_SPECIFIED:
+        return None if default == NOT_SPECIFIED else default
+    
+    if value == NOT_SPECIFIED:
         return None
 
-    # 3. Cast the value to the type of the default
-    
     # Special handling for booleans (since bool("False") is True)
-    if isinstance(default, bool):
-        return value.lower() in ("true", "1", "yes", "y", "on")
-        
-    # General casting for int, float, str, etc.
-    return type(default)(value)
+    if default is not None:
+        if isinstance(default, bool):
+            return value.lower() in ("true", "1", "yes", "y", "on")
+        else:
+            # General casting for int, float, str, etc.
+            return type(default)(value)
+    else:
+        return value
 
 def is_valid_coord_list(input_string:str, min_couples:int=3):
     # Regex to find patterns like (number, number) of (longitude, latitude)
@@ -45,7 +47,7 @@ def is_valid_coord_list(input_string:str, min_couples:int=3):
     
     try:
         for lon_str, lat_str in matches:
-            lat, lon = float(lat_str), float(lon_str)
+            lon, lat = float(lon_str), float(lat_str)
             
             # Latitude must be between -90 and 90
             # Longitude must be between -180 and 180
@@ -55,6 +57,19 @@ def is_valid_coord_list(input_string:str, min_couples:int=3):
         return False
 
     return True
+
+def parse_coordinates_list(input_string: str) -> list[tuple[float, float]]:
+    """
+    Parses a string for (longitude, latitude) tuples and returns them as a list of floats.
+    Returns an empty list if no matches are found.
+    """
+    # Pattern matching (num, num) - matches the one in your validation function
+    coord_pattern = r'\(\s*([-+]?\d*\.?\d+)\s*,\s*([-+]?\d*\.?\d+)\s*\)'
+    
+    matches = re.findall(coord_pattern, input_string)
+    
+    # Convert string matches to a list of (float, float) tuples
+    return [(float(lon), float(lat)) for lon, lat in matches]
 
 
 def preprocess_env_vars():
@@ -68,7 +83,6 @@ def preprocess_env_vars():
         "ALERTS_COOLDOWN_SECONDS": fetch_env("ALERTS_COOLDOWN_SECONDS", ALERTS_COOLDOWN_SECONDS),
         "POISON_PILL_TIMEOUT": fetch_env("POISON_PILL_TIMEOUT", POISON_PILL_TIMEOUT),
         "SHUTDOWN_TIMEOUT": fetch_env("SHUTDOWN_TIMEOUT", SHUTDOWN_TIMEOUT),
-        "DB_NAME": fetch_env("DB_NAME", DB_NAME),
         
         # danger detection parameters
         "SAFETY_RADIUS_M": fetch_env("SAFETY_RADIUS_M", SAFETY_RADIUS_M),
@@ -128,6 +142,7 @@ def preprocess_env_vars():
         "TELEMETRY_LISTENER_MAX_INCOMING_MESSAGES": fetch_env("TELEMETRY_LISTENER_MAX_INCOMING_MESSAGES", TELEMETRY_LISTENER_MAX_INCOMING_MESSAGES),
 
         # frame telemetry combiner
+        "FRAMETELCOMB_MAX_TELEM_BUFFER_SIZE": FRAMETELCOMB_MAX_TELEM_BUFFER_SIZE,
         "FRAMETELCOMB_MAX_TIME_DIFF": fetch_env("FRAMETELCOMB_MAX_TIME_DIFF", FRAMETELCOMB_MAX_TIME_DIFF),
         "FRAMETELCOMB_QUEUE_GET_TIMEOUT": fetch_env("FRAMETELCOMB_QUEUE_GET_TIMEOUT", FRAMETELCOMB_QUEUE_GET_TIMEOUT),
         "FRAMETELCOMB_QUEUE_PUT_MAX_RETRIES": fetch_env("FRAMETELCOMB_QUEUE_PUT_MAX_RETRIES", FRAMETELCOMB_QUEUE_PUT_MAX_RETRIES),
@@ -153,6 +168,8 @@ def preprocess_env_vars():
         "WS_MANAGER_PING_TIMEOUT": fetch_env("WS_MANAGER_PING_TIMEOUT", WS_MANAGER_PING_TIMEOUT),
         "WS_MANAGER_THREAD_CLOSE_TIMEOUT": fetch_env("WS_MANAGER_THREAD_CLOSE_TIMEOUT", WS_MANAGER_THREAD_CLOSE_TIMEOUT),
 
+        "DB_WORKER_NAME": fetch_env("DB_WORKER_NAME", None),
+        "DB_WORKER_PASSWORD": fetch_env("DB_WORKER_PASSWORD", None),
         "DB_USERNAME": fetch_env("DB_USERNAME", DB_USERNAME),
         "DB_PASSWORD": fetch_env("DB_PASSWORD", DB_PASSWORD),
         "DB_HOST": fetch_env("DB_HOST", DB_HOST),
@@ -171,7 +188,9 @@ def preprocess_env_vars():
         "VIDEO_OUT_STREAM_USERNAME": fetch_env("VIDEO_OUT_STREAM_USERNAME", VIDEO_OUT_STREAM_USERNAME),
         "VIDEO_OUT_STREAM_PASSWORD": fetch_env("VIDEO_OUT_STREAM_PASSWORD", VIDEO_OUT_STREAM_PASSWORD),
         "VIDEO_OUT_STREAM_PROTOCOL": fetch_env("VIDEO_OUT_STREAM_PROTOCOL", VIDEO_OUT_STREAM_PROTOCOL),
+        "VIDEO_OUT_STREAM_HOST": fetch_env("VIDEO_OUT_STREAM_HOST", VIDEO_OUT_STREAM_HOST),
         "VIDEO_OUT_STREAM_PORT": fetch_env("VIDEO_OUT_STREAM_PORT", VIDEO_OUT_STREAM_PORT),
+        "VIDEO_OUT_STREAM_STREAM_KEY": fetch_env("VIDEO_OUT_STREAM_STREAM_KEY", VIDEO_OUT_STREAM_STREAM_KEY),
         "VIDEO_OUT_STREAM_QUEUE_GET_TIMEOUT": fetch_env("VIDEO_OUT_STREAM_QUEUE_GET_TIMEOUT", VIDEO_OUT_STREAM_QUEUE_GET_TIMEOUT),
         "VIDEO_OUT_STREAM_FFMPEG_STARTUP_TIMEOUT": fetch_env("VIDEO_OUT_STREAM_FFMPEG_STARTUP_TIMEOUT", VIDEO_OUT_STREAM_FFMPEG_STARTUP_TIMEOUT),
         "VIDEO_OUT_STREAM_FFMPEG_SHUTDOWN_TIMEOUT": fetch_env("VIDEO_OUT_STREAM_FFMPEG_SHUTDOWN_TIMEOUT", VIDEO_OUT_STREAM_FFMPEG_SHUTDOWN_TIMEOUT),
@@ -216,9 +235,11 @@ def preprocess_env_vars():
     
 
     # GEOFENCING_VERTEXES is either None or a list of (longitude, latitude) couples
-    if env_vars["GEOFENCING_VERTEXES"] is not None and not is_valid_coord_list(env_vars["GEOFENCING_VERTEXES"]):
-        raise ValueError("If specified, GEOFENCING_VERTEXES environment variable must be a string like (long1, lat1), (long2, lat2), (long3, lat3), ... . At least 3 points are expected")
-
+    if env_vars["GEOFENCING_VERTEXES"] is not None:
+        if not is_valid_coord_list(env_vars["GEOFENCING_VERTEXES"]):
+            raise ValueError("If specified, GEOFENCING_VERTEXES environment variable must be a string like '(long1, lat1), (long2, lat2), (long3, lat3), ...' . At least 3 points are expected")
+        else:
+            env_vars["GEOFENCING_VERTEXES"] = parse_coordinates_list(env_vars["GEOFENCING_VERTEXES"])
 
     # ---------------------- HEALTH MONIOTIRNG ------------
 
@@ -251,7 +272,7 @@ def preprocess_env_vars():
     # sensor_width_pixels/sensor_height_pixels MUST be equal to sensor_width_mm/sensor_height_mm!!!!
     physical_ratio = env_vars["DRONE_SENSOR_WIDTH_MM"] / env_vars["DRONE_SENSOR_HEIGHT_MM"]
     pixel_ratio = env_vars["DRONE_SENSOR_WIDTH_PIXELS"] / env_vars["DRONE_SENSOR_HEIGHT_PIXELS"]
-    if not math.isclose(physical_ratio, pixel_ratio, rel_tol=1e-5):
+    if not math.isclose(physical_ratio, pixel_ratio, rel_tol=1e-3):
         raise ValueError(
             f"Drone camera sensor aspect ratio mismatch! "
             f"Physical ({physical_ratio:.4f}) does not match "
@@ -292,23 +313,23 @@ def preprocess_env_vars():
         raise ValueError("VIDEO_STREAM_READER_PORT environment variable must be a positive integer.")
     
     # escape credentials
-    if env_vars["VIDEO_STREAM_READER_USERNAME"] is not None:
-        env_vars["VIDEO_STREAM_READER_USERNAME"] = quote(env_vars["VIDEO_STREAM_READER_USERNAME"])
-    if env_vars["VIDEO_STREAM_READER_PASSWORD"] is not None:
-        env_vars["VIDEO_STREAM_READER_PASSWORD"] = quote(env_vars["VIDEO_STREAM_READER_PASSWORD"])
+    # if env_vars["VIDEO_STREAM_READER_USERNAME"] is not None:
+    #     env_vars["VIDEO_STREAM_READER_USERNAME"] = quote(env_vars["VIDEO_STREAM_READER_USERNAME"])
+    # if env_vars["VIDEO_STREAM_READER_PASSWORD"] is not None:
+    #     env_vars["VIDEO_STREAM_READER_PASSWORD"] = quote(env_vars["VIDEO_STREAM_READER_PASSWORD"])
     
 
     # CREATE URL
     env_vars["VIDEO_STREAM_READER_URL"] = None
-    protocol = f"{env_vars["VIDEO_STREAM_READER_PROTOCOL"]}://"
-    host_port_key = f"{env_vars["VIDEO_STREAM_READER_HOST"]}:{env_vars["VIDEO_STREAM_READER_PORT"]}/{env_vars["VIDEO_STREAM_READER_STREAM_KEY"]}"
+    protocol = f"{env_vars['VIDEO_STREAM_READER_PROTOCOL']}://"
+    host_port_key = f"{env_vars['VIDEO_STREAM_READER_HOST']}:{env_vars['VIDEO_STREAM_READER_PORT']}/{env_vars['VIDEO_STREAM_READER_STREAM_KEY']}"
     
     if (env_vars["VIDEO_STREAM_READER_PROTOCOL"] in [RTMPS, RTSPS]):
         # username and password must be provided for secure protocols
         if (env_vars["VIDEO_STREAM_READER_USERNAME"] is None or env_vars["VIDEO_STREAM_READER_PASSWORD"] is None):
-            raise ValueError(f"{env_vars["VIDEO_STREAM_READER_PROTOCOL"]} requires both username and password to be specified")
+            raise ValueError(f"{env_vars['VIDEO_STREAM_READER_PROTOCOL']} requires both username and password to be specified")
         else:
-            auth_prefix = f"{env_vars["VIDEO_STREAM_READER_USERNAME"]}:{env_vars["VIDEO_STREAM_READER_PASSWORD"]}@"
+            auth_prefix = f"{env_vars['VIDEO_STREAM_READER_USERNAME']}:{env_vars['VIDEO_STREAM_READER_PASSWORD']}@"
             env_vars["VIDEO_STREAM_READER_URL"] = f"{protocol}{auth_prefix}{host_port_key}"
     # and can be ignored otheriwse
     else:
@@ -361,15 +382,15 @@ def preprocess_env_vars():
         raise ValueError("TELEMETRY_LISTENER_PORT environment variable must be a positive integer.")
     
     # escape credentials
-    if env_vars["TELEMETRY_LISTENER_USERNAME"] is not None:
-        env_vars["TELEMETRY_LISTENER_USERNAME"] = quote(env_vars["TELEMETRY_LISTENER_USERNAME"])
-    if env_vars["TELEMETRY_LISTENER_PASSWORD"] is not None:
-        env_vars["TELEMETRY_LISTENER_PASSWORD"] = quote(env_vars["TELEMETRY_LISTENER_PASSWORD"])
+    # if env_vars["TELEMETRY_LISTENER_USERNAME"] is not None:
+    #     env_vars["TELEMETRY_LISTENER_USERNAME"] = quote(env_vars["TELEMETRY_LISTENER_USERNAME"])
+    # if env_vars["TELEMETRY_LISTENER_PASSWORD"] is not None:
+    #     env_vars["TELEMETRY_LISTENER_PASSWORD"] = quote(env_vars["TELEMETRY_LISTENER_PASSWORD"])
     
     if (env_vars["TELEMETRY_LISTENER_PROTOCOL"] == MQTTS and (
         env_vars["TELEMETRY_LISTENER_USERNAME"] is None or 
         env_vars["TELEMETRY_LISTENER_PASSWORD"] is None)):
-        raise ValueError(f"{env_vars["TELEMETRY_LISTENER_PROTOCOL"]} requires both username and password to be specified")
+        raise ValueError(f"{env_vars['TELEMETRY_LISTENER_PROTOCOL']} requires both username and password to be specified")
     elif env_vars["TELEMETRY_LISTENER_PROTOCOL"] == MQTT:
         env_vars["TELEMETRY_LISTENER_USERNAME"] = None 
         env_vars["TELEMETRY_LISTENER_PASSWORD"] = None
@@ -473,10 +494,10 @@ def preprocess_env_vars():
         raise ValueError(f"DB_SERVICE environment variable must be one of {DB_ALLOWED_SERVICES}.")
     
     # escape credentials
-    if env_vars["DB_USERNAME"] is not None:
-        env_vars["DB_USERNAME"] = quote(env_vars["DB_USERNAME"])
-    if env_vars["DB_PASSWORD"] is not None:
-        env_vars["DB_PASSWORD"] = quote(env_vars["DB_PASSWORD"])
+    # if env_vars["DB_USERNAME"] is not None:
+    #     env_vars["DB_USERNAME"] = quote(env_vars["DB_USERNAME"])
+    # if env_vars["DB_PASSWORD"] is not None:
+    #     env_vars["DB_PASSWORD"] = quote(env_vars["DB_PASSWORD"])
 
     # db port must be a positive integer
     if not env_vars["DB_PORT"] > 0:
@@ -523,22 +544,22 @@ def preprocess_env_vars():
         raise ValueError("VIDEO_OUT_STREAM_PORT environment variable must be a positive integer.")
     
     # escape credentials
-    if env_vars["VIDEO_OUT_STREAM_USERNAME"] is not None:
-        env_vars["VIDEO_OUT_STREAM_USERNAME"] = quote(env_vars["VIDEO_OUT_STREAM_USERNAME"])
-    if env_vars["VIDEO_OUT_STREAM_PASSWORD"] is not None:
-        env_vars["VIDEO_OUT_STREAM_PASSWORD"] = quote(env_vars["VIDEO_OUT_STREAM_PASSWORD"])
+    # if env_vars["VIDEO_OUT_STREAM_USERNAME"] is not None:
+    #     env_vars["VIDEO_OUT_STREAM_USERNAME"] = quote(env_vars["VIDEO_OUT_STREAM_USERNAME"])
+    # if env_vars["VIDEO_OUT_STREAM_PASSWORD"] is not None:
+    #     env_vars["VIDEO_OUT_STREAM_PASSWORD"] = quote(env_vars["VIDEO_OUT_STREAM_PASSWORD"])
     
     # CREATE URL
     env_vars["VIDEO_OUT_STREAM_URL"] = None
-    protocol = f"{env_vars["VIDEO_OUT_STREAM_PROTOCOL"]}://"
-    host_port_key = f"{env_vars["VIDEO_OUT_STREAM_HOST"]}:{env_vars["VIDEO_OUT_STREAM_PORT"]}/{env_vars["VIDEO_OUT_STREAM_STREAM_KEY"]}"
+    protocol = f"{env_vars['VIDEO_OUT_STREAM_PROTOCOL']}://"
+    host_port_key = f"{env_vars['VIDEO_OUT_STREAM_HOST']}:{env_vars['VIDEO_OUT_STREAM_PORT']}/{env_vars['VIDEO_OUT_STREAM_STREAM_KEY']}"
     
     if (env_vars["VIDEO_OUT_STREAM_PROTOCOL"] in [RTMPS]):
         # username and password must be provided for secure protocols
         if (env_vars["VIDEO_OUT_STREAM_USERNAME"] is None or env_vars["VIDEO_OUT_STREAM_PASSWORD"] is None):
-            raise ValueError(f"{env_vars["VIDEO_OUT_STREAM_PROTOCOL"]} requires both username and password to be specified")
+            raise ValueError(f"{env_vars['VIDEO_OUT_STREAM_PROTOCOL']} requires both username and password to be specified")
         else:
-            auth_prefix = f"{env_vars["VIDEO_OUT_STREAM_USERNAME"]}:{env_vars["VIDEO_OUT_STREAM_PASSWORD"]}@"
+            auth_prefix = f"{env_vars['VIDEO_OUT_STREAM_USERNAME']}:{env_vars['VIDEO_OUT_STREAM_PASSWORD']}@"
             env_vars["VIDEO_OUT_STREAM_URL"] = f"{protocol}{auth_prefix}{host_port_key}"
     # and can be ignored otheriwse
     else:

@@ -118,9 +118,11 @@ class GeoWorker(mp.Process):
 
                 get_time = time() - iter_start
 
+                assert isinstance(frame_telemetry_object, CombinedFrameTelemetryQueueObject)
+
                 # setup frame dimensions and corners based on the first frame received
                 if frame_width is None and frame_height is None and frame_corners is None:
-                    frame_height, frame_width, _ = frame_telemetry_object.frame
+                    frame_height, frame_width, _ = frame_telemetry_object.frame.shape
                     frame_corners = np.array([
                         [0, 0],  # upper left  (0,   0   )
                         [frame_width - 1, 0],  # upper right (C-1, 0   )
@@ -146,6 +148,7 @@ class GeoWorker(mp.Process):
                     # OTHERWISE, continue processing based on telemetry info
                     # load frame flight data
                     frame_flight_data = frame_telemetry_object.telemetry
+                    logger.debug(f"received telemetry: {frame_flight_data}")
 
                     # Perform the pixels to meters conversion using the sensor resolution
                     meters_per_pixel = get_meters_per_pixel(
@@ -161,6 +164,7 @@ class GeoWorker(mp.Process):
 
                     # ============== COMPUTE SAFETY AREA RADIUS SIZE IN PIXELS  ===================================
                     safety_radius_pixels = int(self.input_args["safety_radius_m"] / meters_per_pixel)
+                    logger.debug(f"meters/pixels: {meters_per_pixel}, radius_m = {self.input_args['safety_radius_m']}, radius_px:{safety_radius_pixels}")
 
                     # ============== COMPUTE LOCATION (LNG,LAT) OF FRAME CORNERS  ===================================
                     # get the coordinates of the 4 corners of the frame.
@@ -289,7 +293,7 @@ class GeoWorker(mp.Process):
                 # iteration completed correctly, move on to process next frame
 
         except Exception as e:
-            logger.critical(f"An unexpected critical error happened in the Geo process: {e}")
+            logger.critical(f"An unexpected critical error happened in the Geo process: {e}", exc_info=True)
             self.error_event.set()
             logger.warning("Error event set: force-stopping the application")
 

@@ -51,6 +51,7 @@ pyscripts/
 shscripts/
 simulation/
 tests/
+postgres_data/
 
 # - exclude partially
 checkpoints/*/
@@ -62,6 +63,7 @@ src/*/
 !checkpoints/danger_detection/
 !configs/danger_detection/
 !logs/danger_detection/
+!src/configs/
 !src/danger_detection/
 !src/shared/
 

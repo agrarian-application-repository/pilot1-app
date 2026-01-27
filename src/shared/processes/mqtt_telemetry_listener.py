@@ -15,7 +15,7 @@ from typing import Optional
 logger = logging.getLogger("main.mqtt_telemetry_listener")
 
 if not logger.handlers:  # Avoid duplicate handlers
-    video_handler = logging.FileHandler('./mqtt_telemetry_listener.log', mode='w')
+    video_handler = logging.FileHandler('./logs/mqtt_telemetry_listener.log', mode='w')
     video_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(video_handler)
     logger.setLevel(logging.DEBUG)
@@ -196,7 +196,7 @@ class MqttCollectorProcess(mp.Process):
                 if not telemetry_key:
                     logger.warning(f"Received a message from an unexpected topic {topic}. Skipped.")
                     continue  # Ignore topics we don't map
-                self.telemetry_state[telemetry_key] = payload
+                self.telemetry_state[telemetry_key] = float(payload)
             except Exception as e:
                 logger.error(f"Error processing message from topic {topic}: {e}. Continuing to listen.")
                 continue

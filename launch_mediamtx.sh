@@ -11,7 +11,7 @@ docker run -d \
   -p "8554:8554/tcp" \
   -p "1935:1935/tcp" \
   -p "8889:8889/tcp" \
-  -v "$(pwd)/configs/mediamtx/my_mediamtx.yaml:/mediamtx.yml:ro" \
+  -v "$(pwd)/configs/mediamtx/mediamtx.yaml:/mediamtx.yml:ro" \
   bluenviron/mediamtx:latest /mediamtx.yml
 
 if [ $? -eq 0 ]; then

@@ -19,6 +19,10 @@ def create_onnx_segmentation_session(model_ckpt_path: str):
 
     # Optimized ONNX session creation with performance settings
     session_options = ort.SessionOptions()
+
+    #session_options.log_severity_level = 0 
+    #session_options.log_verbosity_level = 1
+
     session_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
     session_options.enable_cpu_mem_arena = True
     session_options.enable_mem_pattern = True

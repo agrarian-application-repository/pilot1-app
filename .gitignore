@@ -4,6 +4,7 @@ experiments_agrarian_hs/
 outputs/
 runs/
 wandb/
+data/
 
 # to do
 TODO.md

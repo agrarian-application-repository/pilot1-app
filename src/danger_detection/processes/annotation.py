@@ -43,7 +43,8 @@ def annotate_frame(
     color_intersect_frame: np.ndarray,
 ):
 
-    annotated_frame = frame.copy()  # copy of the original frame on which to draw
+    # annotated_frame = frame.copy()  # copy of the original frame on which to draw
+    annotated_frame = frame  # copy of the original frame on which to draw
 
     # draw safety circles
     if safety_radius_pixels > 0:
@@ -183,7 +184,7 @@ class AnnotationWorker(mp.Process):
                         color_danger_frame=color_danger_frame,
                         color_intersect_frame=color_intersect_frame,
                 )
-
+                
                 annotated_frame = cv2.resize(
                     src=annotated_frame,
                     dsize=previous_step_results.original_wh,    # (w,h)
@@ -198,7 +199,8 @@ class AnnotationWorker(mp.Process):
                 )
 
                 # Check if alert should be sent
-                cooldown_has_passed = (previous_step_results.timestamp - last_alert_received_timestamp) > self.cooldown
+                since_last_alert = (previous_step_results.timestamp - last_alert_received_timestamp)
+                cooldown_has_passed = since_last_alert > self.cooldown
                 alert_exist = len(previous_step_results.danger_types) > 0
 
                 send_alert = cooldown_has_passed and alert_exist
@@ -220,6 +222,7 @@ class AnnotationWorker(mp.Process):
                     if send_alert:
                         self.alerts_stream_queue.put(result, timeout=self.queue_put_timeout)
                         put_alert_consecutive_failures = 0
+                        logger.debug(f"Enqueued alert for notifying user. Since last alerts: {since_last_alert:.2f} seconds")
                 except Exception as e:
                     put_alert_failures += 1
                     put_alert_consecutive_failures += 1
@@ -243,6 +246,7 @@ class AnnotationWorker(mp.Process):
                 try:
                     self.video_stream_queue.put(annotated_frame, timeout=self.queue_put_timeout)
                     put_video_consecutive_failures = 0
+                    logger.debug("Enqueued alert for video streaming")
                 except Exception as e:
                     put_video_failures += 1
                     put_video_consecutive_failures += 1

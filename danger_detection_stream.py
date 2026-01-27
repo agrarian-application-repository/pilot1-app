@@ -39,11 +39,18 @@ if not logger.handlers:  # Avoid duplicate handlers
 
 # ================================================================
 
-
 def main():
-    env_vars = preprocess_env_vars()
 
-    print(env_vars)
+    # base_env_vars = {k:v for k,v in os.environ.items()}
+    # logger.info(base_env_vars)
+    
+    try:
+        env_vars = preprocess_env_vars()
+    except Exception as e:
+        logger.critical(f"Failed to process ENV variables {e}", exc_info=True)
+        exit(1)
+
+    # logger.info(env_vars)
 
     detection_args = read_yaml_config("configs/danger_detection/detector.yaml")
     segmentation_args = read_yaml_config("configs/danger_detection/segmenter.yaml")
@@ -68,7 +75,7 @@ def main():
     }
 
     drone_args = {
-        "focal_length_mm": env_vars["DRONE_TRUE_FOCAL_LEN_MM"],
+        "true_focal_len_mm": env_vars["DRONE_TRUE_FOCAL_LEN_MM"],
         "sensor_width_mm": env_vars["DRONE_SENSOR_WIDTH_MM"],
         "sensor_height_mm": env_vars["DRONE_SENSOR_HEIGHT_MM"],
         "sensor_width_pixels": env_vars["DRONE_SENSOR_WIDTH_PIXELS"],
@@ -261,12 +268,14 @@ def main():
             alerts_jpeg_quality=env_vars["ALERTS_JPEG_COMPRESSION_QUALITY"],
             log_file_path=str(output_dir / ALERTS_FILE_NAME),
             websocket_host=WEBSOCKET_HOST,  # fixed, runs locally
-            websocket_port=WEBRTC_PORT,  # fixed, uses tls
+            websocket_port=WEBSOCKET_PORT,  # fixed, uses tls
             ws_manager_ping_interval=env_vars["WS_MANAGER_PING_INTERVAL"],
             ws_manager_ping_timeout=env_vars["WS_MANAGER_PING_TIMEOUT"],
             ws_manager_broadcast_timeout=env_vars["WS_MANAGER_BROADCAST_TIMEOUT"],
             ws_manager_thread_close_timeout=env_vars["WS_MANAGER_THREAD_CLOSE_TIMEOUT"],
             database_service=env_vars["DB_SERVICE"],
+            database_worker_name=env_vars["DB_WORKER_NAME"],
+            database_worker_password=env_vars["DB_WORKER_PASSWORD"],
             database_host=env_vars["DB_HOST"],
             database_port=env_vars["DB_PORT"],
             database_username=env_vars["DB_USERNAME"],
@@ -282,7 +291,7 @@ def main():
 
         video_storage_process = VideoPersistenceProcess(
             input_queue=video_storage_queue,
-            storage_url=env_vars["VIDEO_STORAGE_URL"],
+            storage_url=env_vars["VIDEO_OUT_STORE_URL"],
             delete_local_on_success=env_vars["VIDEO_OUT_STORE_DELETE_LOCAL_ON_SUCCESS"],
             queue_get_timeout=env_vars["VIDEO_OUT_STORE_QUEUE_GET_TIMEOUT"],
             max_retries=env_vars["VIDEO_OUT_STORE_MAX_UPLOAD_RETRIES"],
@@ -358,22 +367,26 @@ def main():
         notification_writer_process
     ]
 
-    while True:
+    try:
+        while True:
 
-        # Check if everyone has finished their logic
-        all_finished = all(p.work_finished.is_set() for p in processes)
+            # Check if everyone has finished their logic
+            all_finished = all(p.work_finished.is_set() for p in processes)
 
-        # Check if an error occurred anywhere
-        error_occurred = error_event.is_set()
+            # Check if an error occurred anywhere
+            error_occurred = error_event.is_set()
 
-        if all_finished or error_occurred:
-            if error_occurred:
-                logger.error("Error detected. Terminating chain.")
-            else:
-                logger.info("All processes finished logic. Cleaning up.")
-            break
+            if all_finished or error_occurred:
+                if error_occurred:
+                    logger.error("Error detected. Terminating chain.")
+                else:
+                    logger.info("All processes finished logic. Cleaning up.")
+                break
 
-        sleep(0.5)
+            sleep(0.5)
+    except Exception as e:
+        error_event.set()
+        logger.critical(f"Unexpecter error in main process, set error event: {e}", exc_info=True)
 
     logger.info(f"Granting 5s for all processed to cleanly conclude their processing.")
     sleep(5.0)
@@ -388,3 +401,7 @@ def main():
 
         p.join()
         logger.info(f"{p.name} joined.")
+
+
+if __name__ == "__main__":
+    main()

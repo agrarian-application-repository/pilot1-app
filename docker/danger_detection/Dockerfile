@@ -13,9 +13,16 @@ RUN apt update && apt install -y \
     libsm6 \
     libxext6 \
     libxrender-dev \
+    libtbb-dev \
+    libjpeg-turbo8-dev \
+    libpng-dev \
+    libtiff-dev \
+    libgoogle-perftools-dev \
     libglib2.0-0 \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+ENV LD_PRELOAD="/usr/lib/x86_64-linux-gnu/libtcmalloc.so"
 
 # Set the working directory
 WORKDIR /app
@@ -95,7 +102,7 @@ ENV \
     ALERTS_MAX_CONSECUTIVE_FAILURES="5"\
     ALERTS_JPEG_COMPRESSION_QUALITY="85"\
     WEBSOCKET_HOST="localhost"\
-    WEBSOCKET_PORT="443"\
+    WEBSOCKET_PORT="8443"\
     WS_MANAGER_BROADCAST_TIMEOUT="2.0"\
     WS_MANAGER_PING_INTERVAL="5.0"\
     WS_MANAGER_PING_TIMEOUT="20.0"\
@@ -127,14 +134,14 @@ ENV \
     VIDEO_OUT_STORE_PASSWORD="not_specified"\
     VIDEO_OUT_STORE_HOST="0.0.0.0"\
     VIDEO_OUT_STORE_SERVICE="azure"\
-    VIDEO_OUT_STORE_PORT="443"\
+    VIDEO_OUT_STORE_PORT="8443"\
     VIDEO_OUT_STORE_DELETE_LOCAL_ON_SUCCESS="True"\
     VIDEO_OUT_STORE_QUEUE_GET_TIMEOUT="3.0"\
     VIDEO_OUT_STORE_MAX_UPLOAD_RETRIES="3"\
     VIDEO_OUT_STORE_RETRY_BACKOFF_TIME="5.0"
 
 # open https port for ui to connect to websocket server (alerts)
-EXPOSE 443
+EXPOSE 8443
 
 # Set entrypoint
 ENTRYPOINT ["python", "danger_detection_stream.py"]

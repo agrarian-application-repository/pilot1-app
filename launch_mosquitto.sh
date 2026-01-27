@@ -33,3 +33,11 @@ docker run -d \
 #  -v "$(pwd)/data/mosquitto:/mosquitto/data" \
 #  -v "$(pwd)/logs/mosquitto:/mosquitto/log" \
 #  eclipse-mosquitto:latest
+
+if [ $? -eq 0 ]; then
+    echo "Once the script is running, you can "listen" to the traffic inside the Docker container to verify the messages are arriving:"
+    echo "docker exec -it mosquitto mosquitto_sub [-u your_username] [-P your_password] -t "telemetry/#" -v"
+    echo "docker exec -it mosquitto mosquitto_sub -t "telemetry/#" -v"
+else
+    echo "Failed to start Mosquitto container."
+fi

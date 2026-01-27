@@ -42,11 +42,20 @@ print("Starting telemetry stream... Press Ctrl+C to stop.")
 try:
     while True:
         # Generate random data
+        """
         telemetry_data = {
             TOPICS["lat"]: round(random.uniform(-90, 90), 6),
             TOPICS["lon"]: round(random.uniform(-180, 180), 6),
             TOPICS["alt"]: round(random.uniform(0, 500), 2),
             TOPICS["yaw"]: round(random.uniform(0, 360), 2)
+        }
+        """
+
+        telemetry_data = {
+            TOPICS["lat"]: 35.427075,
+            TOPICS["lon"]: 24.174019,
+            TOPICS["alt"]: 27.531,
+            TOPICS["yaw"]: -35.4,
         }
 
         # Publish each topic
@@ -59,7 +68,3 @@ except KeyboardInterrupt:
     print("\nStopping simulation...")
     client.loop_stop()
     client.disconnect()
-
-#Once the script is running, you can "listen" to the traffic inside the Docker container to verify the messages are arriving:
-#docker exec -it mosquitto mosquitto_sub -u your_username -P your_password -t "telemetry/#" -v
-#docker exec -it mosquitto mosquitto_sub -t "telemetry/#" -v

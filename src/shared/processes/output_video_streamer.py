@@ -159,14 +159,14 @@ class VideoProducerProcess(mp.Process):
                     logger.info("Input queue empty. Continuing to wait for frames ... ")
                     continue
 
-                if msg == POISON_PILL:
+                if isinstance(msg, str) and msg == POISON_PILL:
                     logger.info("Poison pill received. Shutting down...")
                     break
 
                 self._process_frame(msg)
 
         except Exception as e:
-            logger.error(f"Critical error in worker: {e}")
+            logger.error(f"Critical error in worker: {e}", exc_info=True)
             self.error_event.set()
             logger.error("Error event set: force-stopping the application")
 
