@@ -96,22 +96,22 @@ tab 3
 source launch_mosquitto.sh && docker exec -it mosquitto mosquitto_sub -t "telemetry/#" -v
 ``` 
 
-tab 5
+tab 4
 ```
 source .venv/bin/activate && python3 simulation/telemetry.py
 ``` 
 
-tab 6
+tab 5
 ```
 source launch_postgres.sh
 ``` 
 
-tab 7
+tab 6
 ```
 source launch_danger_detection.sh -b -r
 ``` 
 
-tab8
+tab 7
 ```
 source launch_ui.sh --webrtc-host 172.17.0.1 --ws-host 172.17.0.1
 ``` 

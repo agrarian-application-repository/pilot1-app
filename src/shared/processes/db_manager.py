@@ -222,7 +222,7 @@ class DatabaseManager:
 
         # Start the background worker thread
         self._stop_event.clear()
-        self._worker_thread = threading.Thread(target=self._db_worker, daemon=False)
+        self._worker_thread = threading.Thread(target=self._db_worker, daemon=True)
         self._worker_thread.start()
         logger.info("Database manager and worker thread initialized")
 

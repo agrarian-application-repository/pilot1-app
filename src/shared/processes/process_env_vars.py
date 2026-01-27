@@ -25,11 +25,14 @@ def fetch_env(key, default):
         return None
 
     # Special handling for booleans (since bool("False") is True)
-    if (default is not None) and isinstance(default, bool):
-        return value.lower() in ("true", "1", "yes", "y", "on")
-        
-    # General casting for int, float, str, etc.
-    return type(default)(value)
+    if default is not None:
+        if isinstance(default, bool):
+            return value.lower() in ("true", "1", "yes", "y", "on")
+        else:
+            # General casting for int, float, str, etc.
+            return type(default)(value)
+    else:
+        return value
 
 def is_valid_coord_list(input_string:str, min_couples:int=3):
     # Regex to find patterns like (number, number) of (longitude, latitude)

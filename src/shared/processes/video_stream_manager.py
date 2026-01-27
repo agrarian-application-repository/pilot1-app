@@ -49,8 +49,10 @@ class VideoStreamManager:
         self.frame_queue = Queue(maxsize=queue_max_size)
 
         self.running = False
+
         self.stream_thread = None
         self._ffmpeg_process = None
+        self.stderr_consumer = None
 
         self.queue_get_timeout = queue_get_timeout
         self.ffmpeg_startup_timeout = ffmpeg_startup_timeout
@@ -87,11 +89,8 @@ class VideoStreamManager:
         for line in iter(pipe.readline, b''):
             logger.debug(f"FFmpeg: {line.decode().strip()}")
 
-    def _stream_loop(self):
-        """
-        Background thread that manages the FFmpeg pipe and ensures
-        graceful termination.
-        """
+    def get_ffmpeg_command(self):
+
         # Optimized command for Full HD 30fps ingest
         command = [
             'ffmpeg',
@@ -120,51 +119,81 @@ class VideoStreamManager:
             self.mediaserver_url
         ]
 
-        try:
-            # bufsize is important for high bitrate 1080p to prevent pipe clogging
-            self._ffmpeg_process = subprocess.Popen(
-                command,
-                stdin=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                bufsize=10 ** 7
-            )
-            #stderr consumer
-            threading.Thread(target=self.log_stderr, args=(self._ffmpeg_process.stderr,), daemon=True).start()
+        return command
 
-            # --- STARTUP VERIFICATION ---
-            # Brief sleep to allow FFmpeg to initialize/fail connection
-            sleep(self.ffmpeg_startup_timeout)
-            if self._ffmpeg_process.poll() is not None:
-                # Process exited immediately
-                _, stderr_data = self._ffmpeg_process.communicate()
-                self._startup_error = stderr_data.decode().split('\n')[-2] if stderr_data else "Unknown error"
+    def _stream_loop(self):
+        """
+        Background thread that manages the FFmpeg pipe and ensures
+        graceful termination.
+        """
+
+        command = self.get_ffmpeg_command()
+
+        # should only stop on parent process .close() command
+        # if connection is lost, should try to reestablish it
+        while self.running:
+
+            try:
+                # Launcc FFMPEG process
+                logger.info(
+                    f"Streamer thread has not been stopped yet. "
+                    f"Attempting to connect to {self.mediaserver_url}"
+                )
+                self._ffmpeg_process = subprocess.Popen(
+                    command,
+                    stdin=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    bufsize=10 ** 7
+                )
+
+                # Brief sleep to allow FFmpeg to initialize/fail connection
+                sleep(self.ffmpeg_startup_timeout)
+
+                # startup verification
+                if self._ffmpeg_process.poll() is not None:
+                    # Process exited immediately
+                    _, stderr_data = self._ffmpeg_process.communicate()
+                    self._startup_error = stderr_data.decode().split('\n')[-2] if stderr_data else "Unknown error"
+                    self._start_confirmed.set()
+                    return # exit the thread on failed startup
+                
+                # If we reach here, process is alive
                 self._start_confirmed.set()
-                return
+                
+                #stderr consumer
+                self.stderr_consumer = threading.Thread(target=self.log_stderr, args=(self._ffmpeg_process.stderr,), daemon=True)
+                self.stderr_consumer.start()
 
-            # If we reach here, process is alive
-            self._start_confirmed.set()
+                # Loop continues as long as we are "running"
+                # OR there are frames left to drain.
+                while self.running or not self.frame_queue.empty():
+                    try:
+                        # Use a timeout to block for a short time only
+                        frame = self.frame_queue.get(timeout=self.queue_get_timeout)
+                        self._ffmpeg_process.stdin.write(frame.tobytes())
+                        self._ffmpeg_process.stdin.flush() # Ensure data transfer
+                    except Empty:
+                        logger.debug("Queue empty. Continuing ...")
+                        continue
+                    except BrokenPipeError as e:
+                        logger.error(f"FFmpeg pipe broken: {e}")
+                        break
+                    except ConnectionResetError as e:
+                        logger.error(f"Connection Reset: {e}")
+                        break
 
-            # Loop continues as long as we are "running"
-            # OR there are frames left to drain.
-            while self.running or not self.frame_queue.empty():
-                try:
-                    # Use a timeout to block for a short time only
-                    frame = self.frame_queue.get(timeout=self.queue_get_timeout)
-                    self._ffmpeg_process.stdin.write(frame.tobytes())
-                except Empty:
-                    logger.debug("Queue empty. Continuing ...")
-                    continue
-                except BrokenPipeError:
-                    logger.error("FFmpeg pipe broken. Media server likely disconnected.")
-                    break
 
-        except Exception as e:
-            logger.error(f"Streaming error: {e}")
-            self._startup_error = str(e)
-            self._start_confirmed.set()
-        finally:
-            self._finalize_ffmpeg()
-            self.running = False
+            except Exception as e:
+                logger.error(f"Streaming error: {e}")
+                self._startup_error = str(e)
+                self._start_confirmed.set()
+            finally:
+                self._finalize_ffmpeg()
+                # on exit, checkj again whether the exit was due to thrad being stopped or due to error
+                # if the process should still be running (not stopped from outside), try to reconnect
+        
+        # thread complete, set running status to False
+        self.running = False
 
     def _finalize_ffmpeg(self):
         """Internal routine to close the pipe and wait for process exit."""
