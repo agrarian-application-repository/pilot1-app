@@ -20,11 +20,11 @@ yolo11l.pt
 yolo11x.pt
 
 # checkpoints
-checkpoints/danger_detection/*
-checkpoints/health_monitoring/*
-logs/*
-TMP/
-TMP_HEALTH/
+checkpoints/**/*.pt
+checkpoints/**/*.onnx
+checkpoints/**/*.engine
+logs/**/.log
+logs/**/.txt
 
 ###########################################
 
