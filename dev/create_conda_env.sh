@@ -1,10 +1,5 @@
 #! bin/bash
 
-module load proxy/proxy_16
-module load cuda12.9/toolkit/12.9
-module load miniconda3/py312_2
-
-source /archive/apps/miniconda/miniconda3/py312_2/etc/profile.d/conda.sh
 conda create --name agrarian312 python=3.12 -y
 conda activate agrarian312
 
